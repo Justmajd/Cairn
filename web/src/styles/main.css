@@ -247,6 +247,9 @@ svg .area { fill: rgba(70, 224, 207, 0.06); }
 svg .trace line { stroke-width: 2.2; stroke-linecap: round; }
 svg .sand rect { fill: #ffc24d; }
 svg .noradio rect { fill: rgba(185, 166, 255, 0.13); }
+svg .relay-mark line { stroke: #b9a6ff; stroke-width: 1; stroke-dasharray: 2 2; }
+svg .relay-mark path { fill: #b9a6ff; }
+svg .relay-mark text { fill: #b9a6ff; font: 500 9.5px var(--mono); }
 #profile svg { cursor: crosshair; }
 svg .probe line { stroke: rgba(255, 255, 255, 0.55); stroke-width: 1; stroke-dasharray: 2 2; }
 svg .probe circle { fill: #fff; stroke: #000; stroke-width: 1; }

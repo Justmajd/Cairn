@@ -211,7 +211,9 @@ export function showCueCard(input: CueCardInput): void {
       <div class="modal-body cc-scroll">${html}</div>
     </div>`;
   host.hidden = false;
-  renderProfile($("#cc-profile"), input.legs, input.order, null);
+  const profile = (host: HTMLElement) =>
+    renderProfile(host, input.legs, input.order, null, input.radio ? input.radio.lostAt : null, null, input.radio?.relay ? input.radio.relay.alongM : null);
+  profile($("#cc-profile"));
   const opener = document.activeElement as HTMLElement | null;
   const close = () => {
     host.hidden = true;
@@ -222,7 +224,7 @@ export function showCueCard(input: CueCardInput): void {
   $("#cc-print", host).addEventListener("click", () => {
     const print = $("#print");
     print.innerHTML = html;
-    renderProfile($("#cc-profile", print), input.legs, input.order, null);
+    profile($("#cc-profile", print));
     window.print();
   });
 }

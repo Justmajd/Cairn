@@ -1435,6 +1435,7 @@ export class App {
       (at) => {
         if (this.phase === "planning") this.view.setHoverMarker(at);
       },
+      this.useRelay && this.plan.relay ? this.plan.relay.alongM : null,
     );
   }
 
