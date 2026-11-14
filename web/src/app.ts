@@ -25,8 +25,7 @@ import { $, esc, fmtClock, fmtDist, fmtDose, fmtDur, fmtRate, setText } from "./
 import { ic } from "./ui/icons";
 import { hideAnimated, showAnimated } from "./ui/motion";
 import { playOnce } from "./ui/fx";
-import { prefetchSite } from "./data/prefetch";
-import { dissolve } from "./ui/dissolve";
+import { dissolveTo } from "./ui/dissolve";
 import { openModal, stopCardHtml } from "./ui/modals";
 import type { DemoRunner, DemoStep } from "./ui/demo";
 import type { CueRow } from "./ui/cuecard";
@@ -332,16 +331,13 @@ export class App {
       ev.stopPropagation();
       about.hidden = !about.hidden;
     });
-    // the logo and name go back to the main menu (this site's briefing), through the dust sweep
-    $("#brand-home").addEventListener("click", () => {
-      if (!$("#briefing").hidden) return;
-      void dissolve(() => showBriefing(this.site, () => {}, this.sites));
-    });
+    // the logo and name go back to the main menu, a page of its own (the plan stays in the address)
+    $("#brand-home").addEventListener("click", () => dissolveTo(`?site=${encodeURIComponent(this.site.id)}&menu=1${location.hash}`));
     about.addEventListener("click", (ev) => {
       const item = (ev.target as HTMLElement).closest<HTMLElement>("[data-about]")?.dataset.about;
       if (!item) return;
       about.hidden = true;
-      if (item === "briefing") showBriefing(this.site, () => {}, this.sites);
+      if (item === "briefing") showBriefing(this.site, this.sites, "overlay");
       else if (item === "sources") void this.about("sources");
       else if (item === "offline") void this.goOffline();
       else if (item === "keys") this.showShortcuts();
@@ -372,8 +368,6 @@ export class App {
     $("#site-switch").addEventListener("click", (ev) => {
       ev.stopPropagation();
       menu.hidden = !menu.hidden;
-      // the user may switch: warm the cache with the other sites' data so the switch is quick
-      if (!menu.hidden) for (const s of this.sites) if (s.id !== this.site.id) prefetchSite(s.id);
     });
     document.addEventListener("click", () => {
       menu.hidden = true;

@@ -74,7 +74,7 @@ Open the address Vite prints (normally http://localhost:5173).
 | `npm run start:https` | Same as `npm start`, over https:// |
 | `npm run fetch-speech` | Once: put the speech-to-text model on the hab (about 45 MB, not committed) |
 
-URL options: `?site=gale` opens Gale Crater (default `jezero`), `?skip=1` skips the briefing, `?demo=1` plays the guided demo straight away (for a booth screen or recording the video), `?q=low` uses a lighter mesh and the 50 cm texture for slow GPUs, `?tex=4k` stays on the 50 cm texture. The part after `#` is the plan, e.g. `#stops=cheyava,serpentine&t=9.5&relay=1`; links with a plan open straight on it.
+URL options: `?site=gale` opens Gale Crater's main menu (default `jezero`; the menu loads only its text and two images, and nothing of the planner until you open it), `?skip=1` opens the planner straight away, `?menu=1` the main menu even with a plan in the address, `?demo=1` plays the guided demo straight away (for a booth screen or recording the video), `?q=low` uses a lighter mesh and the 50 cm texture for slow GPUs, `?tex=4k` stays on the 50 cm texture. The part after `#` is the plan, e.g. `#stops=cheyava,serpentine&t=9.5&relay=1`; links with a plan open straight on it.
 
 Works on desktop, tablets and phones: below 1180 px the route and layers panel becomes a drawer (layers button, top right); in portrait the plan becomes a bottom sheet, and during a walk the controls sit in a strip above it.
 

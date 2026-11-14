@@ -88,6 +88,15 @@ export async function loadSites(): Promise<SiteEntry[]> {
   }
 }
 
+/** What the main menu shows of a site: its description and briefing context, nothing of the terrain. */
+export type BriefSite = Pick<SiteData, "id" | "base" | "meta" | "context">;
+
+/** The main menu's data for ?site=: site.json and context.json (a few kB), no grids or images. */
+export async function loadBriefing(): Promise<BriefSite> {
+  const [meta, context] = await Promise.all([json<SiteMeta>("site.json"), json<ContextData>("context.json")]);
+  return { id: SITE_ID, base: DATA_BASE, meta, context };
+}
+
 /**
  * Load every data file for the site.  `progress` gets a label and a 0..1 fraction.  Everything is
  * requested at once as soon as site.json is in; `onMeta` lets the caller start on images meanwhile.

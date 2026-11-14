@@ -1,15 +1,17 @@
-import type { SiteData, SiteEntry } from "../data/loaders";
+import type { BriefSite, SiteEntry } from "../data/loaders";
 import { $, esc, LOGO_SVG } from "./dom";
-import { dissolve } from "./dissolve";
-import { prefetchSite } from "../data/prefetch";
+import { dissolve, dissolveTo } from "./dissolve";
 import { marsSky } from "../eva/sky";
 import { countUp, playOnce, pointerGlow, scramble } from "./fx";
 
 /**
  * Mission briefing: the site's story, a regional orbital map with the rover's real traverse and the
  * EVA area, a global locator from Mars Trek, and a switch between sites.
+ *
+ * "page": it is the main menu, a page of its own; its buttons load the planner (or the demo) for the
+ * site.  "overlay": opened over a running planner (About → Mission briefing); its buttons close it.
  */
-export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEntry[] = []): void {
+export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "page" | "overlay" = "overlay"): void {
   const host = $("#briefing");
   const c = site.context;
   const W = 1000;
@@ -99,38 +101,26 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
   scramble($("#brief-code", host), 1100);
   host.querySelectorAll<HTMLElement>(".brief-facts b").forEach((b, i) => countUp(b, 1500, 450 + i * 70));
   // listeners on the host go on once: the briefing is drawn again into the same element
-  if (!host.dataset.scrollWatch) {
-    host.dataset.scrollWatch = "1";
+  if (!host.dataset.glow) {
+    host.dataset.glow = "1";
     pointerGlow(host, ".brief-mc");
-    // no hover effects while scrolling (see .scrolling in theme.css)
-    let t = 0;
-    host.addEventListener("scroll", () => {
-      host.classList.add("scrolling");
-      window.clearTimeout(t);
-      t = window.setTimeout(() => host.classList.remove("scrolling"), 160);
-    }, { passive: true });
   }
-  // pointing at another site warms the cache with its data, so the switch is quick
-  host.querySelectorAll<HTMLAnchorElement>(".brief-sites a").forEach((a) => {
-    const id = new URLSearchParams(a.search).get("site");
-    if (id && id !== site.id) for (const ev of ["pointerenter", "focus", "touchstart"]) a.addEventListener(ev, () => prefetchSite(id), { once: true, passive: true });
-  });
   // into the planner: the headline becomes the site name in the top bar, the logo flies there too
   const close = () => void dissolve(() => {
     host.hidden = true;
     playOnce(document.getElementById("app"), "boot", 1700); // the console assembles as the curtain opens
   });
-  $("#brief-enter", host).addEventListener("click", () => {
-    close();
-    onEnter();
-  });
+  const id = encodeURIComponent(site.id);
+  // the plan in the address (#stops=…) goes along to the planner
+  $("#brief-enter", host).addEventListener("click", () => (mode === "page" ? dissolveTo(`?site=${id}&skip=1${location.hash}`) : close()));
   $("#brief-ev2", host).addEventListener("click", () => {
-    location.href = `?site=${encodeURIComponent(site.id)}&skip=1&crew=ev2`;
+    location.href = `?site=${id}&skip=1&crew=ev2`;
   });
   $("#brief-mc", host).addEventListener("click", () => {
-    window.open(`?view=mission&site=${encodeURIComponent(site.id)}`, `cairn-mc-${site.id}`, "noopener");
+    window.open(`?view=mission&site=${id}`, `cairn-mc-${site.id}`, "noopener");
   });
   $("#brief-demo", host).addEventListener("click", () => {
+    if (mode === "page") return dissolveTo(`?site=${id}&demo=1`);
     close();
     window.dispatchEvent(new CustomEvent("cairn:demo"));
   });
