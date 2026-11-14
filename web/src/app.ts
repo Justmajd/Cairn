@@ -1703,10 +1703,11 @@ export class App {
   private historyIndex = 0;
   private writePlanHash(): void {
     const url = `${location.pathname}${location.search}#${this.planHash()}`;
+    const ready = this.historyReady;
+    this.historyReady = true; // from the first plan on, every change is an undo step (even if that plan came from the link)
     if (url === `${location.pathname}${location.search}${location.hash}`) return;
-    if (this.historyReady && !this.demo?.running) history.pushState({ cairn: ++this.historyIndex }, "", url);
+    if (ready && !this.demo?.running) history.pushState({ cairn: ++this.historyIndex }, "", url);
     else history.replaceState({ cairn: this.historyIndex }, "", url);
-    this.historyReady = true;
   }
 
   /** Back / Forward through plan edits: rebuild the plan from the link. */
