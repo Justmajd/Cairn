@@ -48,4 +48,5 @@ export const ic = {
   arrow: svg(ArrowRight, 16),
   later: svg(CalendarClock, 16),
   science: svg(Telescope, 14),
+  chev: svg(ChevronDown, 14),
 };

@@ -50,7 +50,7 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
           <button id="brief-enter" class="primary big">Open the EVA planner →</button>
           <button id="brief-demo" class="big">▶ Watch the 2-minute demo</button>
         </div>
-        <p class="fine">Every map layer, photo and reading comes from NASA, USGS or JPL archives — see “Data sources” in the planner. Suit and physiology numbers are labelled demo assumptions.</p>
+        <p class="fine">Every map layer, photo and reading comes from NASA, USGS or JPL archives — see About → Data sources in the planner. Suit and physiology numbers are labelled demo assumptions.</p>
       </section>
       <section class="brief-map">
         <div class="region">

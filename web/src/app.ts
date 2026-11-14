@@ -40,7 +40,7 @@ const LAYERS: Layer[] = [
   { id: "slope", name: "Slope", source: "hirise_dtm", swatch: "linear-gradient(90deg,#78dc50,#ffdc00,#ff8c00,#eb2828)", legend: ["5°", "25°+"] },
   { id: "sand", name: "Loose sand", source: "sand", swatch: "linear-gradient(90deg,rgba(255,194,77,.15),#ffc24d)", legend: ["firm", "loose"] },
   { id: "thermal", name: "Night thermal", source: "themis", swatch: "linear-gradient(90deg,#140a5a,#731491,#d13d5c,#fa9926,#faf099)", legend: ["cold · sand", "warm · rock"] },
-  { id: "minerals", name: "Minerals · CRISM", source: "crism", swatch: "linear-gradient(135deg,#b8e04a 0 33%,#4da3ff 33% 66%,#ff5ad1 66%)", legend: null },
+  { id: "minerals", name: "Minerals", source: "crism", swatch: "linear-gradient(135deg,#b8e04a 0 33%,#4da3ff 33% 66%,#ff5ad1 66%)", legend: null },
   { id: "geology", name: "Geology", source: "geology", swatch: "linear-gradient(90deg,#e69f00 0 25%,#56b4e9 25% 50%,#009e73 50% 75%,#f0e442 75%)", legend: null },
   { id: "shield", name: "Sky shielding", source: "hirise_dtm", swatch: "linear-gradient(90deg,rgba(64,140,255,.2),#4d9bff,#d9f5ff)", legend: ["open sky", "−15 % dose"] },
   { id: "shelter", name: "To shelter", source: "hirise_dtm", swatch: "linear-gradient(90deg,#33f280,#bff240,#ffcc26,#ff731a,#d91f40)", legend: ["0 min", "24+ min"] },
@@ -97,6 +97,13 @@ export class App {
   private widgetTimer = 0;
   private cardPoi: string | null = null;
   private toastTimer = 0;
+  /** Disclosure state that survives re-rendering the panels. */
+  private detailsOpen = false;
+  private moreLayersOpen = false;
+  /** Elevation chart open per view: open on the map, folded away in the 3D views. */
+  private chartOpen: Record<string, boolean> = { plan: true, orbit: false, walk: false };
+  /** Views whose gesture hint has done its job (the user has dragged or scrolled there). */
+  private readonly hintSeen = new Set<string>();
 
   private readonly lookup: ReturnLookup;
 
@@ -140,16 +147,19 @@ export class App {
     $("#views").innerHTML = [
       ["plan", ic.map, "Map", "Top-down planning map"],
       ["orbit", ic.box, "3D", "Tilted 3D terrain"],
-      ["fly", ic.flight, "Flyover", "Fly along the planned route"],
       ["walk", ic.visor, "Visor", "First-person helmet display"],
     ].map(([v, i, label, title]) => `<button data-view="${v}" title="${title}">${i}<span>${label}</span></button>`).join("");
     $(".top-actions").innerHTML = `
       <button id="btn-panels" class="compact-only" title="Route and map layers">${ic.layers}<span>Route & layers</span></button>
       <button id="btn-demo" class="demo-btn" title="Play the guided demo">${ic.play}<span>Demo</span></button>
-      <button id="btn-briefing" title="Mission briefing">${ic.book}<span>Briefing</span></button>
-      <button id="btn-sources" title="Where every layer comes from">${ic.data}<span>Data sources</span></button>
-      <button id="btn-model" title="Spacesuit and model assumptions">${ic.sliders}<span>Assumptions</span></button>`;
+      <button id="btn-about" aria-haspopup="menu" title="Briefing, data sources and assumptions">${ic.info}<span>About</span>${ic.chev}</button>`;
+    $("#about-menu").innerHTML = `
+      <button data-about="briefing">${ic.book}<span><b>Mission briefing</b><small>The site, the story and why it matters</small></span></button>
+      <button data-about="sources">${ic.data}<span><b>Data sources</b><small>Where every layer and number comes from</small></span></button>
+      <button data-about="model">${ic.sliders}<span><b>Suit and model assumptions</b><small>Oxygen, walking and radiation models</small></span></button>`;
     $("#nav").innerHTML = `
+      <button data-menu="view" title="Display settings">${ic.sliders}</button>
+      <i></i>
       <button data-nav="in" title="Zoom in (+)">${ic.plus}</button>
       <button data-nav="out" title="Zoom out (−)">${ic.minus}</button>
       <i class="only3d"></i>
@@ -163,10 +173,42 @@ export class App {
       if (btn) this.setView(btn.dataset.view as "plan" | "orbit" | "fly" | "walk");
     });
     $("#nav").addEventListener("click", (ev) => {
-      const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("button[data-nav]");
+      const t = ev.target as HTMLElement;
+      if (t.closest("[data-menu]")) {
+        ev.stopPropagation();
+        const menu = $("#view-menu");
+        if (menu.hidden) this.renderViewMenu();
+        menu.hidden = !menu.hidden;
+        return;
+      }
+      const btn = t.closest<HTMLButtonElement>("button[data-nav]");
       if (btn) this.view.nudge(btn.dataset.nav as "in" | "out" | "left" | "right" | "up" | "down" | "north");
     });
-    $("#btn-briefing").addEventListener("click", () => showBriefing(this.site, () => {}, this.sites));
+    const viewMenu = $("#view-menu");
+    viewMenu.addEventListener("click", (ev) => ev.stopPropagation());
+    viewMenu.addEventListener("change", (ev) => this.displayChange(ev.target as HTMLInputElement));
+    viewMenu.addEventListener("input", (ev) => this.displayChange(ev.target as HTMLInputElement));
+    const about = $("#about-menu");
+    $("#btn-about").addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      about.hidden = !about.hidden;
+    });
+    about.addEventListener("click", (ev) => {
+      const item = (ev.target as HTMLElement).closest<HTMLElement>("[data-about]")?.dataset.about;
+      if (!item) return;
+      about.hidden = true;
+      if (item === "briefing") showBriefing(this.site, () => {}, this.sites);
+      else if (item === "sources") showSources(this.site);
+      else showAssumptions(this.site, this.P);
+    });
+    // the gesture hint goes away once it has been used
+    const used = () => {
+      if (this.viewMode === "walk" || this.hintSeen.has(this.viewMode)) return;
+      this.hintSeen.add(this.viewMode);
+      $("#nav-hint").hidden = true;
+    };
+    $("#scene").addEventListener("pointerdown", used);
+    $("#scene").addEventListener("wheel", used, { passive: true });
     $("#btn-demo").addEventListener("click", () => void this.startDemo());
     $("#btn-panels").addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -183,13 +225,19 @@ export class App {
       ev.stopPropagation();
       menu.hidden = !menu.hidden;
     });
-    document.addEventListener("click", () => (menu.hidden = true));
-    $("#btn-sources").addEventListener("click", () => showSources(this.site));
-    $("#btn-model").addEventListener("click", () => showAssumptions(this.site, this.P));
+    document.addEventListener("click", () => {
+      menu.hidden = true;
+      about.hidden = true;
+      viewMenu.hidden = true;
+    });
 
     const left = $("#left");
     left.addEventListener("change", (ev) => this.leftChange(ev.target as HTMLInputElement));
     left.addEventListener("input", (ev) => this.leftInput(ev.target as HTMLInputElement));
+    left.addEventListener("toggle", (ev) => {
+      const t = ev.target as HTMLDetailsElement;
+      if (t.id === "more-layers") this.moreLayersOpen = t.open;
+    }, true); // toggle does not bubble
     left.addEventListener("click", (ev) => {
       const t = (ev.target as HTMLElement).closest<HTMLElement>("[data-info],[data-src],[data-remove]");
       if (!t) return;
@@ -203,7 +251,16 @@ export class App {
       const t = ev.target as HTMLInputElement;
       if (t.id === "opt-storm") this.storm = t.checked;
       if (t.id === "opt-buddy") this.buddy = t.checked;
+      if (t.id === "opt-straight") {
+        this.showStraight = t.checked;
+        this.pushRoutes();
+        this.renderBottom();
+      }
     });
+    right.addEventListener("toggle", (ev) => {
+      const t = ev.target as HTMLDetailsElement;
+      if (t.id === "plan-details") this.detailsOpen = t.open;
+    }, true);
     right.addEventListener("input", (ev) => {
       const t = ev.target as HTMLInputElement;
       if (t.id !== "start" || !this.plan) return;
@@ -220,6 +277,7 @@ export class App {
       if (!t) return;
       const act = t.dataset.act;
       if (act === "start") this.startEva();
+      else if (act === "fly") this.setView("fly");
       else if (act === "cue") this.openCueCard();
       else if (act === "resume") this.resumeRemaining();
       else if (act === "replan") this.backToPlanning();
@@ -239,6 +297,10 @@ export class App {
         this.renderBottom();
       } else if (act === "skip") this.skipAhead();
       else if (act === "end") this.backToPlanning();
+      else if (act === "chart") {
+        this.chartOpen[this.viewMode] = !this.chartIsOpen();
+        this.renderBottom();
+      }
     });
   }
 
@@ -275,8 +337,11 @@ export class App {
 
   private syncViewButtons(override?: string): void {
     const active = override ?? this.viewMode;
-    for (const b of $("#views").querySelectorAll<HTMLButtonElement>("button")) b.classList.toggle("on", b.dataset.view === active);
+    const lit = active === "fly" ? "orbit" : active; // the fly-through is part of the 3D view
+    for (const b of $("#views").querySelectorAll<HTMLButtonElement>("button")) b.classList.toggle("on", b.dataset.view === lit);
     const walk = this.viewMode === "walk";
+    if (walk || active === "fly") $("#view-menu").hidden = true;
+    if ($("#app").classList.contains("chart-closed") === this.chartIsOpen()) this.renderBottom();
     $("#app").dataset.view = active;
     $("#app").dataset.phase = this.phase;
     requestAnimationFrame(() => this.updateInsets());
@@ -284,7 +349,7 @@ export class App {
     $("#nav").hidden = walk || active === "fly";
     $("#nav").classList.toggle("flat", this.viewMode === "plan");
     const hint = $("#nav-hint");
-    hint.hidden = walk || active === "fly";
+    hint.hidden = walk || active === "fly" || this.hintSeen.has(this.viewMode);
     hint.innerHTML =
       this.viewMode === "plan"
         ? "<b>Drag</b> pan <i></i> <b>Scroll</b> zoom <i></i> <b>Click</b> add a stop <i></i> <b>3D</b> to rotate"
@@ -534,13 +599,24 @@ export class App {
       })
       .join("");
 
-    const layers = this.layers().map(
-      (l) => `<label class="layer${l.id === this.layer ? " on" : ""}">
+    // four everyday layers up front; the rest one click away, grouped by what they are for
+    const avail = this.layers();
+    const primaryIds = (["none", "risk", "shelter", "minerals", "slope"] as LayerId[]).filter((id) => avail.some((l) => l.id === id)).slice(0, 4);
+    const rest = avail.filter((l) => !primaryIds.includes(l.id));
+    const chip = (l: Layer) => `<label class="layer${l.id === this.layer ? " on" : ""}">
           <input class="sr" type="radio" name="layer" value="${l.id}" ${l.id === this.layer ? "checked" : ""}/>
           <i class="swatch" style="background:${l.swatch}"></i><span>${esc(l.name)}</span>
-        </label>`,
-    ).join("");
-    const active = this.layers().find((l) => l.id === this.layer) ?? LAYERS[0];
+        </label>`;
+    const primary = primaryIds.map((id) => chip(avail.find((l) => l.id === id)!)).join("");
+    const groups: [string, LayerId[]][] = [["Safety", ["risk", "shelter", "slope", "sand"]], ["Science", ["minerals", "geology", "thermal"]], ["Radiation", ["shield"]]];
+    const more = groups
+      .map(([name, ids]) => {
+        const ls = rest.filter((l) => ids.includes(l.id));
+        return ls.length ? `<div class="layer-group"><h4>${name}</h4><div class="layer-grid">${ls.map(chip).join("")}</div></div>` : "";
+      })
+      .join("");
+    const inMore = rest.some((l) => l.id === this.layer);
+    const active = avail.find((l) => l.id === this.layer) ?? LAYERS[0];
     let legend = "";
     if (this.layer === "minerals" && this.site.meta.minerals) {
       const mm = this.site.meta.minerals;
@@ -571,17 +647,41 @@ export class App {
       </section>
       <section>
         <header class="sec-head"><h2>Map layer</h2><button class="link" data-src="${active.source}">${ic.info}<span>Source</span></button></header>
-        <div class="layer-grid">${layers}</div>
-        ${legend}
-        <label class="slider${this.layer === "none" ? " off" : ""}"><span>Opacity</span><input type="range" id="opacity" min="0.2" max="1" step="0.05" value="${this.opacity}"/></label>
-      </section>
-      <section>
-        <header class="sec-head"><h2>Display</h2></header>
-        <label class="switch"><span>${esc(this.roverName)}'s real track</span><input class="sr" type="checkbox" id="track" ${this.showTrack ? "checked" : ""}/><i></i></label>
-        <label class="switch"><span>Straight-line comparison</span><input class="sr" type="checkbox" id="straight" ${this.showStraight ? "checked" : ""}/><i></i></label>
-        <label class="switch"><span>Sun shadows</span><input class="sr" type="checkbox" id="shadows" ${this.showShadows ? "checked" : ""}/><i></i></label>
-        <label class="slider"><span>Vertical exaggeration <b id="exag-val">×${this.exag.toFixed(2)}</b></span><input type="range" id="exag" min="1" max="2.5" step="0.25" value="${this.exag}"/></label>
+        <div class="layer-grid">${primary}</div>
+        ${this.layer !== "none" ? `${legend}<label class="slider"><span>Opacity</span><input type="range" id="opacity" min="0.2" max="1" step="0.05" value="${this.opacity}"/></label>` : ""}
+        ${
+          rest.length
+            ? `<details class="more-layers" id="more-layers" ${this.moreLayersOpen || inMore ? "open" : ""}>
+                 <summary>${ic.layers}<span>More layers</span><em>${rest.length}</em>${ic.chev}</summary>${more}</details>`
+            : ""
+        }
       </section>`;
+  }
+
+  /** Display settings, in a small menu on the map. */
+  private renderViewMenu(): void {
+    $("#view-menu").innerHTML = `
+      <h3>Display</h3>
+      <label class="switch"><span>${esc(this.roverName)}'s real track</span><input class="sr" type="checkbox" id="track" ${this.showTrack ? "checked" : ""}/><i></i></label>
+      <label class="switch"><span>Sun shadows</span><input class="sr" type="checkbox" id="shadows" ${this.showShadows ? "checked" : ""}/><i></i></label>
+      <label class="slider"><span>Vertical exaggeration <b id="exag-val">×${this.exag.toFixed(2)}</b></span><input type="range" id="exag" min="1" max="2.5" step="0.25" value="${this.exag}"/></label>`;
+  }
+
+  private displayChange(t: HTMLInputElement): void {
+    if (t.id === "track") {
+      this.showTrack = t.checked;
+      this.view.setTrackVisible(this.showTrack);
+    } else if (t.id === "shadows") {
+      this.showShadows = t.checked;
+      this.view.setShadows(this.showShadows);
+    } else if (t.id === "exag") {
+      this.exag = Number(t.value);
+      this.view.setExaggeration(this.exag);
+      setText($("#exag-val"), `×${this.exag.toFixed(2)}`);
+      const tag = $("#exag-tag");
+      tag.hidden = this.exag === 1;
+      tag.textContent = `Heights ×${this.exag.toFixed(2)} for display`;
+    }
   }
 
   private leftChange(t: HTMLInputElement): void {
@@ -593,16 +693,6 @@ export class App {
       this.layer = t.value as LayerId;
       this.view.setLayer(this.layer, this.opacity);
       this.renderLeft();
-    } else if (t.id === "track") {
-      this.showTrack = t.checked;
-      this.view.setTrackVisible(this.showTrack);
-    } else if (t.id === "shadows") {
-      this.showShadows = t.checked;
-      this.view.setShadows(this.showShadows);
-    } else if (t.id === "straight") {
-      this.showStraight = t.checked;
-      this.pushRoutes();
-      this.renderProfileChart();
     }
   }
 
@@ -610,13 +700,6 @@ export class App {
     if (t.id === "opacity") {
       this.opacity = Number(t.value);
       this.view.setLayerOpacity(this.opacity);
-    } else if (t.id === "exag") {
-      this.exag = Number(t.value);
-      this.view.setExaggeration(this.exag);
-      setText($("#exag-val"), `×${this.exag.toFixed(2)}`);
-      const tag = $("#exag-tag");
-      tag.hidden = this.exag === 1;
-      tag.textContent = `Heights ×${this.exag.toFixed(2)} for display`;
     }
   }
 
@@ -651,6 +734,14 @@ export class App {
     const lowSun = sunStart.elevation < 8 || sunEnd.elevation < 8;
     const margin = b.walkBack.minMarginL;
 
+    const stCost = sum((m) => m.cost, st) / sum((m) => m.cost, sf);
+    const vs =
+      stBlocked > 0
+        ? `The straight line crosses <b>${fmtDist(stBlocked)}</b> steeper than ${limit}°. CAIRN goes around it.`
+        : stCost >= 1.05
+          ? `Walking the straight line would cost <b>${stCost.toFixed(1)}×</b> the effort and risk of this route.`
+          : "The straight line is walkable here, and about as easy as this route.";
+
     host.innerHTML = `
       <div class="scroll">
         <section>
@@ -659,58 +750,64 @@ export class App {
           }</header>
           ${issues.length ? `<p class="callout bad">${ic.warn}<span>This plan is ${issues.join(" and ")}. Remove a stop.</span></p>` : ""}
           ${lowSun ? `<p class="callout warn">${ic.warn}<span>The Sun is under 8° at the ${sunStart.elevation < 8 ? "start" : "end"} of this EVA. Long shadows hide rocks and holes, and it gets cold fast — leave later or plan a shorter walk.</span></p>` : ""}
-          <div class="hero">
+          <div class="hero quad">
             <div><span>Distance</span>${heroDist(b.distanceM)}</div>
             <div><span>Time outside</span>${heroDur(b.totalTimeS)}</div>
+            <div><span>Longest way home</span>${heroDur(b.walkBack.maxReturnMin * 60)}</div>
+            <div><span>Steepest ground</span><b>${b.maxSlopeDeg}<small>°</small></b></div>
+          </div>
+          <div class="o2">
+            <div class="o2-head"><span>Oxygen</span><b>${Math.round(b.o2UsedL)} L <small>of ${P.o2SupplyL} L</small></b></div>
+            <div class="meter"><i style="width:${Math.min(100, usedPct).toFixed(1)}%"></i><u style="left:${(100 - reservePct).toFixed(1)}%"></u></div>
+            <p class="o2-sub"><b class="${margin >= 0 ? "good" : "bad"}">${margin >= 0 ? `${Math.round(margin)} L spare` : `${Math.round(-margin)} L short`}</b> after walking home from the farthest point and keeping the ${reservePct}% reserve</p>
           </div>
           <label class="slider start"><span>Leave the rover at <b id="start-val">${fmtLmst(this.startLmst)} LMST</b></span>
             <input type="range" id="start" min="6" max="17" step="0.25" value="${this.startLmst}"/>
             <small id="sun-val">Sun ${this.sunText(sunStart)} → ${this.sunText(sunEnd)} at ${fmtLmst(this.lmstAt(b.totalTimeS))}</small></label>
-          <dl class="kv">
-            <dt>Walking</dt><dd>${fmtDur(b.walkTimeS)}</dd>
-            <dt>Science at stops</dt><dd>${fmtDur(b.stopTimeS)}</dd>
-            <dt>Total climb</dt><dd>${Math.round(b.climbM)} m</dd>
-            <dt>Steepest ground</dt><dd>${b.maxSlopeDeg}°</dd>
-            <dt>On loose sand</dt><dd>${fmtDist(b.sandM)}</dd>
-          </dl>
+          <div class="vs">
+            <p>${vs}</p>
+            <label class="switch"><span>Show the straight line on the map</span><input class="sr" type="checkbox" id="opt-straight" ${this.showStraight ? "checked" : ""}/><i></i></label>
+          </div>
         </section>
-        <section>
-          <header class="sec-head"><h2>Oxygen</h2><span class="num">${Math.round(b.o2UsedL)} L <small>of ${P.o2SupplyL} L</small></span></header>
-          <div class="meter"><i style="width:${Math.min(100, usedPct).toFixed(1)}%"></i><u style="left:${(100 - reservePct).toFixed(1)}%"></u></div>
-          <div class="meter-legend"><span>Used by this plan</span><span>${reservePct}% reserve</span></div>
-          <dl class="kv">
-            <dt>Walk-back margin</dt><dd class="${margin >= 0 ? "good" : "bad"}">${margin >= 0 ? "+" : ""}${Math.round(margin)} L</dd>
-            <dt>Longest way home</dt><dd>${fmtDur(b.walkBack.maxReturnMin * 60)}</dd>
-            <dt>Background dose</dt><dd>${fmtDose(dose)}</dd>
-          </dl>
-          <p class="note">Margin: oxygen left at the tightest point of the plan after walking home and keeping the reserve. Dose: Curiosity RAD background, ${this.rad.baseline} µGy/h. <a data-act="model">Model assumptions</a></p>
-        </section>
-        <section>
-          <header class="sec-head"><h2>Straight line vs CAIRN</h2><span class="sub">${Math.round(this.plan.routeMs)} ms</span></header>
-          <table class="compare">
-            <thead><tr><th></th><th>Straight</th><th>CAIRN</th></tr></thead>
-            <tbody>
-              ${row("Distance", fmtDist(sum((m) => m.distance, st)), fmtDist(sum((m) => m.distance, sf)))}
-              ${row("Impassable", fmtDist(stBlocked), "0 m", stBlocked > 0)}
-              ${row("Steepest", `${stSteep}°`, `${Math.max(...sf.map((m) => m.maxSlopeDeg))}°`, stSteep > limit)}
-              ${row("Loose sand", fmtDist(sum((m) => m.sandM, st)), fmtDist(sum((m) => m.sandM, sf)))}
-              ${row("Effort × risk", `${(sum((m) => m.cost, st) / sum((m) => m.cost, sf)).toFixed(2)}×`, "1.00×", stBlocked > 0)}
-            </tbody>
-          </table>
-          ${
-            stBlocked > 0
-              ? `<p class="callout warn">${ic.warn}<span>The straight line crosses ${fmtDist(stBlocked)} steeper than ${limit}°, marked red on the map. CAIRN goes around it.</span></p>`
-              : `<p class="note">No impassable ground on the straight line here, but CAIRN's route costs less effort and risk.</p>`
-          }
-        </section>
+        <details class="more" id="plan-details" ${this.detailsOpen ? "open" : ""}>
+          <summary><span>Details</span><em>time, dose, comparison, simulation</em>${ic.chev}</summary>
+          <section>
+            <h3>Time and terrain</h3>
+            <dl class="kv">
+              <dt>Walking</dt><dd>${fmtDur(b.walkTimeS)}</dd>
+              <dt>Science at stops</dt><dd>${fmtDur(b.stopTimeS)}</dd>
+              <dt>Total climb</dt><dd>${Math.round(b.climbM)} m</dd>
+              <dt>On loose sand</dt><dd>${fmtDist(b.sandM)}</dd>
+              <dt>Background dose</dt><dd>${fmtDose(dose)}</dd>
+            </dl>
+            <p class="note">Oxygen margin: what is left at the tightest point of the plan after walking home and keeping the reserve. Dose: Curiosity RAD background, ${this.rad.baseline} µGy/h. <a data-act="model">Model assumptions</a></p>
+          </section>
+          <section>
+            <h3>Straight line vs CAIRN <span class="sub">route found in ${Math.round(this.plan.routeMs)} ms</span></h3>
+            <table class="compare">
+              <thead><tr><th></th><th>Straight</th><th>CAIRN</th></tr></thead>
+              <tbody>
+                ${row("Distance", fmtDist(sum((m) => m.distance, st)), fmtDist(sum((m) => m.distance, sf)))}
+                ${row("Impassable", fmtDist(stBlocked), "0 m", stBlocked > 0)}
+                ${row("Steepest", `${stSteep}°`, `${Math.max(...sf.map((m) => m.maxSlopeDeg))}°`, stSteep > limit)}
+                ${row("Loose sand", fmtDist(sum((m) => m.sandM, st)), fmtDist(sum((m) => m.sandM, sf)))}
+                ${row("Effort × risk", `${stCost.toFixed(2)}×`, "1.00×", stBlocked > 0)}
+              </tbody>
+            </table>
+          </section>
+          <section>
+            <h3>Simulation</h3>
+            <label class="switch"><span>Replay the 20 May 2024 solar storm</span><input class="sr" type="checkbox" id="opt-storm" ${this.storm ? "checked" : ""}/><i></i></label>
+            <label class="switch"><span>Buddy mode · two astronauts</span><input class="sr" type="checkbox" id="opt-buddy" ${this.buddy ? "checked" : ""}/><i></i></label>
+          </section>
+        </details>
       </div>
       <footer class="panel-foot">
-        <label class="switch"><span>Replay the 20 May 2024 solar storm</span><input class="sr" type="checkbox" id="opt-storm" ${this.storm ? "checked" : ""}/><i></i></label>
-        <label class="switch"><span>Buddy mode · two astronauts</span><input class="sr" type="checkbox" id="opt-buddy" ${this.buddy ? "checked" : ""}/><i></i></label>
-        <div class="foot-row">
-          <button class="big secondary" data-act="cue" title="One-page printable plan">${ic.book}<span>Cue card</span></button>
-          <button class="primary big" data-act="start" ${b.feasible ? "" : "disabled"}>${ic.play}<span>Start EVA</span></button>
+        <div class="foot-row two">
+          <button class="secondary" data-act="fly" title="Fly along the planned route">${ic.flight}<span>Fly the route</span></button>
+          <button class="secondary" data-act="cue" title="One-page printable plan">${ic.book}<span>Cue card</span></button>
         </div>
+        <button class="primary big" data-act="start" ${b.feasible ? "" : "disabled"}>${ic.play}<span>Start EVA</span></button>
       </footer>`;
   }
 
@@ -804,9 +901,19 @@ export class App {
   }
 
   // ================================================================ bottom bar
+  private chartIsOpen(): boolean {
+    return this.chartOpen[this.viewMode] ?? true;
+  }
+
   private renderBottom(): void {
     const eva = this.phase === "eva";
     const straight = this.showStraight && this.phase === "planning";
+    const open = this.chartIsOpen();
+    $("#app").classList.toggle("chart-closed", !open);
+    requestAnimationFrame(() => this.updateInsets());
+    const b = this.plan?.budget;
+    const summary = b ? `<span class="chart-sum">${ic.route}${Math.round(b.climbM)} m climb · steepest ${b.maxSlopeDeg}°</span>` : "";
+    const toggle = `<button class="icon chart-toggle" data-act="chart" title="${open ? "Hide" : "Show"} the elevation chart" aria-expanded="${open}">${ic.chev}</button>`;
     $("#bottom").innerHTML = `
       <header class="bar">
         ${
@@ -819,19 +926,27 @@ export class App {
                </div>`
             : `<h2>Elevation along the route</h2>`
         }
-        <div class="key">
-          <span><i style="background:#3ddc84"></i>&lt; 10°</span><span><i style="background:#f5d02e"></i>10–18°</span>
-          <span><i style="background:#ff8a1f"></i>18–25°</span><span><i style="background:#ff4d4d"></i>too steep</span>
-          <span><i class="sand"></i>sand</span>${straight ? `<span><i class="dash"></i>straight line</span>` : ""}
-        </div>
+        ${
+          open
+            ? `<div class="key">
+                 <span><i style="background:#3ddc84"></i>&lt; 10°</span><span><i style="background:#f5d02e"></i>10–18°</span>
+                 <span><i style="background:#ff8a1f"></i>18–25°</span><span><i style="background:#ff4d4d"></i>too steep</span>
+                 <span><i class="sand"></i>sand</span>${straight ? `<span><i class="dash"></i>straight line</span>` : ""}
+               </div>`
+            : summary
+        }
+        ${toggle}
       </header>
-      <div id="profile"></div>`;
+      <div id="profile" ${open ? "" : "hidden"}></div>`;
     this.renderProfileChart();
   }
 
   private renderProfileChart(): void {
     const host = document.getElementById("profile");
-    if (!host) return;
+    if (!host || host.hidden) {
+      this.profile = null;
+      return;
+    }
     if (!this.plan) {
       host.innerHTML = `<p class="hint pad">No route to show.</p>`;
       this.profile = null;
@@ -980,7 +1095,7 @@ export class App {
     this.demo = new DemoRunner(steps, {
       title: "Robots built the cairns. Humans will follow them.",
       body: () =>
-        `${lastAvoided > 0 ? `Sheltering avoided <b>${fmtDose(lastAvoided)}</b> of radiation. ` : ""}Every layer here comes from NASA, USGS and JPL archives — open <b>Data sources</b> to check any of them.`,
+        `${lastAvoided > 0 ? `Sheltering avoided <b>${fmtDose(lastAvoided)}</b> of radiation. ` : ""}Every layer here comes from NASA, USGS and JPL archives — open <b>About → Data sources</b> to check any of them.`,
     });
     this.demo.onPause = (p) => {
       this.paused = p;
