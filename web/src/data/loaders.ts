@@ -87,12 +87,33 @@ export async function loadSites(): Promise<SiteEntry[]> {
   }
 }
 
-/** Load every data file for the site.  `progress` gets a label and a 0..1 fraction. */
-export async function loadSite(progress: (label: string, fraction: number) => void): Promise<SiteData> {
+/**
+ * Load every data file for the site.  `progress` gets a label and a 0..1 fraction.  Everything is
+ * requested at once as soon as site.json is in; `onMeta` lets the caller start on images meanwhile.
+ */
+export async function loadSite(
+  progress: (label: string, fraction: number) => void,
+  onMeta?: (meta: SiteMeta) => void,
+): Promise<SiteData> {
   progress("Reading site description", 0.02);
   const [meta] = await Promise.all([json<SiteMeta>("site.json"), loadPack()]);
+  onMeta?.(meta);
   const n = meta.grid.n;
   const g = meta.grids;
+
+  // small files and the surrounding terrain download while the grids decode
+  const docs = Promise.all([
+    g.geology ? json<NonNullable<SiteData["geology"]>>("geology.json") : Promise.resolve(null),
+    json<{ pois: Poi[] }>("pois.json"),
+    json<RoverData>("rover.json"),
+    json<WeatherData>("weather.json"),
+    json<ReplayData>("replay.json"),
+    json<ContextData>("context.json"),
+    json<{ entries: ProvenanceEntry[] }>("provenance.json"),
+  ]);
+  const regionJob = loadRegion();
+  const panoramaJob = json<PanoramaSet>("panoramas.json").catch(() => null);
+  docs.catch(() => {}); // awaited below; avoid an unhandled rejection while the grids load
 
   const jobs: [string, string][] = [
     ["height.u16", "HiRISE elevation model"],
@@ -128,18 +149,9 @@ export async function loadSite(progress: (label: string, fraction: number) => vo
   const grid = new TerrainGrid(n, meta.grid.cellM, height, effort, risk, slope, sand, meta.model.effortScale, meta.model.riskScale, shield);
 
   progress("Mission data", 0.65);
-  const [geology, poiDoc, rover, weather, replay, context, prov] = await Promise.all([
-    g.geology ? json<NonNullable<SiteData["geology"]>>("geology.json") : Promise.resolve(null),
-    json<{ pois: Poi[] }>("pois.json"),
-    json<RoverData>("rover.json"),
-    json<WeatherData>("weather.json"),
-    json<ReplayData>("replay.json"),
-    json<ContextData>("context.json"),
-    json<{ entries: ProvenanceEntry[] }>("provenance.json"),
-  ]);
+  const [geology, poiDoc, rover, weather, replay, context, prov] = await docs;
   progress("Surrounding terrain", 0.7);
-  const region = await loadRegion();
-  const panoramas = await json<PanoramaSet>("panoramas.json").catch(() => null);
+  const [region, panoramas] = await Promise.all([regionJob, panoramaJob]);
   return {
     panoramas,
     id: SITE_ID, base: DATA_BASE, meta, grid,

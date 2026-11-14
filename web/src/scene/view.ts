@@ -43,6 +43,7 @@ const EYE_HEIGHT_M = 1.7;
 /** Closest the map and 3D cameras may come to the ground (m). */
 const CAMERA_CLEARANCE_M = 3;
 const sightDir = new THREE.Vector3();
+const labelPos = new THREE.Vector3();
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
 interface Tween {
@@ -113,6 +114,10 @@ export class SceneView {
   private fogTarget = 0;
   /** Screen space covered by the floating panels; the camera centres the view in what is left. */
   private insets = { top: 0, right: 0, bottom: 0, left: 0 };
+  /** Uncrowded on-screen size of each stop label (see declutterLabels). */
+  private labelSize = new WeakMap<HTMLElement, [number, number]>();
+  /** True when the map was last framed while the page had no size. */
+  private framedBlind = false;
 
   onPoiClick: (id: string) => void = () => {};
   onGroundClick: (p: XY, clientX: number, clientY: number) => void = () => {};
@@ -268,7 +273,45 @@ export class SceneView {
     this.dirty = false;
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
+    this.declutterLabels();
     return true;
+  }
+
+  /**
+   * Stop labels that land on top of each other: the rover's label wins, then the stops on the route
+   * (which shrink to their number), then the optional places (which hide).  Sizes are measured once,
+   * uncrowded, so a label never flickers between its two states.
+   */
+  private declutterLabels(): void {
+    const w = this.host.clientWidth;
+    const h = this.host.clientHeight;
+    const items: { el: HTMLElement; rank: number; x: number; y: number; size: [number, number] }[] = [];
+    for (const holder of this.poiGroup.children) {
+      const label = holder.children.find((c): c is CSS2DObject => c instanceof CSS2DObject);
+      if (!label) continue;
+      const el = label.element;
+      if (el.style.display === "none") continue;
+      let size = this.labelSize.get(el);
+      if (!size) {
+        if (!el.isConnected || !el.offsetWidth) continue;
+        size = [el.offsetWidth, el.offsetHeight];
+        this.labelSize.set(el, size);
+      }
+      labelPos.setFromMatrixPosition(label.matrixWorld).project(this.camera);
+      const rank = el.classList.contains("shelter") ? 0 : el.classList.contains("active") ? 1 : 2;
+      items.push({ el, rank, x: (labelPos.x * 0.5 + 0.5) * w, y: (-labelPos.y * 0.5 + 0.5) * h, size });
+    }
+    items.sort((a, b) => a.rank - b.rank || a.y - b.y);
+    const kept: [number, number, number, number][] = [];
+    for (const it of items) {
+      const [fw, fh] = it.size;
+      const box: [number, number, number, number] = [it.x - fw / 2, it.y - fh, it.x + fw / 2, it.y];
+      const crowded = kept.some((k) => box[0] < k[2] - 3 && box[2] > k[0] + 3 && box[1] < k[3] - 3 && box[3] > k[1] + 3);
+      it.el.classList.toggle("crowded", crowded);
+      // a crowded route stop keeps its number badge, which still takes room
+      if (!crowded) kept.push(box);
+      else if (it.rank === 1) kept.push([it.x - fh / 2, it.y - fh, it.x + fh / 2, it.y]);
+    }
   }
 
   private cameraMoved(): boolean {
@@ -525,12 +568,15 @@ export class SceneView {
   private resize(): void {
     const w = Math.max(1, this.host.clientWidth);
     const h = Math.max(1, this.host.clientHeight);
+    // The map was framed while the page had no size (a hidden tab or panel): frame it again now.
+    const reframe = this.framedBlind && w > 50 && h > 50 && this.mode === "plan" && !this.tween;
     this.renderer.setSize(w, h);
     this.labels.setSize(w, h);
     this.camera.aspect = w / h;
     this.applyViewOffset();
     for (const m of this.lineMaterials) m.resolution.set(w, h);
     this.dirty = true;
+    if (reframe) this.applyPlanPose(false);
   }
 
   // ---------------------------------------------------------------- camera modes
@@ -558,8 +604,9 @@ export class SceneView {
   private planPose(target: THREE.Vector3) {
     // A narrow lens from far away is close to a true map projection: relief barely distorts the picture.
     const fov = 12;
-    const w = Math.max(1, this.host.clientWidth);
-    const h = Math.max(1, this.host.clientHeight);
+    this.framedBlind = this.host.clientWidth < 50 || this.host.clientHeight < 50;
+    const w = Math.max(1, this.host.clientWidth || window.innerWidth);
+    const h = Math.max(1, this.host.clientHeight || window.innerHeight);
     const fw = Math.max(200, w - this.insets.left - this.insets.right);
     const fh = Math.max(200, h - this.insets.top - this.insets.bottom);
     const fit = Math.max(h / fh, (w / fw) * (h / w)); // walk area must fit the free space in both directions

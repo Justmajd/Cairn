@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { App } from "./app";
-import { dataUrl, loadSite, loadSites } from "./data/loaders";
+import { DATA_BASE, dataUrl, loadSite, loadSites } from "./data/loaders";
 import { DEFAULT_PARAMS } from "./eva/params";
 import { Router } from "./routing/client";
 import { SceneView } from "./scene/view";
@@ -34,14 +34,6 @@ async function boot(): Promise<void> {
   const query = new URLSearchParams(location.search);
   const quality = query.get("q") === "low" ? "low" : "high";
 
-  const [site, sites] = await Promise.all([loadSite(progress), loadSites()]);
-  document.title = `CAIRN — ${site.meta.name.split(" — ")[0]} · Marswalk Route Planner`;
-  // Start on the 50 cm HiRISE image; the full 25 cm one streams in after the planner is up,
-  // when the GPU can hold an 8192 px texture.
-  const hi = site.meta.texture.hi;
-  const useHi = !!hi && quality === "high" && query.get("tex") !== "4k" && maxTextureSize() >= hi.px;
-  const chosen = site.meta.texture;
-  progress(`HiRISE surface image (${Math.round(chosen.mPerPx * 100)} cm per pixel)`, 0.75);
   const grey = (t: THREE.Texture) => {
     t.format = THREE.RedFormat; // one grey band: a quarter of the GPU memory of RGBA
     t.generateMipmaps = true;
@@ -49,19 +41,39 @@ async function boot(): Promise<void> {
     t.magFilter = THREE.LinearFilter;
     return t;
   };
-  const [texture, relief, regionMap] = await Promise.all([
-    loadTexture(site.base + chosen.file).then(grey),
-    loadTexture(dataUrl(site.meta.relief?.file ?? "relief.png")),
-    site.region ? loadTexture(site.base + site.region.meta.texture.file).then(grey) : Promise.resolve(null),
+  // The surface image and relief start downloading as soon as site.json names them, alongside the grids.
+  const early: { images?: Promise<[THREE.Texture, THREE.Texture]> } = {};
+  const [site, sites] = await Promise.all([
+    loadSite(progress, (meta) => {
+      early.images = Promise.all([
+        loadTexture(DATA_BASE + meta.texture.file).then(grey),
+        loadTexture(dataUrl(meta.relief?.file ?? "relief.png")),
+      ]);
+      early.images.catch(() => {}); // awaited below
+    }),
+    loadSites(),
   ]);
-  relief.generateMipmaps = true;
-  relief.minFilter = THREE.LinearMipmapLinearFilter;
+  performance.mark("cairn:data");
+  document.title = `CAIRN — ${site.meta.name.split(" — ")[0]} · Marswalk Route Planner`;
+  // Start on the 50 cm HiRISE image; the full 25 cm one streams in after the planner is up,
+  // when the GPU can hold an 8192 px texture.
+  const hi = site.meta.texture.hi;
+  const useHi = !!hi && quality === "high" && query.get("tex") !== "4k" && maxTextureSize() >= hi.px;
+  const chosen = site.meta.texture;
 
-  progress("Working out the way home from every point", 0.86);
+  // the way home from every point is worked out in the background while the images finish
+  progress("Surface images and the way home from every point", 0.8);
   const rover = site.pois.find((p) => p.kind === "shelter");
   if (!rover) throw new Error("Site has no shelter");
   const router = new Router();
-  const field = await router.init(site.grid, DEFAULT_PARAMS, { x: rover.x, y: rover.y });
+  const [[texture, relief], regionMap, field] = await Promise.all([
+    early.images!,
+    site.region ? loadTexture(site.base + site.region.meta.texture.file).then(grey) : Promise.resolve(null),
+    router.init(site.grid, DEFAULT_PARAMS, { x: rover.x, y: rover.y }),
+  ]);
+  relief.generateMipmaps = true;
+  relief.minFilter = THREE.LinearMipmapLinearFilter;
+  performance.mark("cairn:images+field");
 
   progress("Building the terrain", 0.95);
   $("#app").hidden = false;
@@ -78,6 +90,7 @@ async function boot(): Promise<void> {
   const debug = { app, view, site, field, textureMPerPx: chosen.mPerPx };
   (window as unknown as { cairn: unknown }).cairn = debug;
 
+  performance.mark("cairn:ready");
   progress("Ready", 1);
   $("#loading").hidden = true;
   if (query.get("skip") !== "1") showBriefing(site, () => {}, sites);

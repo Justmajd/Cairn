@@ -1406,7 +1406,7 @@ export class App {
       if (ev.type === "arrive" && ev.poi.kind !== "shelter") {
         this.openCard(ev.poi.id, true);
         this.toast(`Arrived at ${ev.poi.short}. ${ev.poi.dwellMin} min of science.`);
-        this.voice.say(`Arrived at ${ev.poi.name}. ${spokenTime(ev.poi.dwellMin * 60)} of science.`);
+        this.voice.say(`Arrived at ${ev.poi.short}. ${spokenTime(ev.poi.dwellMin * 60)} of science.`);
       } else if (ev.type === "depart") {
         if (this.cardPoi === ev.poi.id) this.closeCard();
         const n = this.mission?.next();
@@ -1539,7 +1539,7 @@ export class App {
   private waypointName(poi: Poi): string {
     if (poi.kind === "shelter") return "the rover";
     const k = this.plan?.order.findIndex((p, i) => p.id === poi.id && i > 0) ?? -1;
-    return k > 0 ? `waypoint ${k}, ${poi.name}` : poi.name;
+    return k > 0 ? `waypoint ${k}, ${poi.short}` : poi.short;
   }
 
   /** Routine spoken directions in the visor: distance, turn, steep ground or sand ahead. */
@@ -1594,9 +1594,13 @@ export class App {
     const alert = $("#alert");
     alert.className = spare >= 0 ? "danger drill" : "danger";
     alert.innerHTML = `<div class="ico">${kind === "leak" ? ic.leak : ic.ankle}</div><div><b>${title}</b>
-      <span>Quickest safe way home: ${fmtDist(path.distance)} · ${fmtDur(em.homeTimeS)}. Needs ${Math.round(em.needL)} L of the ${Math.round(em.leftL)} L left.</span>
+      <span>${
+        path.distance < 15
+          ? "The crew is still beside the rover: straight back inside."
+          : `Quickest safe way home: ${fmtDist(path.distance)} · ${fmtDur(em.homeTimeS)}. Needs ${Math.round(em.needL)} L of the ${Math.round(em.leftL)} L left.`
+      }</span>
       <span class="go">${verdict}: ${spare >= 0 ? `${Math.round(spare)} L to spare` : `${Math.round(-spare)} L short`} · route found in ${Math.max(1, Math.round(res.ms))} ms</span>
-      <span class="sub2">${spare >= 0 ? "Turn back now. The buddy stays alongside." : "Call the rover to drive out and meet the crew."}</span></div>`;
+      <span class="sub2">${spare >= 0 ? `Turn back now.${this.buddy ? " The buddy stays alongside." : ""}` : "Call the rover to drive out and meet the crew."}</span></div>`;
     alert.hidden = false;
     this.voice.say(
       `${kind === "leak" ? "Suit leak. Oxygen use doubled." : "Ankle injury. Walking at half speed."} Return to the rover: ${spokenDist(path.distance)}, ${spokenTime(em.homeTimeS)}. ${
@@ -1783,16 +1787,16 @@ export class App {
       <div class="hud-top"><div class="tape"><div class="strip" id="hud-tape">${marks.join("")}</div><i></i></div><b id="hud-head">000°</b></div>
       <div class="hud-side left">
         <div class="hud-item"><span>O₂</span><div class="meter"><i id="hud-o2bar"></i><u style="left:${((1 - this.P.reserveFraction) * 100).toFixed(1)}%"></u></div><b id="hud-o2">—</b></div>
-        <div class="hud-item"><span>Walk-back</span><b id="hud-margin">—</b></div>
+        <div class="hud-item minor"><span>Walk-back</span><b id="hud-margin">—</b></div>
         <div class="hud-item"><span>Way home</span><b id="hud-home">—</b></div>
         <div class="hud-item" id="hud-radiobox"><span>Radio</span><b id="hud-radio">—</b></div>
-        <div class="hud-item"><span>EVA clock</span><b id="hud-clock">00:00:00</b></div>
+        <div class="hud-item minor"><span>EVA clock</span><b id="hud-clock">00:00:00</b></div>
       </div>
       <div class="hud-side right">
         <div class="hud-item" id="hud-ratebox"><span>Dose rate</span><b><i id="hud-rate">—</i> µGy/h</b></div>
-        <div class="hud-item"><span>Dose</span><b id="hud-dose">—</b></div>
-        <div class="hud-item"><span>Air · ground</span><b id="hud-temp">—</b></div>
-        <div class="hud-item"><span>Pressure</span><b id="hud-pres">—</b></div>
+        <div class="hud-item minor"><span>Dose</span><b id="hud-dose">—</b></div>
+        <div class="hud-item minor"><span>Air · ground</span><b id="hud-temp">—</b></div>
+        <div class="hud-item minor"><span>Pressure</span><b id="hud-pres">—</b></div>
       </div>
       <div class="hud-bottom">
         <div class="arrow" id="hud-arrow">▲</div>

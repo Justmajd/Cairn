@@ -1,11 +1,23 @@
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { defineConfig, type Plugin } from "vite";
 
 /**
  * Emit sw.js (the offline service worker) with a fresh version and the list of built app files,
  * so each deploy replaces the cached copy.  Mission data is cached as it is used, or all at once
- * from About → Use offline.
+ * from About → Use offline; its cache is versioned by the data itself (every site's files.json), so a
+ * new build of the app keeps the data a user already saved unless the data changed.
  */
+function dataVersion(): string {
+  const root = new URL("./public/data/", import.meta.url);
+  const hash = createHash("sha1");
+  for (const site of readdirSync(root).sort()) {
+    const list = new URL(`${site}/files.json`, root);
+    if (existsSync(list)) hash.update(site).update(readFileSync(list));
+  }
+  return hash.digest("hex").slice(0, 10);
+}
+
 function serviceWorker(): Plugin {
   return {
     name: "cairn-service-worker",
@@ -16,6 +28,7 @@ function serviceWorker(): Plugin {
       for (const name of Object.keys(bundle)) if (!name.endsWith(".map")) files.add(name);
       const source = readFileSync(new URL("./sw.template.js", import.meta.url), "utf8")
         .replace("__VERSION__", Date.now().toString(36))
+        .replace("__DATA_VERSION__", dataVersion())
         .replace("__APP_FILES__", JSON.stringify([...files]));
       this.emitFile({ type: "asset", fileName: "sw.js", source });
     },

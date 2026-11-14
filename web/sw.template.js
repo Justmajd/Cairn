@@ -2,7 +2,7 @@
    Built by vite.config.ts, which fills in the version and the list of app files. */
 const VERSION = "__VERSION__";
 const SHELL = `cairn-shell-${VERSION}`;
-const DATA = `cairn-data-${VERSION}`;
+const DATA = `cairn-data-__DATA_VERSION__`;
 const APP_FILES = __APP_FILES__;
 
 self.addEventListener("install", (event) => {
@@ -38,14 +38,16 @@ self.addEventListener("fetch", (event) => {
           caches.open(SHELL).then((c) => c.put("index.html", copy));
           return res;
         })
-        .catch(() => caches.match("index.html", { ignoreSearch: true })),
+        .catch(() => caches.match("index.html", { ignoreSearch: true, ignoreVary: true })),
     );
     return;
   }
 
-  // app files and mission data: from the cache when we have them, otherwise fetch and keep a copy
+  // app files and mission data: from the cache when we have them, otherwise fetch and keep a copy.
+  // ignoreVary: module scripts are requested with an Origin header that the precache request lacked,
+  // and servers that answer "Vary: Origin" would otherwise never match the stored copy.
   event.respondWith(
-    caches.match(req).then(
+    caches.match(req, { ignoreVary: true }).then(
       (hit) =>
         hit ||
         fetch(req).then((res) => {
