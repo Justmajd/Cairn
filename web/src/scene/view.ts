@@ -6,6 +6,7 @@ import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import type { SiteData } from "../data/loaders";
 import type { MeasuredPath, PathSample, Poi, RegionMeta, XY } from "../types";
+import { esc } from "../ui/dom";
 import { ic } from "../ui/icons";
 import { buildRegion, buildSky, buildTerrain, byteTexture, geologyLut, heightTexture, rgbaTexture, LAYER_IDS, LayerId, makeShadowUniforms, ShadowBaker, ShadowUniforms, SKY_HORIZON, Terrain } from "./terrain";
 
@@ -96,6 +97,7 @@ export class SceneView {
   private readonly trackGroup = new THREE.Group();
   private readonly poiGroup = new THREE.Group();
   private readonly relayGroup = new THREE.Group();
+  private readonly spotGroup = new THREE.Group();
   private readonly lineMaterials = new Set<LineMaterial>();
   private shelterTex: THREE.DataTexture | null = null;
   /** Objects kept at a readable size: `px` screen pixels per model unit, never smaller than real size. */
@@ -192,7 +194,7 @@ export class SceneView {
     sun.position.set(-720, 620, -120);
     this.scene.add(sun);
 
-    this.scene.add(this.trackGroup, this.routeGroup, this.poiGroup, this.relayGroup);
+    this.scene.add(this.trackGroup, this.routeGroup, this.poiGroup, this.relayGroup, this.spotGroup);
 
     this.astronaut = this.makeAstronaut(0x3fe8ff);
     this.buddy = this.makeAstronaut(0xffc247);
@@ -1173,6 +1175,37 @@ export class SceneView {
       prev = p;
     }
     flush();
+  }
+
+  // ---------------------------------------------------------------- spot
+  /** Highlight one point of the route (e.g. the farthest from the rover) with a ring and a label. */
+  setSpot(at: XY | null, text = ""): void {
+    this.dirty = true;
+    for (const child of [...this.spotGroup.children]) {
+      this.spotGroup.remove(child);
+      child.traverse((o) => {
+        if (o instanceof CSS2DObject) o.element.remove();
+      });
+      const i = this.scaled.findIndex((s) => s.obj === child);
+      if (i >= 0) this.scaled.splice(i, 1);
+    }
+    if (!at) return;
+    const holder = new THREE.Group();
+    holder.position.copy(this.ground(at.x, at.y, 0.3));
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.8, 1, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthTest: false, fog: false }),
+    );
+    ring.renderOrder = 21;
+    holder.add(ring);
+    this.scaled.push({ obj: holder, px: 16 });
+    const el = document.createElement("div");
+    el.className = "poi-label spot";
+    el.innerHTML = `<span>${esc(text)}</span>`;
+    const label = new CSS2DObject(el);
+    label.center.set(0.5, -0.6); // below the point: a stop's own label sits above it
+    holder.add(label);
+    this.spotGroup.add(holder);
   }
 
   // ---------------------------------------------------------------- relay

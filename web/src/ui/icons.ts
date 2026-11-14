@@ -1,6 +1,6 @@
 import {
   ArrowRight, Bandage, BookOpen, Box, CalendarClock, Check, ChevronDown, ChevronUp, Clock, Compass, Database, Download,
-  Footprints, GitCompareArrows, HardDriveDownload, Home, Image, Info, Layers, Link, Map, Minus, Pause, Play, Plus, Radiation,
+  Footprints, GitCompareArrows, HardDriveDownload, Home, Image, Info, Layers, Link, LocateFixed, Map, Minus, Pause, Play, Plus, Radiation,
   RadioTower, RotateCcw, RotateCw, Route, ScanEye, Siren, SkipForward, SlidersHorizontal, Square, Telescope,
   TriangleAlert, Video, Volume2, VolumeX, Wind, X, createElement, type IconNode,
 } from "lucide";
@@ -60,4 +60,5 @@ export const ic = {
   compare: svg(GitCompareArrows, 14),
   offline: svg(HardDriveDownload, 15),
   link: svg(Link, 15),
+  locate: svg(LocateFixed, 12),
 };

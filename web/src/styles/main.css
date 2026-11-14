@@ -189,6 +189,13 @@ input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border: 0; bo
 .hero > div { background: var(--panel-solid); padding: 11px 12px 10px; }
 .hero span { display: block; color: var(--text-3); font-size: 11.5px; margin-bottom: 3px; }
 .hero b { font-size: 22px; font-weight: 500; letter-spacing: -0.02em; }
+.hero > button.spot { all: unset; box-sizing: border-box; display: block; background: var(--panel-solid); padding: 11px 12px 10px; cursor: pointer; color: var(--text); }
+.hero > button.spot:hover { background: var(--raise); }
+.hero > button.spot:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.hero > button.spot { position: relative; }
+.hero > button.spot .ic { position: absolute; top: 11px; right: 10px; opacity: 0; color: var(--accent); transition: opacity 0.15s; }
+.hero > button.spot:hover .ic, .hero > button.spot:focus-visible .ic { opacity: 1; }
+.poi-label.spot { pointer-events: none; padding: 0 10px; color: #111; background: #fff; border-color: #fff; font-weight: 600; }
 .hero small { font: 400 12px var(--sans); color: var(--text-3); margin-left: 3px; letter-spacing: 0; }
 dl.kv { display: grid; grid-template-columns: 1fr auto; gap: 7px 12px; font-size: 12.5px; }
 dl.kv dt { color: var(--text-2); }

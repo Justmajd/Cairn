@@ -333,6 +333,7 @@ export class App {
       else if (act === "resume") this.resumeRemaining();
       else if (act === "show-radio") this.selectLayer("radio");
       else if (act === "relay-on" || act === "relay-off") this.setRelay(act === "relay-on");
+      else if (act === "spot") this.showSpot(t.dataset.spot === "steep" ? "steep" : "home");
       else if (act === "show-track") {
         this.showTrack = !this.showTrack;
         this.view.setTrackVisible(this.showTrack);
@@ -547,6 +548,7 @@ export class App {
 
   private afterPlan(): void {
     if (this.phase === "planning") this.writePlanHash();
+    this.view.setSpot(null);
     this.pushRoutes();
     this.pushPois();
     this.renderLeft();
@@ -833,8 +835,8 @@ export class App {
           <div class="hero quad">
             <div><span>Distance</span>${heroDist(b.distanceM)}</div>
             <div><span>Time outside</span>${heroDur(b.totalTimeS)}</div>
-            <div><span>Longest way home</span>${heroDur(b.walkBack.maxReturnMin * 60)}</div>
-            <div><span>Steepest ground</span><b>${b.maxSlopeDeg}<small>°</small></b></div>
+            <button class="spot" data-act="spot" data-spot="home" title="Show the point of the route farthest from the rover"><span>Longest way home ${ic.locate}</span>${heroDur(b.walkBack.maxReturnMin * 60)}</button>
+            <button class="spot" data-act="spot" data-spot="steep" title="Show the steepest ground on the route"><span>Steepest ground ${ic.locate}</span><b>${b.maxSlopeDeg}<small>°</small></b></button>
           </div>
           <div class="o2">
             <div class="o2-head"><span>Oxygen</span><b>${Math.round(b.o2UsedL)} L <small>of ${P.o2SupplyL} L</small></b></div>
@@ -1633,6 +1635,29 @@ export class App {
     const rover = inContact(this.radio, grid, x, y);
     const relay = !rover && !!r && inContact(r.shadow, grid, x, y);
     return `<dt>Radio</dt><dd class="${rover || relay ? "" : "warnc"}">${rover ? "rover in sight" : relay ? "relay in sight" : "no signal"}</dd>`;
+  }
+
+  private spotTimer = 0;
+  /** Fly to the route's farthest point from the rover, or its steepest ground, and mark it for a while. */
+  private showSpot(kind: "home" | "steep"): void {
+    if (!this.plan) return;
+    let best: PathSample | null = null;
+    let bestV = -Infinity;
+    for (const leg of this.plan.legs) {
+      for (const smp of leg.samples) {
+        const v = kind === "steep" ? smp.slopeDeg : this.lookup(smp.x, smp.y).timeS;
+        if (Number.isFinite(v) && v > bestV) {
+          bestV = v;
+          best = smp;
+        }
+      }
+    }
+    if (!best) return;
+    const text = kind === "steep" ? `Steepest on the route · ${Math.round(bestV)}°` : `Farthest from the rover · ${fmtDur(bestV)} home`;
+    this.view.setSpot(best, text);
+    this.view.focusOn(best);
+    window.clearTimeout(this.spotTimer);
+    this.spotTimer = window.setTimeout(() => this.view.setSpot(null), 9000);
   }
 
   /** Out of radio contact at a sample of the planned route (counting the relay once it is up). */
