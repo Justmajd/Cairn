@@ -18,12 +18,6 @@ const COMMON = /* glsl */ `
     vec3 c = mix(vec3(0.13, 0.075, 0.05), vec3(0.66, 0.40, 0.255), smoothstep(0.0, 0.55, g));
     return mix(c, vec3(0.97, 0.82, 0.65), smoothstep(0.52, 1.0, g));
   }
-  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-  float noise(vec2 p) {
-    vec2 i = floor(p), f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-  }
   // node-registered grids (n x n, row 0 = north) sampled from mesh uv (v = 1 at the north edge)
   vec2 nodeUv(vec2 uv, float n) { return vec2((uv.x * (n - 1.0) + 0.5) / n, ((1.0 - uv.y) * (n - 1.0) + 0.5) / n); }
 `;
@@ -138,6 +132,7 @@ const AOI_FRAG = /* glsl */ `
   ${COMMON}
   uniform sampler2D uMap;
   uniform vec2 uMapSize;
+  uniform float uDetail;
   uniform sampler2D uRelief;
   uniform float uReliefRange;
   uniform float uExag;
@@ -191,6 +186,65 @@ const AOI_FRAG = /* glsl */ `
 
   // data grids are node-registered (n x n), row 0 = north
   vec2 gridUv(vec2 uv) { return nodeUv(uv, uGridN); }
+
+  // ---- ground detail below the image resolution (rendering detail, not data) -----------------
+  // sin-free hash: stays precise at kilometre-scale coordinates (the sin hash shows a grid there)
+  float hash2(vec2 p) {
+    p = fract(p * 0.3183099 + vec2(0.71, 0.113));
+    p *= 17.0;
+    return fract(p.x * p.y * (p.x + p.y));
+  }
+  // value noise and its derivatives: x = value (0..1), yz = d/dp
+  vec3 noised(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    vec2 du = 6.0 * f * (1.0 - f);
+    float a = hash2(i), b = hash2(i + vec2(1.0, 0.0)), c = hash2(i + vec2(0.0, 1.0)), d = hash2(i + vec2(1.0, 1.0));
+    float k = a - b - c + d;
+    return vec3(a + (b - a) * u.x + (c - a) * u.y + k * u.x * u.y, du * (vec2(b - a, c - a) + k * u.yx));
+  }
+  // Regolith at the camera: four rotated octaves as height (bump) and brightness, plus scattered pebbles.
+  // pw = ground size of one screen pixel (m); each feature fades out before it is smaller than a pixel,
+  // so nothing shimmers and far ground costs nothing.  xy = height gradient d/d(x, z), z = brightness offset.
+  vec3 regolith(vec2 p, float pw) {
+    vec3 acc = vec3(0.0);
+    mat2 m = mat2(1.0);
+    const mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
+    float f = 1.6;
+    float amp = 0.05; // metres of height at the coarsest octave
+    for (int k = 0; k < 4; k++) {
+      float w = 1.0 - smoothstep(0.18, 0.45, pw * f);
+      if (w <= 0.0) break;
+      vec3 nd = noised(m * p * f + float(k) * 17.31);
+      acc.xy += w * amp * f * (transpose(m) * nd.yz);
+      acc.z += w * (nd.x - 0.5) * (0.13 - 0.025 * float(k));
+      m = rot * m;
+      f *= 2.7;
+      amp *= 0.42;
+    }
+    // scattered pebbles, 2-8 cm, irregular, some lighter and some darker than the soil
+    float wp = 1.0 - smoothstep(0.012, 0.03, pw);
+    if (wp > 0.0) {
+      vec2 cell = floor(p * 3.0);
+      for (int j = -1; j <= 1; j++) {
+        for (int i = -1; i <= 1; i++) {
+          vec2 c = cell + vec2(float(i), float(j));
+          if (hash2(c) > 0.25) continue;
+          vec2 ctr = (c + 0.15 + 0.7 * vec2(hash2(c + 3.1), hash2(c + 7.7))) / 3.0;
+          vec2 v = p - ctr;
+          float ang = atan(v.y, v.x);
+          float r = (0.02 + 0.06 * hash2(c + 11.3) * hash2(c + 5.2)) * (1.0 + 0.22 * sin(3.0 * ang + 6.3 * hash2(c + 1.7)) + 0.12 * sin(5.0 * ang));
+          float q = dot(v, v) / (r * r);
+          if (q < 1.0) {
+            float sq = sqrt(max(1.0 - q, 0.08));
+            acc.xy -= wp * 0.45 * v / (r * sq); // low dome, 0.45 r high
+            acc.z += wp * (hash2(c + 2.9) - 0.6) * 0.16 * smoothstep(1.0, 0.6, q);
+          }
+        }
+      }
+    }
+    return acc;
+  }
 
   vec4 ramp(float x, float s0, float s1, float s2, float s3, float s4, vec4 c0, vec4 c1, vec4 c2, vec4 c3, vec4 c4) {
     if (x <= s0) return c0;
@@ -322,16 +376,20 @@ const AOI_FRAG = /* glsl */ `
 
     // per-pixel lighting from the 1 m HiRISE elevation gradient
     vec2 grad = (texture2D(uRelief, vUv).rg * 2.0 - 1.0) * uReliefRange * uExag;
-    vec3 n = normalize(vec3(-grad.x, 1.0, grad.y));
+    vec3 n = vec3(-grad.x, 1.0, grad.y);
+
+    // close to the camera, regolith detail below the 25 cm image so the ground is not smeared at eye height
+    float pw = max(length(dFdx(vWorld)), length(dFdy(vWorld)));
+    if (pw < 0.3 && uDetail > 0.5) {
+      vec3 rg = regolith(vWorld.xz, pw);
+      float lim = length(rg.xy);
+      vec2 gd = rg.xy * min(1.0, 1.6 / max(lim, 1e-4)) * uExag;
+      n += vec3(-gd.x, 0.0, -gd.y);
+      c *= 1.0 + rg.z;
+    }
+    n = normalize(n);
     float nl = dot(n, uSunDir);
     c *= sunLight(nl, texture2D(uShadowAoi, nodeUv(vUv, uShadowAoiN)).r);
-
-    // fine grain right at the camera so the ground does not look smeared at eye height (rendering detail only)
-    float d = distance(cameraPosition, vWorld);
-    if (d < 35.0) {
-      float grain = (noise(vWorld.xz * 4.0) - 0.5) * 0.14 + (noise(vWorld.xz * 13.0) - 0.5) * 0.1 + (noise(vWorld.xz * 37.0) - 0.5) * 0.07;
-      c *= 1.0 + grain * smoothstep(35.0, 1.5, d);
-    }
 
     if (uLayer > 0) {
       vec4 o = layerColor(gridUv(vUv));
@@ -698,6 +756,7 @@ export function buildTerrain(
   const mat = material(AOI_FRAG, {
     uMap: { value: map },
     uMapSize: { value: new THREE.Vector2(img.width, img.height) },
+    uDetail: { value: step === 1 ? 1 : 0 }, // ?q=low skips the close-up regolith detail
     uRelief: { value: relief },
     uReliefRange: { value: reliefRange },
     uLayer: { value: 0 },
