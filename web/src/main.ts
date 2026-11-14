@@ -33,6 +33,17 @@ function maxTextureSize(): number {
   return size;
 }
 
+/** Slow first load (old laptop, weak GPU, slow network): offer the lighter version, keeping site and plan. */
+function offerLiteIfSlow(): void {
+  const q = new URLSearchParams(location.search);
+  if (q.get("q") === "low") return;
+  q.set("q", "low");
+  $<HTMLAnchorElement>("#load-lite").href = `?${q.toString()}${location.hash}`;
+  window.setTimeout(() => {
+    if (!$("#loading").hidden) $("#load-slow").hidden = false;
+  }, 12000);
+}
+
 async function boot(): Promise<void> {
   if (!("DecompressionStream" in window)) {
     throw new Error("this browser cannot unpack CAIRN's compressed map data. Use Chrome or Edge 80+, Firefox 113+ or Safari 16.4+.");
@@ -93,6 +104,14 @@ async function boot(): Promise<void> {
     region: site.region && regionMap ? { ...site.region, map: regionMap } : null,
   }, quality);
   view.setShelterTimes(field.time);
+  // a graphics driver reset leaves a black map: say so instead
+  view.renderer.domElement.addEventListener("webglcontextlost", (ev) => {
+    ev.preventDefault();
+    const box = document.createElement("div");
+    box.id = "gl-lost";
+    box.innerHTML = `<div><p>The graphics card stopped drawing CAIRN (the browser lost its WebGL context). Your plan is kept in the address bar.</p><button class="primary" onclick="location.reload()">Reload</button></div>`;
+    document.body.append(box);
+  });
   texture.anisotropy = view.renderer.capabilities.getMaxAnisotropy();
   if (regionMap) regionMap.anisotropy = texture.anisotropy;
   const app = new App(site, view, router, field, sites);
@@ -119,6 +138,7 @@ async function boot(): Promise<void> {
 }
 
 initOffline();
+offerLiteIfSlow();
 
 // Trackpad pinch arrives as ctrl+wheel: keep it for the map instead of zooming the whole page.
 window.addEventListener("wheel", (ev) => ev.ctrlKey && ev.preventDefault(), { passive: false });

@@ -77,6 +77,10 @@ button.link:hover:not(:disabled) { color: var(--accent); background: transparent
 .bar { height: 2px; background: var(--line); border-radius: 2px; overflow: hidden; }
 .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.25s; }
 #load-label { margin-top: 12px; color: var(--text-3); font: 12px var(--mono); }
+#load-slow { margin-top: 14px; color: var(--text-3); font-size: 12px; }
+#load-slow a { color: var(--accent); }
+#gl-lost { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(10, 8, 7, 0.86); text-align: center; padding: 24px; }
+#gl-lost p { max-width: 420px; color: var(--text-2); margin-bottom: 14px; }
 #loading.failed #load-label { color: var(--bad); }
 
 /* ---------- layout ---------- */
