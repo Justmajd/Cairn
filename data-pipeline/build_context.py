@@ -121,6 +121,68 @@ def save_global():
     sheet.resize((1536, 768), Image.LANCZOS).save(os.path.join(OUT, "global.jpg"), quality=85)
 
 
+TREK_TILES = "https://trek.nasa.gov/tiles/Mars/EQ/" + TREK_LAYER + "/1.0.0/default/default028mm/{z}/{y}/{x}.jpg"
+EZ_QUERY = "https://trek.nasa.gov/mars/trekarcgis/rest/services/EZ/MapServer/0/query"
+EZ_RADIUS_KM = 100      # Exploration Zones were defined as ~100 km radius circles around a landing site
+
+
+def km_between(lon1, lat1, lon2, lat2):
+    p1, p2, dl = math.radians(lat1), math.radians(lat2), math.radians(lon2 - lon1)
+    c = math.sin(p1) * math.sin(p2) + math.cos(p1) * math.cos(p2) * math.cos(dl)
+    return CFG["mars_radius_m"] / 1000 * math.acos(max(-1.0, min(1.0, c)))
+
+
+def zone_map(lon_c, lat_c, zcfg):
+    """Regional locator for a candidate landing site: the Viking colour mosaic (Mars Trek, zoom 4) around
+    the site, with NASA's 2015 Exploration Zones (USGS layer on Mars Trek) drawn as 100 km circles."""
+    import urllib.parse
+    import urllib.request
+    vc_lon, vc_lat = lon_c + zcfg.get("shiftLonDeg", 0), lat_c + zcfg.get("shiftLatDeg", 0)   # view centre
+    lon0, lon1 = vc_lon - zcfg["halfLonDeg"], vc_lon + zcfg["halfLonDeg"]
+    lat0, lat1 = vc_lat - zcfg["halfLatDeg"], vc_lat + zcfg["halfLatDeg"]
+    z, s = 4, 180 / 2 ** 4
+    tx0, tx1 = int((lon0 + 180) // s), int((lon1 + 180) // s)
+    ty0, ty1 = int((90 - lat1) // s), int((90 - lat0) // s)
+    sheet = Image.new("RGB", ((tx1 - tx0 + 1) * 256, (ty1 - ty0 + 1) * 256))
+    for ty in range(ty0, ty1 + 1):
+        for tx in range(tx0, tx1 + 1):
+            path = os.path.join(SHARED, "trek", f"{z}_{ty}_{tx}.jpg")
+            if not os.path.exists(path):
+                req = urllib.request.Request(TREK_TILES.format(z=z, y=ty, x=tx), headers={"User-Agent": "Mozilla/5.0 (data-pipeline)"})
+                with urllib.request.urlopen(req, timeout=90) as r, open(path, "wb") as f:
+                    f.write(r.read())
+            sheet.paste(Image.open(path).convert("RGB"), ((tx - tx0) * 256, (ty - ty0) * 256))
+    px = 256 / s
+    box = (round((lon0 - (-180 + tx0 * s)) * px), round(((90 - ty0 * s) - lat1) * px),
+           round((lon1 - (-180 + tx0 * s)) * px), round(((90 - ty0 * s) - lat0) * px))
+    crop = sheet.crop(box)
+    crop.resize((960, round(960 * crop.height / crop.width)), Image.LANCZOS).save(os.path.join(OUT, "zone.jpg"), quality=86)
+
+    cache = os.path.join(RAW, "exploration_zones.json")
+    if not os.path.exists(cache):
+        q = {"where": "1=1", "geometry": f"{lon0},{lat0},{lon1},{lat1}", "geometryType": "esriGeometryEnvelope",
+             "spatialRel": "esriSpatialRelIntersects", "outFields": "*", "returnGeometry": "true", "f": "json"}
+        with urllib.request.urlopen(EZ_QUERY + "?" + urllib.parse.urlencode(q), timeout=90) as r:
+            open(cache, "wb").write(r.read())
+    feats = json.load(open(cache)).get("features", [])
+    uv = lambda lon, lat: [round((lon - lon0) / (lon1 - lon0), 5), round((lat1 - lat) / (lat1 - lat0), 5)]
+    deg = EZ_RADIUS_KM / (CFG["mars_radius_m"] / 1000 * math.pi / 180)
+    zones = []
+    for f in feats:
+        a = f["attributes"]
+        lon, lat = float(a["lon"]), float(a["lat"])
+        zones.append({"name": a["name"], "lon": lon, "lat": lat, "uv": uv(lon, lat),
+                      "rUv": [round(deg / math.cos(math.radians(lat)) / (lon1 - lon0), 5), round(deg / (lat1 - lat0), 5)],
+                      "km": round(km_between(lon_c, lat_c, lon, lat))})
+    zones.sort(key=lambda zz: zz["km"])
+    print("exploration zones:", [(zz["name"], zz["km"]) for zz in zones])
+    return {"image": "zone.jpg", "source": f"NASA/JPL Mars Trek WMTS — {TREK_LAYER} (zoom 4)",
+            "siteUv": uv(lon_c, lat_c), "lon": round(lon_c, 4), "lat": round(lat_c, 4),
+            "spanDeg": [round(lon1 - lon0, 2), round(lat1 - lat0, 2)],
+            "zones": zones, "zoneRadiusKm": EZ_RADIUS_KM,
+            "zonesSource": "NASA Exploration Zones proposed at the First Landing Site/Exploration Zone Workshop for Human Missions to the Surface of Mars (2015), USGS layer on NASA Mars Trek"}
+
+
 def finish_no_rover(norm, b, w, h, ctx):
     """A site no rover has visited: places and facts come from the config, there is no traverse."""
     places = []
@@ -130,14 +192,20 @@ def finish_no_rover(norm, b, w, h, ctx):
         if 0 <= u <= 1 and 0 <= v <= 1:
             places.append({**pl, "uv": [u, v]})
     facts = ctx.get("facts", []) + [{"value": f"{SIZE / 1000:.1f} × {SIZE / 1000:.1f} km", "label": "EVA area mapped at 1 m elevation and 25 cm imagery"}]
-    save_global()
+    if ctx.get("zones"):
+        stale = os.path.join(OUT, "global.jpg")
+        if os.path.exists(stale):
+            os.remove(stale)
+    else:
+        save_global()
     lon_c, lat_c = eqc_to_lonlat(X0 + SIZE / 2, Y0 + SIZE / 2)
     write_json("context.json", {
         "image": "context.jpg", "aspect": round(w / h, 5), "source": ctx.get("source", ""),
         "widthKm": round((b.right - b.left) / 1000, 2), "heightKm": round((b.top - b.bottom) / 1000, 2),
         "aoi": {"uv0": norm(X0, Y0 + SIZE), "uv1": norm(X0 + SIZE, Y0)},
         "traverse": None, "places": places, "facts": facts, "links": ctx.get("links", []),
-        "global": {"image": "global.jpg", "source": f"NASA/JPL Mars Trek WMTS — {TREK_LAYER}",
+        "global": zone_map(lon_c, lat_c, ctx["zones"]) if ctx.get("zones") else
+                  {"image": "global.jpg", "source": f"NASA/JPL Mars Trek WMTS — {TREK_LAYER}",
                    "siteUv": [round((((lon_c + 180) % 360) - 0) / 360, 5), round((90 - lat_c) / 180, 5)],
                    "lon": round(lon_c, 4), "lat": round(lat_c, 4)},
     })

@@ -67,13 +67,19 @@
     "value": "42° N",
     "label": "the mid-latitudes, where NASA's ice mapping finds water ice close to the surface"
    }
-  ]
+  ],
+  "zones": {
+   "halfLonDeg": 8.0,
+   "halfLatDeg": 4.5,
+   "shiftLonDeg": 2.0,
+   "shiftLatDeg": -1.8
+  }
  },
  "story": {
   "headline": "The glacier under the rubble. The water the first crews will need.",
   "paragraphs": [
    "In Deuteronilus Mensae, on the edge between Mars' old southern highlands and the northern plains, flat-topped mesas stand above smooth aprons of rock debris. Radar on NASA's Mars Reconnaissance Orbiter showed what the aprons are made of: <b>glacier ice</b> buried under a cover of rock.",
-   "In 2015 Brown University geologists proposed this region at NASA's first workshop on <b>landing sites for human explorers</b>: ice for water, oxygen and rocket fuel, ancient crust in the mesa walls, and a record of recent climate. No rover has been here.",
+   "At NASA's first workshop on <b>landing sites for human explorers</b> (2015), two Exploration Zones were proposed in Deuteronilus Mensae: ice for water, oxygen and rocket fuel, ancient crust in the mesa walls, and a record of recent climate. CAIRN's walk area is on the same kind of debris-covered glacier, about 170 km west of the nearer zone's centre, where HiRISE has mapped the ground in 3D. No rover has been here.",
    "<b>Your mission:</b> park the pressurised rover on the plain, walk onto the debris apron to where the ice sits closest to the surface, and get back. CAIRN finds the safest route on HiRISE terrain; radiation is replayed from Curiosity's record of the May 2024 storm."
   ]
  }

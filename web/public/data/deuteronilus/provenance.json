@@ -91,16 +91,30 @@
    "usedFor": "The real eruption record and alert text shown in the storm replay"
   },
   {
-   "id": "trek",
-   "layer": "Global Mars map",
+   "id": "exploration_zones",
+   "layer": "Exploration Zones on the locator map",
+   "dataType": "Reference (vector)",
+   "mission": "NASA Human Exploration of Mars — First Landing Site/Exploration Zone Workshop (2015)",
+   "instrument": "—",
+   "product": "Exploration Zone centres (USGS layer 'EZ' on NASA Mars Trek), drawn as 100 km radius circles",
+   "provider": "NASA Mars Trek (Solar System Treks Project) / USGS Astrogeology",
+   "url": "https://trek.nasa.gov/mars/",
+   "credit": "NASA / USGS",
+   "usedFor": "Shows where the walk area sits relative to the zones proposed for the first human landings",
+   "note": "CAIRN's walk area is about 174 km from the centre of the nearer Deuteronilus Mensae zone, i.e. outside it: it was chosen where a HiRISE elevation model exists on the same kind of debris-covered glacier."
+  },
+  {
+   "id": "zone_locator",
+   "layer": "Regional locator map",
    "dataType": "Optical",
    "mission": "Viking Orbiters",
    "instrument": "Viking MDIM 2.1 colour mosaic",
-   "product": "Mars_Viking_MDIM21_ClrMosaic_global_232m, WMTS tiles",
-   "provider": "NASA/JPL Solar System Treks (Mars Trek)",
+   "product": "Mars_Viking_MDIM21_ClrMosaic_global_232m, WMTS tiles at zoom 4 (16° × 9° around the site)",
+   "provider": "NASA Mars Trek (Solar System Treks Project)",
    "url": "https://trek.nasa.gov/mars/",
-   "credit": "NASA/JPL-Caltech/USGS",
-   "usedFor": "Global locator in the mission briefing"
+   "credit": "NASA/JPL/USGS",
+   "usedFor": "The locator inset in the briefing",
+   "note": ""
   }
  ]
 }

@@ -63,12 +63,17 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
             ${places}
           </svg>
           <div class="globe">
-            <img src="${site.base}${c.global.image}" alt="Global map of Mars" />
+            <img src="${site.base}${c.global.image}" alt="${c.global.zones ? "Regional map of Mars around the site" : "Global map of Mars"}" />
+            ${c.global.zones?.length ? `<svg viewBox="0 0 1 1" preserveAspectRatio="none">${c.global.zones
+              .map((z) => `<ellipse class="ez" cx="${z.uv[0]}" cy="${z.uv[1]}" rx="${z.rUv[0]}" ry="${z.rUv[1]}"><title>NASA Exploration Zone "${esc(z.name)}" (2015), ${c.global.zoneRadiusKm} km radius — centre ${z.km} km from the EVA area</title></ellipse>`)
+              .join("")}</svg>` : ""}
             <i style="left:${(c.global.siteUv[0] * 100).toFixed(2)}%;top:${(c.global.siteUv[1] * 100).toFixed(2)}%"></i>
             <span>${esc(site.meta.name.split(" — ")[0])} · ${latText}</span>
           </div>
         </div>
-        <p class="fine">Regional map: ${esc(c.source)} (${c.widthKm} × ${c.heightKm} km). ${c.traverse ? `Green line: ${esc(rover)}'s traverse, ${esc(c.traverse.source)}. ` : ""}Global map: ${esc(c.global.source)}.</p>
+        <p class="fine">Regional map: ${esc(c.source)} (${c.widthKm} × ${c.heightKm} km). ${c.traverse ? `Green line: ${esc(rover)}'s traverse, ${esc(c.traverse.source)}. ` : ""}${c.global.zones?.length
+          ? `Locator: ${esc(c.global.source)}, ${c.global.spanDeg![0]}° × ${c.global.spanDeg![1]}°. Dashed circles: ${esc(c.global.zonesSource ?? "")} (${c.global.zoneRadiusKm} km radius); the nearest centre is ${c.global.zones[0].km} km from the EVA area.`
+          : `Global map: ${esc(c.global.source)}.`}</p>
       </section>
     </div>`;
   host.hidden = false;

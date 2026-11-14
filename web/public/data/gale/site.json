@@ -1,7 +1,7 @@
 {
  "id": "gale",
  "name": "Gale Crater — Mount Sharp boxwork",
- "crs": "Equirectangular, Mars 2000 sphere (R = 3,396,190 m), lat_ts = 0, lon0 = 137.38",
+ "crs": "Equirectangular, Mars sphere (R = 3,396,190 m), lat_ts = 0, lon0 = 137.38",
  "originEqc": {
   "x": -994,
   "y": -285987
@@ -53,6 +53,7 @@
    "<b>Your mission:</b> walk the boxwork. CAIRN layers HiRISE terrain and imagery, Curiosity's own photos and weather and the radiation it measured just 2.3 km away during the May 2024 storm, then finds the safest way along the ridges and back to the rover."
   ]
  },
+ "minerals": null,
  "centerLonLat": {
   "lon": 137.380506,
   "lat": -4.807498
@@ -67,7 +68,8 @@
   "slope": "slope.u8",
   "sand": "sand.u8",
   "effort": "effort.u8",
-  "risk": "risk.u8"
+  "risk": "risk.u8",
+  "thermal": "thermal.u8"
  },
  "model": {
   "slopeLimitDeg": 25.0,
@@ -77,12 +79,12 @@
   "roughEffort": 0.4,
   "effortScale": 50,
   "riskScale": 50,
-  "themisNativeResM": null
+  "themisNativeResM": 100.0
  },
  "stats": {
   "slopeMedianDeg": 13.0,
   "blockedPct": 17.9,
-  "sandPct": 0.4,
+  "sandPct": 0.1,
   "reliefM": 500.0
  }
 }

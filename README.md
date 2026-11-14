@@ -157,11 +157,11 @@ make build     # writes web/public/data/jezero/  (make gale, make deuteronilus f
 
 | | Jezero Crater | Gale Crater | Deuteronilus Mensae |
 |---|---|---|---|
-| Rover | Perseverance | Curiosity | None — proposed for the first human landing (NASA's 2015 Exploration Zone workshop) |
+| Rover | Perseverance | Curiosity | None — in Deuteronilus Mensae, about 170 km west of the nearer of two Exploration Zones proposed at NASA's 2015 workshop |
 | Objectives | Cheyava Falls (potential biosignature), Serpentine Rapids | Boxwork ridge (main exposure), Nevado Sajama drill site | Edge of a debris-covered glacier, brain terrain on the apron |
 | Terrain | USGS Mars 2020 TRN HiRISE mosaics + 16 km CTX surroundings | HiRISE DTM DTEEC_019698_1750_019988_1750 + 6.8 km of the same strip | HiRISE DTM DTEEC_033653_2225_033363_2225 ('Ice-rich lobate debris apron') + the same strip around it |
 | Weather | MEDA, sol 1215 | REMS, sol 4605 | — (no instrument has measured it) |
-| Extra layers | THEMIS, USGS geology, CRISM minerals | — | — |
+| Extra layers | THEMIS, USGS geology, CRISM minerals | THEMIS night thermal (global mosaic via Mars Trek) | NASA's 2015 Exploration Zones on the locator map |
 | Stop images | Rover photos; NASA Mastcam-Z 360° at the Bright Angel viewpoint | Rover photos, 360° panoramas at all five stops (NASA Mastcam at Sajama) | HiRISE close-ups from orbit |
 | Storm | Curiosity RAD, 3,700 km away | Curiosity RAD, 2.3 km away | Curiosity RAD, 6,800 km away (example) |
 

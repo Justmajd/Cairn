@@ -31,6 +31,7 @@ build:
 gale:
 	CAIRN_SITE=gale $(PY) prepare_hirise.py
 	CAIRN_SITE=gale $(PY) fetch_rover_images_msl.py
+	CAIRN_SITE=gale $(PY) fetch_themis_trek.py
 	CAIRN_SITE=gale $(PY) build_site.py
 	CAIRN_SITE=gale $(PY) build_region.py
 	CAIRN_SITE=gale $(PY) build_rover.py

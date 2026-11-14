@@ -2,7 +2,7 @@
 "files": [
 {
 "path": "context.json",
-"bytes": 1358
+"bytes": 1996
 },
 {
 "path": "context.webp",
@@ -11,10 +11,6 @@
 {
 "path": "effort.u8.pk",
 "bytes": 270566
-},
-{
-"path": "global.jpg",
-"bytes": 302052
 },
 {
 "path": "height.u16.pk",
@@ -30,7 +26,7 @@
 },
 {
 "path": "provenance.json",
-"bytes": 5507
+"bytes": 6407
 },
 {
 "path": "region.json",
@@ -70,7 +66,7 @@
 },
 {
 "path": "site.json",
-"bytes": 2408
+"bytes": 2572
 },
 {
 "path": "slope.u8.pk",
@@ -83,7 +79,11 @@
 {
 "path": "texture_8k.webp",
 "bytes": 9487344
+},
+{
+"path": "zone.jpg",
+"bytes": 97192
 }
 ],
-"totalBytes": 18478709
+"totalBytes": 18275551
 }

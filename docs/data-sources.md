@@ -88,16 +88,17 @@ Rover: **Curiosity** (Mars Science Laboratory). EVA date: sol 4605 (Sol Curiosit
 
 - **Walk area:** -4.8248° to -4.7902° N, 137.3632° to 137.3978° E (2.048 km square), 1025 × 1025 grid at 2 m
 - **Relief:** 500 m; median slope 13.0°; 17.9% steeper than 25°
-- **Projection:** Equirectangular, Mars 2000 sphere (R = 3,396,190 m), lat_ts = 0, lon0 = 137.38
+- **Projection:** Equirectangular, Mars sphere (R = 3,396,190 m), lat_ts = 0, lon0 = 137.38
 
-### Datasets (11)
+### Datasets (12)
 
 | Layer | Data type | Mission · instrument | Product | Link |
 |---|---|---|---|---|
 | Terrain elevation (3D surface, slope, routing grid) | Topographic | Mars Reconnaissance Orbiter · HiRISE stereo | HiRISE DTM DTEEC_019698_1750_019988_1750_U01 (1 m/post), 'Lower northwest portion of mound in Gale Crater' | [source](https://www.uahirise.org/dtm/ESP_019698_1750) |
 | Surface image (ground texture) | Optical | Mars Reconnaissance Orbiter · HiRISE | HiRISE orthoimage ESP_019698_1750_RED_A_01_ORTHO (25 cm/px) | [source](https://hirise-pds.lpl.arizona.edu/PDS/DTM/ESP/ORB_019600_019699/ESP_019698_1750_ESP_019988_1750/) |
 | Surrounding terrain and regional map | Optical + topographic | Mars Reconnaissance Orbiter · HiRISE | The same HiRISE DTM at 20 m and orthoimage ESP_019698_1750_RED_C_01_ORTHO (1 m/px) over 6.8 km | [source](https://www.uahirise.org/dtm/ESP_019698_1750) |
-| Loose sand hazard | Derived (optical + topographic + thermal) | Mars Reconnaissance Orbiter · HiRISE image, HiRISE DTM | Computed by CAIRN (data-pipeline/build_site.py): ripple texture in the HiRISE image and DTM (no THEMIS weighting at this site) | [source](https://github.com/Justmajd/cairn-demo/blob/main/data-pipeline/build_site.py) |
+| Night-time thermal infrared | Thermal | 2001 Mars Odyssey · THEMIS | THEMIS Night IR controlled mosaic, global v2 (October 2018), 100 m/px — THEMIS_NightIR_ControlledMosaics_100m_v2_oct2018, WMTS tiles | [source](https://trek.nasa.gov/mars/) |
+| Loose sand hazard | Derived (optical + topographic + thermal) | Mars Reconnaissance Orbiter · HiRISE image, HiRISE DTM, THEMIS night IR | Computed by CAIRN (data-pipeline/build_site.py): ripple texture in the HiRISE image and DTM, weighted by THEMIS night-time temperature | [source](https://github.com/Justmajd/cairn-demo/blob/main/data-pipeline/build_site.py) |
 | Terrain shielding (sky view) | Derived (topographic) | Mars Reconnaissance Orbiter · HiRISE DTM | Computed by CAIRN: share of the sky blocked by terrain within 260 m, weighted by a cos² zenith dependence of the surface dose | [source](https://github.com/Justmajd/cairn-demo/blob/main/data-pipeline/build_site.py) |
 | Curiosity traverse and stop positions | Rover localisation | Mars Science Laboratory Curiosity · Rover localisation (waypoints) | MSL MMGIS waypoint layer (MSL_waypoints.json) | [source](https://mars.nasa.gov/mmgis-maps/MSL/Layers/json/MSL_waypoints.json) |
 | Ground photographs at each stop | Optical (surface) | Mars Science Laboratory Curiosity · Navcam, Mastcam, MAHLI | MSL raw images feed — images taken at the same rover positions (or sols) as the EVA stops | [source](https://mars.nasa.gov/msl/multimedia/raw-images/) |
@@ -110,6 +111,7 @@ Rover: **Curiosity** (Mars Science Laboratory). EVA date: sol 4605 (Sol Curiosit
 
 - *Surface image (ground texture):* HiRISE is a single-band (grey) image here; the Mars colour in the 3D view is a display tint.
 - *Surrounding terrain and regional map:* Outside the HiRISE strip the surroundings are filled with the nearest edge values and fade out.
+- *Night-time thermal infrared:* Native resolution is 100 m, so this layer is smooth at walking scale. Trek's tiles were shifted 75 m west and 84 m north to match the USGS controlled mosaic, measured at Jezero where both exist.
 - *Loose sand hazard:* This is our own analysis, not an official NASA product.
 - *Terrain shielding (sky view):* Model, not a measurement: the zenith exponent is an assumption.
 - *Surface radiation dose rate:* Measured by Curiosity itself, about 2.3 km from this walk area (Gediz Vallis, sols 4189–4194). The archive holds 2–4 hours of dosimetry per sol, so the first ~13 hours of the 20 May 2024 storm are filled by a clearly labelled model scaled to NASA's reported 8,100 micrograys.
@@ -171,7 +173,7 @@ No rover has visited this site. EVA date: 1 Jan 2035, northern summer (Ls 121) (
 - **Relief:** 89 m; median slope 5.4°; 1.0% steeper than 25°
 - **Projection:** Equirectangular, Mars sphere (R = 3,387,888 m), lat_ts = 40, lon0 = 18.51
 
-### Datasets (8)
+### Datasets (9)
 
 | Layer | Data type | Mission · instrument | Product | Link |
 |---|---|---|---|---|
@@ -182,7 +184,8 @@ No rover has visited this site. EVA date: 1 Jan 2035, northern summer (Ls 121) (
 | EVA stops | Derived | Mars Reconnaissance Orbiter · HiRISE | Stops chosen by CAIRN on the HiRISE terrain and imagery (config/stops_deuteronilus.json) | [source](https://hirise-pds.lpl.arizona.edu/PDS/DTM/ESP/ORB_033600_033699/ESP_033653_2225_ESP_033363_2225/) |
 | Surface radiation dose rate | Radiation | Mars Science Laboratory Curiosity · Radiation Assessment Detector (RAD) | MSL-M-RAD-3-RDR-V1.0, sols 4189–4194 (18–24 May 2024), detector E dose rate | [source](https://pds-ppi.igpp.ucla.edu/data/MSL-M-RAD-3-RDR-V1.0/) |
 | Space-weather alert | Space weather | NASA Community Coordinated Modeling Center · DONKI (Space Weather Database Of Notifications, Knowledge, Information) | CME activity 2024-05-20T05:36:00-CME-001 and notification 20240520-AL-001 | [source](https://ccmc.gsfc.nasa.gov/tools/DONKI/) |
-| Global Mars map | Optical | Viking Orbiters · Viking MDIM 2.1 colour mosaic | Mars_Viking_MDIM21_ClrMosaic_global_232m, WMTS tiles | [source](https://trek.nasa.gov/mars/) |
+| Exploration Zones on the locator map | Reference (vector) | NASA Human Exploration of Mars — First Landing Site/Exploration Zone Workshop (2015) · — | Exploration Zone centres (USGS layer 'EZ' on NASA Mars Trek), drawn as 100 km radius circles | [source](https://trek.nasa.gov/mars/) |
+| Regional locator map | Optical | Viking Orbiters · Viking MDIM 2.1 colour mosaic | Mars_Viking_MDIM21_ClrMosaic_global_232m, WMTS tiles at zoom 4 (16° × 9° around the site) | [source](https://trek.nasa.gov/mars/) |
 
 **Notes**
 
@@ -191,6 +194,7 @@ No rover has visited this site. EVA date: 1 Jan 2035, northern summer (Ls 121) (
 - *Terrain shielding (sky view):* Model, not a measurement: the zenith exponent is an assumption.
 - *EVA stops:* Science rationale from the published radar and HiRISE studies of lobate debris aprons; the exact spots are CAIRN's choice.
 - *Surface radiation dose rate:* Measured by Curiosity in Gale Crater, about 6,800 km from this walk area: no instrument has measured radiation in Deuteronilus Mensae. The archive holds 2–4 hours of dosimetry per sol, so the first ~13 hours of the 20 May 2024 storm are filled by a clearly labelled model scaled to NASA's reported 8,100 micrograys.
+- *Exploration Zones on the locator map:* CAIRN's walk area is about 174 km from the centre of the nearer Deuteronilus Mensae zone, i.e. outside it: it was chosen where a HiRISE elevation model exists on the same kind of debris-covered glacier.
 
 ### Stops
 

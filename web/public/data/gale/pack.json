@@ -40,6 +40,11 @@
    "file": "relief.webp",
    "enc": "image",
    "bytes": 4954971
+  },
+  "thermal.u8": {
+   "file": "thermal.u8.pk",
+   "enc": "delta8",
+   "bytes": 1050625
   }
  }
 }

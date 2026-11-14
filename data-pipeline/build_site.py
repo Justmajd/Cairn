@@ -176,12 +176,17 @@ def build_shielding(h, cell):
 
 # ---- THEMIS thermal ----------------------------------------------------------------------------
 def build_thermal():
-    path = glob.glob(os.path.join(RAW, "sim3464", "**", "*NightIR*.tif"), recursive=True)[0]
+    """THEMIS night IR on the node grid: the USGS SIM 3464 mosaic at Jezero, else the global controlled
+    mosaic from Mars Trek (fetch_themis_trek.py), which is the same 100 m THEMIS product."""
+    if CFG.get("layers", {}).get("themis_source") == "trek":
+        path, native_m = os.path.join(RAW, "themis_night_trek.tif"), 100.0
+    else:
+        path, native_m = glob.glob(os.path.join(RAW, "sim3464", "**", "*NightIR*.tif"), recursive=True)[0], None
     with rasterio.open(path) as ds:
         dst = np.zeros((N, N), dtype=np.float32)
         reproject(rasterio.band(ds, 1), dst, dst_transform=aoi_transform(N), dst_crs=eqc_crs(),
                   resampling=Resampling.cubic)
-        native_m = abs(ds.res[0])
+        native_m = native_m or abs(ds.res[0])
     return dst, native_m
 
 

@@ -27,7 +27,8 @@
   "source": "The Gale HiRISE DTM (DTEEC_019698_1750_019988_1750) resampled to 20 m, and orthoimage ESP_019698_1750_RED_C (1 m/px)"
  },
  "layers": {
-  "themis": false,
+  "themis": true,
+  "themis_source": "trek",
   "geology": false
  },
  "rover": {

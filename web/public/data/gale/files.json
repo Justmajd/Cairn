@@ -10,7 +10,7 @@
 },
 {
 "path": "effort.u8.pk",
-"bytes": 355254
+"bytes": 344320
 },
 {
 "path": "global.jpg",
@@ -90,7 +90,7 @@
 },
 {
 "path": "pack.json",
-"bytes": 736
+"bytes": 827
 },
 {
 "path": "panoramas.json",
@@ -122,7 +122,7 @@
 },
 {
 "path": "provenance.json",
-"bytes": 7171
+"bytes": 8027
 },
 {
 "path": "region.json",
@@ -154,7 +154,7 @@
 },
 {
 "path": "sand.u8.pk",
-"bytes": 152420
+"bytes": 131528
 },
 {
 "path": "shield.u8.pk",
@@ -162,7 +162,7 @@
 },
 {
 "path": "site.json",
-"bytes": 2100
+"bytes": 2142
 },
 {
 "path": "slope.u8.pk",
@@ -177,9 +177,13 @@
 "bytes": 8025988
 },
 {
+"path": "thermal.u8.pk",
+"bytes": 113147
+},
+{
 "path": "weather.json",
 "bytes": 2832
 }
 ],
-"totalBytes": 27551647
+"totalBytes": 27633957
 }

@@ -142,7 +142,15 @@ export interface ContextData {
   places: { id: string; name: string; sol?: number; uv: [number, number]; note: string; lon: number; lat: number }[];
   facts: { value: string; label: string }[];
   links: { from: string; to: string }[];
-  global: { image: string; source: string; siteUv: [number, number]; lon: number; lat: number };
+  global: {
+    image: string; source: string; siteUv: [number, number]; lon: number; lat: number;
+    /** A regional locator (degrees of longitude / latitude shown) instead of the whole planet. */
+    spanDeg?: [number, number];
+    /** NASA's 2015 Exploration Zones in view: centre, radius in image fractions, distance from the site. */
+    zones?: { name: string; lon: number; lat: number; uv: [number, number]; rUv: [number, number]; km: number }[];
+    zoneRadiusKm?: number;
+    zonesSource?: string;
+  };
 }
 
 export interface ProvenanceEntry {

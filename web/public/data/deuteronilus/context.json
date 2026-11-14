@@ -55,13 +55,49 @@
  ],
  "links": [],
  "global": {
-  "image": "global.jpg",
-  "source": "NASA/JPL Mars Trek WMTS — Mars_Viking_MDIM21_ClrMosaic_global_232m",
+  "image": "zone.jpg",
+  "source": "NASA/JPL Mars Trek WMTS — Mars_Viking_MDIM21_ClrMosaic_global_232m (zoom 4)",
   "siteUv": [
-   0.55132,
-   0.26577
+   0.375,
+   0.3
   ],
   "lon": 18.4752,
-  "lat": 42.1619
+  "lat": 42.1619,
+  "spanDeg": [
+   16.0,
+   9.0
+  ],
+  "zones": [
+   {
+    "name": "Deuteronilus Mensae",
+    "lon": 22.15,
+    "lat": 41.11,
+    "uv": [
+     0.60467,
+     0.41688
+    ],
+    "rUv": [
+     0.14029,
+     0.18791
+    ],
+    "km": 174
+   },
+   {
+    "name": "Deuteronilus Mensae",
+    "lon": 23.199,
+    "lat": 39.11,
+    "uv": [
+     0.67024,
+     0.6391
+    ],
+    "rUv": [
+     0.13622,
+     0.18791
+    ],
+    "km": 278
+   }
+  ],
+  "zoneRadiusKm": 100,
+  "zonesSource": "NASA Exploration Zones proposed at the First Landing Site/Exploration Zone Workshop for Human Missions to the Surface of Mars (2015), USGS layer on NASA Mars Trek"
  }
 }

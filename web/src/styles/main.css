@@ -432,6 +432,8 @@ svg .shelter-band { fill: rgba(90, 212, 138, 0.12); }
 .region .place text { fill: #fff; font: 500 16px var(--sans); paint-order: stroke; stroke: #000; stroke-width: 4px; }
 .globe { position: absolute; right: 14px; bottom: 14px; width: 30%; border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden; background: #000; }
 .globe img { display: block; width: 100%; }
+.globe svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.globe svg .ez { fill: rgba(240, 228, 66, 0.10); stroke: #f0e442; stroke-width: 1.5; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; pointer-events: all; }
 .globe i { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--accent); border: 2px solid #fff; box-shadow: 0 0 0 4px rgba(70, 224, 207, 0.35); }
 .globe span { position: absolute; left: 0; right: 0; bottom: 0; padding: 4px 8px; font: 10.5px var(--mono); background: rgba(0, 0, 0, 0.7); }
 

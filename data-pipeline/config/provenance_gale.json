@@ -40,12 +40,25 @@
       "note": "Outside the HiRISE strip the surroundings are filled with the nearest edge values and fade out."
     },
     {
+      "id": "themis",
+      "layer": "Night-time thermal infrared",
+      "dataType": "Thermal",
+      "mission": "2001 Mars Odyssey",
+      "instrument": "THEMIS",
+      "product": "THEMIS Night IR controlled mosaic, global v2 (October 2018), 100 m/px — THEMIS_NightIR_ControlledMosaics_100m_v2_oct2018, WMTS tiles",
+      "provider": "NASA Mars Trek (Solar System Treks Project, NASA Ames) / Arizona State University",
+      "url": "https://trek.nasa.gov/mars/",
+      "credit": "NASA/JPL-Caltech/Arizona State University",
+      "usedFor": "Thermal layer; fused with HiRISE to flag loose sand (sand is cold at night, bedrock stays warm)",
+      "note": "Native resolution is 100 m, so this layer is smooth at walking scale. Trek's tiles were shifted 75 m west and 84 m north to match the USGS controlled mosaic, measured at Jezero where both exist."
+    },
+    {
       "id": "sand",
       "layer": "Loose sand hazard",
       "dataType": "Derived (optical + topographic + thermal)",
       "mission": "Mars Reconnaissance Orbiter",
-      "instrument": "HiRISE image, HiRISE DTM",
-      "product": "Computed by CAIRN (data-pipeline/build_site.py): ripple texture in the HiRISE image and DTM (no THEMIS weighting at this site)",
+      "instrument": "HiRISE image, HiRISE DTM, THEMIS night IR",
+      "product": "Computed by CAIRN (data-pipeline/build_site.py): ripple texture in the HiRISE image and DTM, weighted by THEMIS night-time temperature",
       "provider": "CAIRN team (derived product)",
       "url": "https://github.com/Justmajd/cairn-demo/blob/main/data-pipeline/build_site.py",
       "credit": "Derived from NASA/JPL-Caltech/University of Arizona data",
