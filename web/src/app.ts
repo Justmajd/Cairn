@@ -550,6 +550,28 @@ export class App {
     return { gradient: `linear-gradient(90deg, ${stops.join(", ")})`, text };
   }
 
+  /** One row of safety checks for the plan: terrain, oxygen, time, shelter, radio, daylight. */
+  private checksHtml(lowSun: boolean, margin: number): string {
+    const plan = this.plan;
+    if (!plan) return "";
+    const b = plan.budget;
+    const P = this.P;
+    const limit = this.site.meta.model.slopeLimitDeg;
+    const silent = this.silentStops();
+    const rc = plan.radio;
+    const checks: [string, boolean, string][] = [
+      ["Terrain", b.blockedM === 0 && b.maxSlopeDeg <= limit, `Steepest ground ${b.maxSlopeDeg}° (limit ${limit}°)`],
+      ["Oxygen", margin >= 0, margin >= 0 ? `${Math.round(margin)} L spare after the walk home and the reserve` : `${Math.round(-margin)} L short`],
+      ["Time", b.withinTime, `${fmtDur(b.totalTimeS)} outside (limit ${P.maxEvaH} h)`],
+      ["Shelter", b.walkBack.maxReturnMin <= P.maxShelterMin, `The rover is at most ${Math.round(b.walkBack.maxReturnMin)} min away (aim: ${P.maxShelterMin} min, for solar storms)`],
+      ["Radio", rc.coveredFraction >= 0.95 && !silent.length, silent.length ? `No contact at ${silent.map((p) => p.short).join(", ")}` : `Contact for ${Math.floor(rc.coveredFraction * 100)}% of the walk`],
+      ["Daylight", !lowSun, lowSun ? "The Sun is under 8° at the start or end" : "The Sun stays above 8°"],
+    ];
+    return `<ul class="checks" aria-label="Safety checks">${checks
+      .map(([name, ok, why]) => `<li class="${ok ? "ok" : "warn"}" title="${esc(why)}">${ok ? ic.check : ic.warn}<span>${name}</span></li>`)
+      .join("")}</ul>`;
+  }
+
   /** Season at the site from the solar longitude, and whether it is the dust-storm season (Ls 180–360). */
   private seasonText(): string {
     const ls = this.solar.ls;
@@ -1060,6 +1082,7 @@ export class App {
             <button class="spot" data-act="spot" data-spot="home" title="Show the point of the route farthest from the rover"><span>Longest way home ${ic.locate}</span>${heroDur(b.walkBack.maxReturnMin * 60)}</button>
             <button class="spot" data-act="spot" data-spot="steep" title="Show the steepest ground on the route"><span>Steepest ground ${ic.locate}</span><b>${b.maxSlopeDeg}<small>°</small></b></button>
           </div>
+          ${this.checksHtml(lowSun, margin)}
           <div class="o2">
             <div class="o2-head"><span>Oxygen</span><b>${Math.round(b.o2UsedL)} L <small>of ${P.o2SupplyL} L</small></b></div>
             <div class="meter"><i style="width:${Math.min(100, usedPct).toFixed(1)}%"></i><u style="left:${(100 - reservePct).toFixed(1)}%"></u></div>

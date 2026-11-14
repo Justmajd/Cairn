@@ -17,6 +17,7 @@ export interface EvaParams {
   suitSpeedFactor: number; // suited walking speed relative to an unsuited hiker
   shelterFactor: number; // dose rate inside the pressurised rover relative to outside
   buddyMaxSeparationM: number;
+  maxShelterMin: number; // longest walk back to the rover the plan should allow (solar storms)
 }
 
 export const DEFAULT_PARAMS: EvaParams = {
@@ -32,6 +33,7 @@ export const DEFAULT_PARAMS: EvaParams = {
   suitSpeedFactor: 0.6,
   shelterFactor: 0.5,
   buddyMaxSeparationM: 20,
+  maxShelterMin: 30,
 };
 
 export const PARAM_NOTES: { key: keyof EvaParams; label: string; unit: string; basis: string }[] = [
@@ -47,4 +49,5 @@ export const PARAM_NOTES: { key: keyof EvaParams; label: string; unit: string; b
   { key: "suitSpeedFactor", label: "Suited walking speed", unit: "× hiker", basis: "Applied to Tobler's hiking function" },
   { key: "shelterFactor", label: "Dose rate inside the rover", unit: "× outside", basis: "Assumption — depends on vehicle shielding" },
   { key: "buddyMaxSeparationM", label: "Max buddy separation", unit: "m", basis: "Operational rule (assumption)" },
+  { key: "maxShelterMin", label: "Longest walk back to the rover", unit: "min", basis: "Assumption: in a solar particle event the crew should be inside within about half an hour" },
 ];
