@@ -30,6 +30,7 @@ export interface PoiMarkerState {
   poi: Poi;
   active: boolean;
   order: number | null; // visit order on the current plan
+  noRadio?: boolean; // a planned stop with no radio contact to the rover
 }
 
 type Rgb = [number, number, number];
@@ -1336,7 +1337,7 @@ export class SceneView {
 
       const el = document.createElement("button");
       el.className = `poi-label ${p.kind}${st.active ? " active" : ""}`;
-      el.innerHTML = `${st.order !== null ? `<b>${st.order}</b>` : isShelter ? `<b>${ic.home}</b>` : ""}<span>${p.short}</span>`;
+      el.innerHTML = `${st.order !== null ? `<b>${st.order}</b>` : isShelter ? `<b>${ic.home}</b>` : ""}<span>${p.short}</span>${st.noRadio ? `<i class="noradio" title="No radio contact with the rover here">${ic.noRadio}</i>` : ""}`;
       el.addEventListener("click", (ev) => {
         ev.stopPropagation();
         this.onPoiClick(p.id);

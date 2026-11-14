@@ -280,6 +280,8 @@ svg .shelter-band { fill: rgba(90, 212, 138, 0.12); }
 .poi-label.relay b { background: rgba(185, 166, 255, 0.25); color: #d9ceff; }
 .poi-label.relay.up { border-style: solid; color: var(--text); }
 .poi-label.relay.up b { background: #b9a6ff; color: #1a1030; }
+.poi-label .noradio { display: inline-grid; place-items: center; width: 16px; height: 16px; margin-right: -4px; border-radius: 50%; background: rgba(245, 181, 68, 0.2); color: var(--warn); }
+.poi-label .noradio .ic { width: 11px; height: 11px; }
 /* labels that would land on a more important one (see declutterLabels in view.ts) */
 .poi-label.crowded { visibility: hidden; pointer-events: none; }
 .poi-label.active.crowded { visibility: visible; pointer-events: auto; padding: 0 3px; }

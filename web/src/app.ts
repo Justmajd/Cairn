@@ -727,10 +727,11 @@ export class App {
 
   private pushPois(): void {
     const order = this.plan?.order ?? [];
+    const silent = new Set(this.silentStops().map((p) => p.id));
     this.view.setPois(
       this.pois.map((poi) => {
         const idx = order.findIndex((p, i) => p.id === poi.id && i > 0 && i < order.length - 1);
-        return { poi, active: poi.kind === "shelter" || this.selected.includes(poi.id), order: idx > 0 ? idx : null };
+        return { poi, active: poi.kind === "shelter" || this.selected.includes(poi.id), order: idx > 0 ? idx : null, noRadio: silent.has(poi.id) };
       }),
     );
   }
@@ -1879,8 +1880,9 @@ export class App {
       if (ev.type === "arrive" && ev.poi.kind !== "shelter") {
         this.note("stop", `Arrived at ${ev.poi.short}`);
         this.openCard(ev.poi.id, true);
-        this.toast(`Arrived at ${ev.poi.short}. ${ev.poi.dwellMin} min of science.`);
-        this.voice.say(`Arrived at ${ev.poi.short}. ${spokenTime(ev.poi.dwellMin * 60)} of science.`);
+        const quiet = this.radioLost;
+        this.toast(`Arrived at ${ev.poi.short}. ${ev.poi.dwellMin} min of science.${quiet ? " No radio contact here: check in before and after." : ""}`);
+        this.voice.say(`Arrived at ${ev.poi.short}. ${spokenTime(ev.poi.dwellMin * 60)} of science.${quiet ? " No radio contact here." : ""}`);
       } else if (ev.type === "depart") {
         this.note("go", `Left ${ev.poi.short}`);
         if (this.cardPoi === ev.poi.id) this.closeCard();
