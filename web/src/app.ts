@@ -1752,6 +1752,7 @@ export class App {
     this.shelteredAtS = null;
     this.radioLost = false;
     this.relayUp = false;
+    this.lowSunWarned = this.sunAtEva(0).elevation < 8; // a plan that starts in low sun was warned about already
     this.log = [{ t: 0, kind: "go", text: "Left the rover" }];
     this.view.setRelay(this.useRelay ? this.plan?.relay?.at ?? null : null);
     $("#pin-menu").hidden = true;
@@ -1812,6 +1813,7 @@ export class App {
       this.view.setBuddy(this.buddy ? m.buddyPose() : null);
       if (this.viewMode === "orbit" && pose.moving && !this.paused) this.view.follow(pose.x, pose.y, dt);
       this.watchRadio(m);
+      this.watchSun(m);
       if (this.viewMode === "walk" && !this.paused) this.guide(m);
     }
     const sun = this.sunAtEva(m && this.phase !== "planning" ? m.t : 0);
@@ -2103,6 +2105,19 @@ export class App {
   /** Relay shadow once the relay is up in this EVA, else null. */
   private liveRelay(): Uint8Array | null {
     return this.relayUp && this.plan?.relay ? this.relayShadowAt(this.plan.relay.at) : null;
+  }
+
+  /** Warn once if the walk runs late enough for the Sun to drop below 8° (a delay, an emergency at half speed). */
+  private lowSunWarned = false;
+  private watchSun(m: Mission): void {
+    if (this.lowSunWarned || m.sheltered || m.phase === "complete") return;
+    const sun = this.sunAtEva(m.t);
+    if (sun.elevation >= 8 || sun.elevation < -1) return;
+    this.lowSunWarned = true;
+    this.note("alert", "Sun below 8°");
+    this.buzz([200, 100, 200]);
+    this.toast("The Sun is below 8°: long shadows hide rocks and holes, and it is getting cold. Head back to the rover.", 6000);
+    this.voice.say("Low sun. Long shadows hide hazards. Head back to the rover.", "event");
   }
 
   /** Tell the crew when the terrain cuts the line of sight to the rover, and when it comes back. */
