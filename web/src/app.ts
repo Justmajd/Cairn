@@ -560,7 +560,7 @@ export class App {
     const blocked = grid.isBlocked(node) || !Number.isFinite(this.field.time[node]);
     menu.innerHTML = blocked
       ? `<p class="t bad">${ic.warn}Too steep to walk</p><p>Slope ${grid.slope[node]}°, beyond the ${this.site.meta.model.slopeLimitDeg}° limit or cut off from the rover.</p><div class="row"><button data-x="close">OK</button></div>`
-      : `<p class="t">${ic.walk}${fmtDur(this.field.time[node])} from the rover</p><p>Slope ${grid.slope[node]}° · ${esc(this.unitAt(p.x, p.y) ?? "unmapped unit")}</p><div class="row"><button data-x="close">Cancel</button><button class="primary" data-x="add">${ic.plus}<span>Add stop</span></button></div>`;
+      : `<p class="t">${ic.walk}${fmtDur(this.field.time[node])} from the rover</p><p>Slope ${grid.slope[node]}°${this.site.geologyGrid ? ` · ${esc(this.unitAt(p.x, p.y) ?? "unmapped unit")}` : ""}</p><div class="row"><button data-x="close">Cancel</button><button class="primary" data-x="add">${ic.plus}<span>Add stop</span></button></div>`;
     menu.hidden = false;
     menu.style.left = `${Math.min(rect.width - 260, Math.max(8, clientX - rect.left + 12))}px`;
     menu.style.top = `${Math.min(rect.height - 150, Math.max(8, clientY - rect.top + 12))}px`;
@@ -1257,6 +1257,7 @@ export class App {
       end: { lmst: fmtLmst(this.lmstAt(b.totalTimeS)), sunEl: s1.elevation },
       alertUGyH: this.rad.baseline * 3, rover: this.roverName, storm: this.storm, buddy: this.buddy,
       doseUGy: this.rad.baseline * b.exposureH,
+      radio: { coverage: this.plan.radio, lostAt: (x, y) => radioDepthAt(this.radio, this.site.grid, x, y) > RADIO_LOST_M },
     });
   }
 

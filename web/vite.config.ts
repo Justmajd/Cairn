@@ -25,7 +25,10 @@ function serviceWorker(): Plugin {
     enforce: "post",
     generateBundle(_, bundle) {
       const files = new Set<string>(["./", "index.html", "manifest.webmanifest", "data/sites.json", "icons/icon-192.png", "icons/icon-512.png"]);
-      for (const name of Object.keys(bundle)) if (!name.endsWith(".map")) files.add(name);
+      // fonts: only the Latin subsets in WOFF2 (what every current browser uses); other subsets and the
+      // older WOFF copies are still cached if a browser ever asks for them
+      const unused = /\.map$|\.woff$|-(cyrillic|cyrillic-ext|greek|vietnamese)-/;
+      for (const name of Object.keys(bundle)) if (!unused.test(name)) files.add(name);
       const source = readFileSync(new URL("./sw.template.js", import.meta.url), "utf8")
         .replace("__VERSION__", Date.now().toString(36))
         .replace("__DATA_VERSION__", dataVersion())

@@ -1,6 +1,7 @@
 import type { SiteData } from "../data/loaders";
 import type { EvaBudget } from "../eva/budget";
 import type { EvaParams } from "../eva/params";
+import type { RadioCoverage } from "../eva/radio";
 import type { MeasuredPath, Poi } from "../types";
 import { renderProfile } from "./charts";
 import { $, esc, fmtDist, fmtDose, fmtDur, LOGO_SVG } from "./dom";
@@ -34,6 +35,15 @@ export interface CueCardInput {
   storm: boolean;
   buddy: boolean;
   doseUGy: number;
+  /** Radio line of sight to the rover: coverage, and which route points are out of contact. */
+  radio?: { coverage: RadioCoverage; lostAt: (x: number, y: number) => boolean };
+}
+
+/** One line for the card: how much of the walk keeps radio contact with the rover. */
+function radioLine(c: RadioCoverage): string {
+  if (c.gaps === 0) return "Radio: line of sight to the rover the whole way.";
+  const pct = Math.round(c.coveredFraction * 100);
+  return `Radio: line of sight to the rover for ${pct}% of the walk; ${c.gaps} blackout${c.gaps > 1 ? "s" : ""} (dashed on the map), longest ${fmtDur(c.longestGapS)}. Report position before each.`;
 }
 
 const compass = (az: number) => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(az / 45) % 8];
@@ -75,10 +85,29 @@ function mapSvg(input: CueCardInput, W: number, H: number): string {
   return `<svg class="cc-map" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
     <image href="${input.site.base}${input.site.meta.texture.file}" x="${X(0)}" y="${Y(size)}" width="${size * sx}" height="${size * sx}" preserveAspectRatio="none" class="ground"/>
     ${input.legs.map((l) => `<polyline class="route-halo" points="${line(l)}"/><polyline class="route" points="${line(l)}"/>`).join("")}
+    ${input.radio ? blackoutLines(input.legs, input.radio.lostAt, X, Y) : ""}
     ${stops.join("")}
     <g transform="translate(${W - 26},28)"><path d="M0,-16 L7,6 L0,1 L-7,6Z" class="north"/><text y="18" text-anchor="middle" class="nl">N</text></g>
     <g transform="translate(14,${H - 16})"><rect width="${nice * sx}" height="5" class="bar"/><text y="-5" class="nl">${nice} m</text></g>
   </svg>`;
+}
+
+/** Stretches of the route with no line of sight to the rover, drawn over the route as dashes. */
+function blackoutLines(legs: MeasuredPath[], lostAt: (x: number, y: number) => boolean, X: (x: number) => number, Y: (y: number) => number): string {
+  const out: string[] = [];
+  for (const leg of legs) {
+    let run: string[] = [];
+    const flush = () => {
+      if (run.length > 1) out.push(`<polyline class="no-radio" points="${run.join(" ")}"/>`);
+      run = [];
+    };
+    for (const s of leg.samples) {
+      if (lostAt(s.x, s.y)) run.push(`${X(s.x).toFixed(1)},${Y(s.y).toFixed(1)}`);
+      else flush();
+    }
+    flush();
+  }
+  return out.join("");
 }
 
 /** Build the one-page cue card and show it in a preview with a Print / Save as PDF button. */
@@ -143,6 +172,7 @@ export function showCueCard(input: CueCardInput): void {
               <li>Slopes over ${site.meta.model.slopeLimitDeg}° are off-limits; the planned route stays under ${b.maxSlopeDeg}°.</li>
               <li>Keep ${Math.round(P.reserveFraction * 100)}% oxygen (${Math.round(reserve)} L) in reserve. Turn back at the value in the table.</li>
               <li>Maximum EVA ${P.maxEvaH} h. ${input.buddy ? `EV1 and EV2 stay within ${P.buddyMaxSeparationM} m.` : "Report position at every stop."}</li>
+              ${input.radio ? `<li>${radioLine(input.radio.coverage)}</li>` : ""}
               <li>Sun ${Math.round(input.start.sunEl)}° at departure, ${Math.round(input.end.sunEl)}° at return${input.start.sunEl < 15 || input.end.sunEl < 15 ? " — low sun: shadows hide holes and rocks." : "."}</li>
             </ul>
           </div>
@@ -150,7 +180,7 @@ export function showCueCard(input: CueCardInput): void {
             <h4>${ic.rad} Solar particle event</h4>
             <ul>
               <li>Abort when the dose rate passes <b>${Math.round(input.alertUGyH)} µGy/h</b> (3× background) or on a space-weather alert.</li>
-              <li>Walk straight to the ${esc(input.rover === "Curiosity" ? "rover" : "rover")}: bearing and time from each stop are in the table. Inside, the dose rate halves (assumption).</li>
+              <li>Walk straight to the rover: bearing and time from each stop are in the table. Inside, the dose rate halves (assumption).</li>
               <li>Natural cover nearby: ${esc(input.rows.map((r) => r.cover).filter(Boolean)[0] ?? "terrain here blocks under 3% of the dose — use the rover")}.</li>
               <li>Planned background dose for this EVA: ${fmtDose(input.doseUGy)}.</li>
             </ul>
