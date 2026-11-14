@@ -550,6 +550,78 @@ export class App {
     return { gradient: `linear-gradient(90deg, ${stops.join(", ")})`, text };
   }
 
+  /**
+   * The EVA over time: walking (blue) and science (teal) bars with stop letters, radio blackouts
+   * (lavender), the Sun's elevation (yellow line) and the oxygen left (white line, reserve dashed).
+   */
+  private timelineSvg(): string {
+    const plan = this.plan;
+    if (!plan) return "";
+    const P = this.P;
+    const b = plan.budget;
+    const total = Math.max(60, b.totalTimeS);
+    const W = 300;
+    const H = 96;
+    const X = (t: number) => (t / total) * W;
+    const barY = 54;
+    const bars: string[] = [];
+    const lost: string[] = [];
+    const o2: string[] = [`0,${(10).toFixed(1)}`];
+    const o2Y = (left: number) => 10 + (1 - left / P.o2SupplyL) * 36;
+    let t = 0;
+    let used = 0;
+    let leg = 0;
+    let stopNo = 0;
+    for (const seg of b.segments) {
+      if (seg.kind === "walk") {
+        bars.push(`<rect class="walk" x="${X(t).toFixed(1)}" y="${barY}" width="${Math.max(0.5, X(seg.path.time)).toFixed(1)}" height="10"/>`);
+        // radio blackouts along this leg
+        let start: number | null = null;
+        const smp = seg.path.samples;
+        for (let i = 0; i < smp.length; i++) {
+          const off = this.lostOnPlan(smp[i].x, smp[i].y, leg, i);
+          if (off && start === null) start = t + smp[i].time;
+          if ((!off || i === smp.length - 1) && start !== null) {
+            lost.push(`<rect class="lost" x="${X(start).toFixed(1)}" y="${barY - 3}" width="${Math.max(1, X(t + smp[i].time - start)).toFixed(1)}" height="16"/>`);
+            start = null;
+          }
+        }
+        used += walkO2(seg.path, P);
+        t += seg.path.time;
+        o2.push(`${X(t).toFixed(1)},${o2Y(P.o2SupplyL - used).toFixed(1)}`);
+        leg++;
+      } else {
+        stopNo++;
+        const silent = !inContact(this.radio, this.site.grid, seg.poi.x, seg.poi.y, this.useRelay && plan.relay && leg >= plan.relay.leg + 1 ? this.relayShadowAt(plan.relay.at) : null);
+        if (silent) lost.push(`<rect class="lost" x="${X(t).toFixed(1)}" y="${barY - 3}" width="${X(seg.durationS).toFixed(1)}" height="16"/>`);
+        bars.push(`<rect class="dwell" x="${X(t).toFixed(1)}" y="${barY}" width="${X(seg.durationS).toFixed(1)}" height="10"/><text class="lbl" x="${X(t + seg.durationS / 2).toFixed(1)}" y="${barY + 22}" text-anchor="middle">${stopNo}</text>`);
+        used += o2Litres(0, seg.durationS, P.workingW, P);
+        t += seg.durationS;
+        o2.push(`${X(t).toFixed(1)},${o2Y(P.o2SupplyL - used).toFixed(1)}`);
+      }
+    }
+    // Sun elevation, 0–90° over the same height band as the oxygen line
+    const sun: string[] = [];
+    for (let k = 0; k <= 40; k++) {
+      const tt = (k / 40) * total;
+      const el = Math.max(0, this.sunAtEva(tt).elevation);
+      sun.push(`${X(tt).toFixed(1)},${(46 - (el / 90) * 36).toFixed(1)}`);
+    }
+    const reserveY = o2Y(P.o2SupplyL * P.reserveFraction);
+    const hours = Math.floor(total / 3600);
+    const ticks = Array.from({ length: hours + 1 }, (_, h) => h).map((h) => `<line class="tick" x1="${X(h * 3600).toFixed(1)}" x2="${X(h * 3600).toFixed(1)}" y1="${barY + 12}" y2="${barY + 15}"/><text class="axis" x="${X(h * 3600).toFixed(1)}" y="${H - 2}" text-anchor="${h === 0 ? "start" : "middle"}">${fmtLmst(this.lmstAt(h * 3600))}</text>`);
+    return `<svg class="timeline" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="EVA timeline: walking, science, radio blackouts, Sun and oxygen">
+        <line class="reserve" x1="0" x2="${W}" y1="${reserveY.toFixed(1)}" y2="${reserveY.toFixed(1)}"/>
+        <polyline class="sun" points="${sun.join(" ")}"/>
+        <polyline class="o2" points="${o2.join(" ")}"/>
+        <text class="end o2t" x="${W}" y="${(o2Y(P.o2SupplyL - used) - 3).toFixed(1)}" text-anchor="end">O₂ ${Math.round(P.o2SupplyL - used)} L</text>
+        <text class="end sunt" x="${W}" y="${(46 - (Math.max(0, this.sunAtEva(total).elevation) / 90) * 36 + 10).toFixed(1)}" text-anchor="end">Sun ${Math.round(this.sunAtEva(total).elevation)}°</text>
+        ${lost.join("")}${bars.join("")}${ticks.join("")}
+        <text class="axis end" x="${W}" y="${H - 2}" text-anchor="end">${fmtLmst(this.lmstAt(total))}</text>
+      </svg>
+      <p class="tl-key"><i class="walk"></i>walking <i class="dwell"></i>science <i class="lost"></i>no radio <i class="sun"></i>Sun height <i class="o2"></i>oxygen left (dashed: reserve)</p>`;
+  }
+
   /** One row of safety checks for the plan: terrain, oxygen, time, shelter, radio, daylight. */
   private checksHtml(lowSun: boolean, margin: number): string {
     const plan = this.plan;
@@ -1102,6 +1174,10 @@ export class App {
         </section>
         <details class="more" id="plan-details" ${this.detailsOpen ? "open" : ""}>
           <summary><span>Details</span><em>time, dose, comparison, simulation</em>${ic.chev}</summary>
+          <section>
+            <h3>Timeline</h3>
+            ${this.timelineSvg()}
+          </section>
           <section>
             <h3>Time and terrain</h3>
             <dl class="kv">

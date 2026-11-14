@@ -805,3 +805,24 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 6px; border: 1px soli
 .checks li.ok .ic { color: var(--good); }
 .checks li.warn { background: rgba(245, 181, 68, 0.14); color: #ffe0a3; }
 .checks li.warn .ic { color: var(--warn); }
+
+/* EVA timeline in the plan details */
+svg.timeline { display: block; margin: 4px 0 2px; overflow: visible; }
+svg.timeline .walk { fill: #56b4e9; }
+svg.timeline .dwell { fill: var(--accent); }
+svg.timeline .lost { fill: rgba(185, 166, 255, 0.35); }
+svg.timeline .sun { fill: none; stroke: #f0e442; stroke-width: 1.4; opacity: 0.85; }
+svg.timeline .o2 { fill: none; stroke: #fff; stroke-width: 1.6; }
+svg.timeline .reserve { stroke: rgba(255, 255, 255, 0.35); stroke-dasharray: 3 3; }
+svg.timeline .lbl { fill: var(--text-2); font: 600 9px var(--mono); }
+svg.timeline .axis { fill: var(--text-3); font: 9px var(--mono); }
+svg.timeline .tick { stroke: var(--line-2); }
+svg.timeline .o2t { fill: #fff; font: 500 9px var(--mono); }
+svg.timeline .sunt { fill: #f0e442; font: 500 9px var(--mono); }
+.tl-key { display: flex; flex-wrap: wrap; gap: 3px 10px; font-size: 10.5px; color: var(--text-3); margin: 2px 0 0; }
+.tl-key i { display: inline-block; width: 10px; height: 6px; border-radius: 1px; margin-right: 3px; vertical-align: middle; }
+.tl-key i.walk { background: #56b4e9; }
+.tl-key i.dwell { background: var(--accent); }
+.tl-key i.lost { background: rgba(185, 166, 255, 0.5); height: 9px; }
+.tl-key i.sun { height: 2px; background: #f0e442; }
+.tl-key i.o2 { height: 2px; background: #fff; }
