@@ -4,7 +4,7 @@ import type { SiteData, SiteEntry } from "./data/loaders";
 import { buildBudget, EvaBudget, o2Litres, ReturnLookup, sampleAtTime, Segment, walkO2 } from "./eva/budget";
 import { DEFAULT_PARAMS, EvaParams } from "./eva/params";
 import { RadiationModel } from "./eva/radiation";
-import { bestRelay, inContact, RadioCoverage, radioCoverage, radioShadow, RelaySuggestion, RELAY_MAST_M } from "./eva/radio";
+import { bestRelay, inContact, RadioCoverage, radioCoverage, radioShadow, relayFromShadow, RelaySuggestion, RELAY_MAST_M } from "./eva/radio";
 import { inTerrainShadow } from "./eva/shade";
 import { fmtLmst, MARS_HOUR_S, SolarGeometry, solarGeometry, sunAt, SunPosition } from "./eva/sun";
 import { EmergencyKind, Mission, MissionEvent } from "./replay/mission";
@@ -629,7 +629,9 @@ export class App {
     }
     this.plan = {
       order, legs, straight, budget: buildBudget(segments, this.P, this.lookup, (poi) => grid.shieldAt(poi.x, poi.y)), routeMs: result.ms,
-      radio: relay && this.useRelay ? relay.after : radioCoverage(this.radio, grid, legs),
+      radio: relay && this.useRelay
+        ? radioCoverage(this.radio, grid, legs, relayFromShadow(this.relayShadowAt(relay.at), grid, relay.leg, relay.sample))
+        : radioCoverage(this.radio, grid, legs),
       relay, relayAtS,
     };
     this.pushRelay();
@@ -1768,7 +1770,7 @@ export class App {
     const grid = this.site.grid;
     const r = this.useRelay ? this.plan?.relay : null;
     const rover = inContact(this.radio, grid, x, y);
-    const relay = !rover && !!r && inContact(r.shadow, grid, x, y);
+    const relay = !rover && !!r && inContact(this.relayShadowAt(r.at), grid, x, y);
     return `<dt>Radio</dt><dd class="${rover || relay ? "" : "warnc"}">${rover ? "rover in sight" : relay ? "relay in sight" : "no signal"}</dd>`;
   }
 
@@ -1835,7 +1837,7 @@ export class App {
   private lostOnPlan(x: number, y: number, leg: number, i: number): boolean {
     const r = this.useRelay ? this.plan?.relay : null;
     const up = !!r && (leg > r.leg || (leg === r.leg && i > r.sample));
-    return !inContact(this.radio, this.site.grid, x, y, up ? r!.shadow : null);
+    return !inContact(this.radio, this.site.grid, x, y, up ? this.relayShadowAt(r!.at) : null);
   }
 
   /** Name of the stop the crew is walking to when it reaches the relay spot. */
@@ -1850,7 +1852,8 @@ export class App {
     this.view.setRelay(r ? r.at : null);
     if (!r) return this.view.setRadioShadow(this.radio);
     const both = new Uint8Array(this.radio.length);
-    for (let i = 0; i < both.length; i++) both[i] = Math.min(this.radio[i], r.shadow[i]);
+    const rs = this.relayShadowAt(r.at);
+    for (let i = 0; i < both.length; i++) both[i] = Math.min(this.radio[i], rs[i]);
     this.view.setRadioShadow(both);
   }
 
@@ -1859,9 +1862,19 @@ export class App {
     void this.replan();
   }
 
+  /** Radio shadow of a relay mast at a point, made once per position (~0.1 s) and only when the relay is used. */
+  private relayCache: { x: number; y: number; shadow: Uint8Array } | null = null;
+  private relayShadowAt(at: XY): Uint8Array {
+    const c = this.relayCache;
+    if (c && c.x === at.x && c.y === at.y) return c.shadow;
+    const shadow = radioShadow(this.site.grid, at, RELAY_MAST_M);
+    this.relayCache = { x: at.x, y: at.y, shadow };
+    return shadow;
+  }
+
   /** Relay shadow once the relay is up in this EVA, else null. */
   private liveRelay(): Uint8Array | null {
-    return this.relayUp && this.plan?.relay ? this.plan.relay.shadow : null;
+    return this.relayUp && this.plan?.relay ? this.relayShadowAt(this.plan.relay.at) : null;
   }
 
   /** Tell the crew when the terrain cuts the line of sight to the rover, and when it comes back. */

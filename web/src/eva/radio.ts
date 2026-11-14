@@ -73,11 +73,17 @@ export interface RadioCoverage {
   longestGapS: number;
 }
 
-/** A relay stood up on the route: its own radio shadow, and where along the plan it goes up. */
+/** A relay stood up on the route: where it reaches, and where along the plan it goes up. */
 export interface RelayLink {
-  shadow: Uint8Array; // radioShadow from the relay's mast
+  /** In contact with the relay at this point (its radio shadow, or a line-of-sight test). */
+  reaches: (x: number, y: number) => boolean;
   leg: number; // leg index, and sample index within that leg, where the crew sets it up
   sample: number;
+}
+
+/** A RelayLink from the relay's full radio shadow. */
+export function relayFromShadow(relayShadow: Uint8Array, grid: TerrainGrid, leg: number, sample: number): RelayLink {
+  return { reaches: (x, y) => radioDepthAt(relayShadow, grid, x, y) <= RADIO_LOST_M, leg, sample };
 }
 
 /** In contact at a point: line of sight to the rover, or to a relay that is already up. */
@@ -101,7 +107,9 @@ export function radioCoverage(shadow: Uint8Array, grid: TerrainGrid, legs: Measu
       const dt = b.time - a.time;
       total += dt;
       const up = relay !== null && (li > relay.leg || (li === relay.leg && i > relay.sample));
-      const lost = !inContact(shadow, grid, (a.x + b.x) / 2, (a.y + b.y) / 2, up ? relay!.shadow : null);
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      const lost = !inContact(shadow, grid, mx, my) && !(up && relay!.reaches(mx, my));
       if (lost) {
         if (!inGap) gaps++;
         inGap = true;
@@ -145,8 +153,7 @@ export interface RelaySuggestion {
   sample: number;
   alongM: number; // distance along the whole route where the crew sets it up
   before: RadioCoverage;
-  after: RadioCoverage;
-  shadow: Uint8Array;
+  after: RadioCoverage; // estimated by line-of-sight tests along the route (the full relay shadow is made only when planned)
 }
 
 /**
@@ -206,8 +213,9 @@ export function bestRelay(shadow: Uint8Array, grid: TerrainGrid, legs: MeasuredP
     }
   }
   if (!best || bestS < Math.max(30, before.lostS * 0.2)) return null;
-  const relayShadow = radioShadow(grid, best, mastM);
-  const after = radioCoverage(shadow, grid, legs, { shadow: relayShadow, leg: best.leg, sample: best.sample });
+  const at = { x: best.x, y: best.y };
+  const reaches = (x: number, y: number) => lineOfSight(grid, at, mastM, { x, y }, SUIT_ANTENNA_M);
+  const after = radioCoverage(shadow, grid, legs, { reaches, leg: best.leg, sample: best.sample });
   if (after.coveredFraction - before.coveredFraction < 0.03) return null;
-  return { at: { x: best.x, y: best.y }, leg: best.leg, sample: best.sample, alongM: best.alongM, before, after, shadow: relayShadow };
+  return { at, leg: best.leg, sample: best.sample, alongM: best.alongM, before, after };
 }
