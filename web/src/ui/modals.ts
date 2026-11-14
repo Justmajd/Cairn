@@ -73,13 +73,16 @@ export function showAssumptions(site: SiteData, p: EvaParams): void {
      <h3>Radio contact and practice emergencies</h3>
      <ul>
        <li><b>Radio:</b> suit radios work on UHF, which needs a clear line of sight on Mars. CAIRN sweeps rays from an antenna ${ROVER_ANTENNA_M} m up the rover's mast across the 1 m HiRISE terrain (and the curvature of Mars) and marks where a suit antenna ${SUIT_ANTENNA_M} m above the ground loses sight of it. No reflections are assumed: a worst case.</li>
+       <li><b>Stops without contact:</b> a stop counts as silent when the rover (or the relay, once it is up) is out of sight from it; the relay search counts the time spent working there.</li>
        <li><b>Relay:</b> where the walk loses contact, CAIRN looks along the route for the spot where a portable relay on a ${RELAY_MAST_M} m mast (assumption) sees the rover and covers the most blackout time after the crew sets it up there. With the relay planned, contact during the EVA counts the relay from the moment the crew reaches it.</li>
        <li><b>Suit leak:</b> oxygen use doubles from that moment. <b>Twisted ankle:</b> walking takes twice as long. In both, CAIRN routes the quickest safe way home from the current position and compares the oxygen needed with what is left (both assumptions for practice, not suit data).</li>
      </ul>
      <h3>Sun, shadows and terrain shielding</h3>
      <ul>
        <li><b>Sun:</b> Mars24 algorithm (Allison & McEwen 2000, NASA GISS) for sol ${site.meta.eva?.sol ?? "—"}. Checked against rover clocks: local solar time within a minute.</li>
-       <li><b>Shadows:</b> cast from the real elevation grids (walk area and surroundings) by marching each pixel toward the Sun.</li>
+       <li><b>Shadows:</b> cast from the real elevation grids (walk area and surroundings) by marching each pixel toward the Sun. A stop or the walker counts as <i>in shade</i> when the terrain hides the Sun from a point 1.2 m above the ground (chest height, assumption).</li>
+       <li><b>Low sun:</b> below 8° of elevation long shadows hide rocks and holes, so the plan warns and the EVA alerts (threshold is an assumption). The dust-storm season is taken as solar longitude 180–360°.</li>
+       <li><b>Rover parking:</b> the rover may be parked on ground of up to 10° slope (assumption); its drive there is not modelled. Moving it recomputes the way home from every point and its radio shadow.</li>
        <li><b>Terrain shielding:</b> share of the sky blocked by terrain within ${site.meta.shielding?.radiusM ?? 260} m, weighting each direction by cos${"\u00b2"} of its zenith angle (the dose falls toward the horizon; the exponent is an assumption). ${(() => {
          const sh = site.grid.shield;
          if (!sh) return "";
