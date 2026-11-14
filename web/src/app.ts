@@ -6,6 +6,7 @@ import { DEFAULT_PARAMS, EvaParams } from "./eva/params";
 import { RadiationModel } from "./eva/radiation";
 import { bestRelay, inContact, lineOfSight, RadioCoverage, radioCoverage, radioShadow, relayFromShadow, RelaySuggestion, RELAY_MAST_M, SUIT_ANTENNA_M } from "./eva/radio";
 import { inTerrainShadow } from "./eva/shade";
+import { formatPlanLink, parsePlanLink } from "./state/planLink";
 import { fmtLmst, MARS_HOUR_S, SolarGeometry, solarGeometry, sunAt, SunPosition } from "./eva/sun";
 import { EmergencyKind, Mission, MissionEvent } from "./replay/mission";
 import type { FieldResult, Router } from "./routing/client";
@@ -1654,15 +1655,15 @@ export class App {
    * reload keeps it and a link shares it.  Custom stops travel as local x_y metres.
    */
   private planHash(): string {
-    const custom = this.selected.map((id) => this.poi(id)).filter((p): p is Poi => !!p && p.id.startsWith("custom-"));
-    const parts = [`stops=${this.selected.filter((id) => !id.startsWith("custom-")).map(encodeURIComponent).join(",")}`];
-    if (custom.length) parts.push(`add=${custom.map((p) => `${Math.round(p.x)}_${Math.round(p.y)}`).join(",")}`);
-    if (this.startLmst !== (this.site.meta.eva?.startLmst ?? 10)) parts.push(`t=${+this.startLmst.toFixed(2)}`);
-    if (!this.storm) parts.push("storm=0");
-    if (this.buddy) parts.push("buddy=1");
-    if (this.useRelay) parts.push("relay=1");
-    if (this.roverMoved()) parts.push(`rover=${Math.round(this.rover.x)}_${Math.round(this.rover.y)}`);
-    return parts.join("&");
+    return formatPlanLink({
+      stops: this.selected.filter((id) => !id.startsWith("custom-")),
+      add: this.selected.map((id) => this.poi(id)).filter((p): p is Poi => !!p && p.id.startsWith("custom-")),
+      startLmst: this.startLmst !== (this.site.meta.eva?.startLmst ?? 10) ? this.startLmst : null,
+      storm: this.storm,
+      buddy: this.buddy,
+      relay: this.useRelay,
+      rover: this.roverMoved() ? this.rover : null,
+    });
   }
 
   /**
@@ -1700,26 +1701,24 @@ export class App {
 
   /** Restore a plan from a link; anything that does not fit this site is ignored. */
   private applyPlanHash(hash: string): void {
-    const q = new URLSearchParams(hash.replace(/^#/, ""));
-    if (!q.has("stops") && !q.has("add")) return;
-    const ids = (q.get("stops") ?? "").split(",").filter((id) => this.site.pois.some((p) => p.id === id && p.kind !== "shelter"));
+    const link = parsePlanLink(hash);
+    if (!link) return;
     const grid = this.site.grid;
-    for (const xy of (q.get("add") ?? "").split(",").filter(Boolean)) {
-      const [x, y] = xy.split("_").map(Number);
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !grid.inside(x, y)) continue;
+    const ids = link.stops.filter((id) => this.site.pois.some((p) => p.id === id && p.kind !== "shelter"));
+    for (const { x, y } of link.add) {
+      if (!grid.inside(x, y)) continue;
       const node = grid.nodeAt(x, y);
       if (grid.isBlocked(node) || !Number.isFinite(this.field.time[node])) continue;
       ids.push(this.customPoi({ x, y }).id);
     }
     if (ids.length) this.selected = [...new Set(ids)]; // a link made for another site keeps the default stops
-    const t = Number(q.get("t"));
-    if (q.has("t") && Number.isFinite(t) && t >= 5 && t <= 19) this.startLmst = t;
-    if (q.get("storm") === "0") this.storm = false;
-    if (q.get("buddy") === "1") this.buddy = true;
-    if (q.get("relay") === "1") this.useRelay = true;
-    const [rx, ry] = (q.get("rover") ?? "").split("_").map(Number);
-    if (Number.isFinite(rx) && Number.isFinite(ry) && grid.inside(rx, ry) && !grid.isBlocked(grid.nodeAt(rx, ry))) {
-      this.pendingRover = { x: rx, y: ry }; // moved once the panels are up (it needs the routing worker)
+    if (link.startLmst !== null) this.startLmst = link.startLmst;
+    this.storm = link.storm;
+    this.buddy = link.buddy;
+    this.useRelay = link.relay;
+    const r = link.rover;
+    if (r && grid.inside(r.x, r.y) && !grid.isBlocked(grid.nodeAt(r.x, r.y))) {
+      this.pendingRover = r; // moved once the panels are up (it needs the routing worker)
     }
   }
   private pendingRover: XY | null = null;
