@@ -17,6 +17,7 @@ import { showBriefing } from "./ui/briefing";
 import { DoseChartHandle, ProfileHandle, renderDoseChart, renderProfile } from "./ui/charts";
 import { $, esc, fmtClock, fmtDist, fmtDose, fmtDur, fmtRate, setText } from "./ui/dom";
 import { ic } from "./ui/icons";
+import { hideAnimated, showAnimated } from "./ui/motion";
 import { openModal, showAssumptions, showSources, stopCardHtml } from "./ui/modals";
 import { openPanorama } from "./ui/panorama";
 import { DemoRunner, DemoStep } from "./ui/demo";
@@ -1493,7 +1494,8 @@ export class App {
     const tex = this.site.meta.texture;
     const orbital = tex.hi ? { url: this.site.base + tex.hi.file, sizeM: this.site.meta.sizeM, mPerPx: tex.hi.mPerPx } : { url: this.site.base + tex.file, sizeM: this.site.meta.sizeM, mPerPx: tex.mPerPx };
     card.innerHTML = stopCardHtml(poi, this.site.base, this.unitAt(poi.x, poi.y), arrived, this.roverName, this.panoLabel(poi.id), orbital);
-    card.hidden = false;
+    if (card.hidden || card.classList.contains("motion-out")) showAnimated(card);
+    else card.hidden = false;
     card.classList.toggle("arrived", arrived);
     this.cardPoi = id;
     card.onclick = (ev) => {
@@ -1890,7 +1892,7 @@ export class App {
   }
 
   private closeCard(): void {
-    $("#card").hidden = true;
+    hideAnimated($("#card"), 160);
     this.cardPoi = null;
   }
 

@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { Poi } from "../types";
 import { $, esc } from "./dom";
 import { ic } from "./icons";
+import { hideAnimated, showAnimated } from "./motion";
 import { loadTexture } from "../data/texture";
 
 export interface PanoramaInfo {
@@ -88,7 +89,7 @@ export function openPanorama(
       }</span>
       <span class="hint-k"><b>Drag</b> look around · <b>Scroll</b> zoom · <b>Esc</b> close</span>
     </footer>`;
-  host.hidden = false;
+  showAnimated(host); // the visor iris opens
 
   const stage = $(".pano-stage", host);
   const renderer = (shared ??= new THREE.WebGLRenderer({ antialias: true }));
@@ -207,7 +208,7 @@ export function openPanorama(
     (sphere.material as THREE.Material).dispose();
     closed = true;
     texture?.dispose();
-    host.hidden = true;
+    hideAnimated(host, 320);
     host.innerHTML = "";
     opts.onClose?.();
   };

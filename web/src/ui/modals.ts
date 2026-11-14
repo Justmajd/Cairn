@@ -5,6 +5,7 @@ import { EvaParams, PARAM_NOTES } from "../eva/params";
 import type { Poi } from "../types";
 import { $, esc } from "./dom";
 import { ic } from "./icons";
+import { hideAnimated, showAnimated } from "./motion";
 
 export function openModal(title: string, bodyHtml: string, wide = true): void {
   const host = $("#modal");
@@ -12,10 +13,10 @@ export function openModal(title: string, bodyHtml: string, wide = true): void {
       <header><h2>${esc(title)}</h2><button class="close icon" aria-label="Close">${ic.close}</button></header>
       <div class="modal-body">${bodyHtml}</div>
     </div>`;
-  host.hidden = false;
+  showAnimated(host);
   const opener = document.activeElement as HTMLElement | null;
   const close = () => {
-    host.hidden = true;
+    hideAnimated(host, 160);
     opener?.focus?.(); // back to whatever opened the dialog
   };
   $(".close", host).addEventListener("click", close);

@@ -11,6 +11,8 @@ import "@fontsource/ibm-plex-sans/600.css";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "./styles/main.css";
+import "./styles/motion.css";
+import { hideAnimated, showAnimated } from "./ui/motion";
 import { showBriefing } from "./ui/briefing";
 import { initOffline } from "./ui/offline";
 import { $ } from "./ui/dom";
@@ -124,11 +126,14 @@ async function boot(): Promise<void> {
 
   performance.mark("cairn:ready");
   progress("Ready", 1);
-  $("#loading").hidden = true;
   // a shared plan link opens straight on the plan; ?demo=1 plays the guided demo (for a booth screen or recording)
   const sharedPlan = /(^#|&)(stops|add)=/.test(location.hash);
+  const briefing = query.get("demo") !== "1" && query.get("skip") !== "1" && !sharedPlan;
   if (query.get("demo") === "1") void app.startDemo();
-  else if (query.get("skip") !== "1" && !sharedPlan) showBriefing(site, () => {}, sites);
+  else if (briefing) showBriefing(site, () => {}, sites);
+  // leave the loading screen at light speed: onto the briefing, or straight onto Mars
+  hideAnimated($("#loading"), 700);
+  if (!briefing) showAnimated($("#app"));
 
   // close-up ground materials (CC0 photo scans, shared by all sites): after the planner is up
   void (async () => {
