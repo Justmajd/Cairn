@@ -624,8 +624,17 @@ export class App {
 
   /** One row of safety checks for the plan: terrain, oxygen, time, shelter, radio, daylight. */
   private checksHtml(lowSun: boolean, margin: number): string {
+    const checks = this.planChecks(lowSun, margin);
+    return checks.length
+      ? `<ul class="checks" aria-label="Safety checks">${checks
+          .map(([name, ok, why]) => `<li class="${ok ? "ok" : "warn"}" title="${esc(why)}">${ok ? ic.check : ic.warn}<span>${name}</span></li>`)
+          .join("")}</ul>`
+      : "";
+  }
+
+  private planChecks(lowSun: boolean, margin: number): [string, boolean, string][] {
     const plan = this.plan;
-    if (!plan) return "";
+    if (!plan) return [];
     const b = plan.budget;
     const P = this.P;
     const limit = this.site.meta.model.slopeLimitDeg;
@@ -639,9 +648,7 @@ export class App {
       ["Radio", rc.coveredFraction >= 0.95 && !silent.length, silent.length ? `No contact at ${silent.map((p) => p.short).join(", ")}` : `Contact for ${Math.floor(rc.coveredFraction * 100)}% of the walk`],
       ["Daylight", !lowSun, lowSun ? "The Sun is under 8° at the start or end" : "The Sun stays above 8°"],
     ];
-    return `<ul class="checks" aria-label="Safety checks">${checks
-      .map(([name, ok, why]) => `<li class="${ok ? "ok" : "warn"}" title="${esc(why)}">${ok ? ic.check : ic.warn}<span>${name}</span></li>`)
-      .join("")}</ul>`;
+    return checks;
   }
 
   /** Season at the site from the solar longitude, and whether it is the dust-storm season (Ls 180–360). */
@@ -1791,6 +1798,7 @@ export class App {
       end: { lmst: fmtLmst(this.lmstAt(b.totalTimeS)), sunEl: s1.elevation },
       alertUGyH: this.rad.baseline * 3, rover: this.roverName, storm: this.storm, buddy: this.buddy,
       doseUGy: this.rad.baseline * b.exposureH,
+      checks: this.planChecks(s0.elevation < 8 || s1.elevation < 8, b.walkBack.minMarginL),
       radio: {
         coverage: this.plan.radio,
         lostAt: (x, y, leg, i) => this.lostOnPlan(x, y, leg, i),

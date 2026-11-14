@@ -36,6 +36,8 @@ export interface CueCardInput {
   storm: boolean;
   buddy: boolean;
   doseUGy: number;
+  /** The plan's safety checks: name, passed, details. */
+  checks?: [string, boolean, string][];
   /** Radio line of sight to the rover: coverage, and which route points are out of contact. */
   radio?: {
     coverage: RadioCoverage;
@@ -162,6 +164,7 @@ export function showCueCard(input: CueCardInput): void {
         <div><dt>Crew</dt><dd>${input.buddy ? "EV1 + EV2" : "EV1"}</dd></div>
       </dl>
     </header>
+    ${input.checks?.length ? `<ul class="cc-checks">${input.checks.map(([name, ok, why]) => `<li class="${ok ? "ok" : "warn"}"><b>${ok ? "✓" : "!"} ${esc(name)}</b> ${esc(why)}</li>`).join("")}</ul>` : ""}
     <section class="cc-body">
       <div class="cc-left">
         ${mapSvg(input, 520, 420)}

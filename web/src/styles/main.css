@@ -549,6 +549,11 @@ button.secondary { background: var(--raise-2); }
 .cc-scroll { background: #e9e4de; padding: 22px; }
 .cuecard { --ink: #1b1714; --mute: #6c625a; --rule: #d7cfc6; width: 100%; max-width: 1180px; margin: 0 auto; background: #fbf9f6; color: var(--ink); border-radius: 6px; padding: 22px 24px 16px; font: 12px/1.4 var(--sans); box-shadow: 0 8px 30px rgba(0,0,0,.25); }
 .cuecard .logo { width: 30px; height: 30px; }
+.cc-checks { list-style: none; margin: 8px 0 0; padding: 0 0 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px 14px; font-size: 10.5px; border-bottom: 1px solid #ccc; }
+.cc-checks li { color: #333; }
+.cc-checks li b { font-weight: 700; color: #111; }
+.cc-checks li.ok b { color: #1a6e3f; }
+.cc-checks li.warn, .cc-checks li.warn b { color: #9a5a00; }
 .cc-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 18px; padding-bottom: 12px; border-bottom: 2px solid var(--ink); }
 .cc-brand { display: flex; gap: 10px; align-items: center; }
 .cc-brand b { display: block; font-size: 16px; letter-spacing: 0.02em; }
