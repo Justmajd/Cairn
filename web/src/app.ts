@@ -702,7 +702,7 @@ export class App {
           grid.slope[node] <= ROVER_PARK_MAX_SLOPE ? `<button data-x="rover" title="Move the rover (start, end and shelter) here">${ic.home}<span>Park rover</span></button>` : ""
         }<button class="primary" data-x="add">${ic.plus}<span>Add stop</span></button></div>`;
     menu.hidden = false;
-    menu.style.left = `${Math.min(rect.width - 260, Math.max(8, clientX - rect.left + 12))}px`;
+    menu.style.left = `${Math.min(rect.width - 312, Math.max(8, clientX - rect.left + 12))}px`;
     menu.style.top = `${Math.min(rect.height - 150, Math.max(8, clientY - rect.top + 12))}px`;
     menu.onclick = (ev) => {
       const act = (ev.target as HTMLElement).closest<HTMLElement>("[data-x]")?.dataset.x;
