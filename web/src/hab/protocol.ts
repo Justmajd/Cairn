@@ -63,6 +63,8 @@ export interface Frame {
   lightTimeS: number;
   /** Simulation speed (EVA seconds per real second), 0 when paused. */
   speed: number;
+  /** The crew's planner is in a background tab: the browser has stopped its EVA clock. */
+  hidden?: boolean;
   /** Buddy (EV2) position, in buddy mode. */
   buddy?: { x: number; y: number } | null;
 }
@@ -139,7 +141,7 @@ export type ServerMsg =
   | { type: "plan"; plan: PlanInfo }
   | { type: "crew"; online: boolean }
   | { type: "eva"; eva: McSnapshot["eva"] }
-  | { type: "clock"; now: number; lightTimeS: number; speed: number; live: { x: number; y: number } | null }
+  | { type: "clock"; now: number; lightTimeS: number; speed: number; live: { x: number; y: number } | null; hidden?: boolean }
   | { type: "frame"; frame: Frame }
   | { type: "log"; entry: LogEntry }
   | { type: "note"; note: NoteRecord }

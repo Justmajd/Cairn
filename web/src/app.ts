@@ -252,6 +252,8 @@ export class App {
     };
     this.habLink = new HabLink("crew", site.meta.id, this.member);
     this.habLink.onMessage((m) => this.onHab(m));
+    // tell Mission Control at once when this tab goes to the background (its EVA clock stops) or comes back
+    document.addEventListener("visibilitychange", () => this.sendFrame());
     this.habLink.onState((st) => {
       this.habState = st;
       if (st === "online") {
@@ -2173,7 +2175,9 @@ export class App {
       lmst: fmtLmst(this.lmstAt(m.t)),
       sunEl: sun.elevation,
       lightTimeS: this.skyAt(m.t).lightTimeS,
-      speed: this.paused ? 0 : this.speed,
+      // a background tab gets no animation frames: its EVA clock is stopped, whatever the speed setting
+      speed: this.paused || document.hidden ? 0 : this.speed,
+      hidden: document.hidden,
       buddy: this.buddy ? m.buddyPose() : null,
     };
     this.crewSend({ type: "frame", frame });

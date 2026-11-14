@@ -30,6 +30,7 @@ export class Room {
   speed = 0;
   crewOnline = false;
   live: { x: number; y: number } | null = null;
+  crewHidden = false;
 
   private frames: Frame[] = [];
   private framesOut = 0;
@@ -117,6 +118,7 @@ export class Room {
     }
     this.now = f.t;
     this.speed = f.speed;
+    this.crewHidden = !!f.hidden;
     this.lightTimeS = f.lightTimeS;
     this.live = { x: f.x, y: f.y };
     return this.release();
@@ -219,7 +221,7 @@ export class Room {
   private release(withClock = true): Out {
     const o = out();
     const shown = this.shownT;
-    if (withClock) o.mc.push({ type: "clock", now: this.now, lightTimeS: this.lightTimeS, speed: this.speed, live: this.live });
+    if (withClock) o.mc.push({ type: "clock", now: this.now, lightTimeS: this.lightTimeS, speed: this.speed, live: this.live, hidden: this.crewHidden });
     while (this.framesOut < this.frames.length && this.frames[this.framesOut].t <= shown) {
       o.mc.push({ type: "frame", frame: this.frames[this.framesOut++] });
     }

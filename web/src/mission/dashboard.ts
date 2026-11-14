@@ -11,6 +11,8 @@ import "../styles/mission.css";
 
 const fmtLight = (s: number) => `${Math.floor(s / 60)} min ${String(Math.round(s % 60)).padStart(2, "0")} s`;
 const fmtDistM = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${Math.round(m)} m`);
+/** Real (wall-clock) seconds, for "how long until": "7 s", "1 min 22 s". */
+const fmtReal = (s: number) => (s < 60 ? `${Math.max(1, Math.round(s))} s` : `${Math.floor(s / 60)} min ${String(Math.round(s % 60)).padStart(2, "0")} s`);
 const fmtMin = (s: number) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.round((s % 3600) / 60)).padStart(2, "0")} min` : `${Math.max(0, Math.round(s / 60))} min`);
 
 interface State {
@@ -21,6 +23,8 @@ interface State {
   now: number;
   lightTimeS: number;
   speed: number;
+  /** The crew's planner tab is in the background (its EVA clock is stopped by the browser). */
+  hidden?: boolean;
   live: { x: number; y: number } | null;
   frames: Frame[];
   log: { entry: LogEntry; arrivedT: number }[];
@@ -56,6 +60,7 @@ export function startMissionControl(site: string): void {
           <label class="vh" for="mc-replay-t">Earth clock during the replay</label><input type="range" id="mc-replay-t" min="0" max="1" step="1" value="0"/></div>
         <p class="mc-replay-key"><i class="k-alert"></i>Event on Mars <i class="k-earth"></i>Earth finds out <i class="k-msg"></i>Message from Earth</p>
       </div>
+      <div class="mc-sim" id="mc-sim" role="status" hidden></div>
       <div class="mc-banner" id="mc-banner" hidden></div>
       <main class="mc-grid">
         <section class="mc-card mc-map">
@@ -161,6 +166,7 @@ export function startMissionControl(site: string): void {
         L.now = m.now;
         L.lightTimeS = m.lightTimeS;
         L.speed = m.speed;
+        L.hidden = !!m.hidden;
         L.live = m.live;
         break;
       case "frame":
@@ -235,9 +241,30 @@ export function startMissionControl(site: string): void {
     if (S.link !== "online") w = `<b>No link to the hab</b><span>Mission Control needs the hab server. Start it with <code>npm start</code> in <code>web/</code> and open this page from it (http://localhost:8787).</span>`;
     else if (!S.plan) w = `<b>Waiting for the crew's plan</b><span>Open the planner for this site — <a href="?site=${esc(site)}" target="_blank" rel="noopener">CAIRN planner</a> — on any device linked to this hab.</span>`;
     else if (!S.eva) w = `<b>The crew is planning</b><span>${fmtDistM(S.plan.distanceM)}, ${fmtMin(S.plan.timeS)} outside, leaving the ${esc(S.plan.roverName ? "rover" : "hab")} at ${esc(S.plan.startLmst)} LMST. Earth will see the EVA ${fmtLight(S.plan.lightTimeS)} after it starts.</span>`;
-    else if (running && !f) w = `<b>EVA under way on Mars</b><span>The first signal left Mars at T+00:00:00 and arrives at T+${fmtClock(S.lightTimeS)}: in ${fmtMin(Math.max(0, S.lightTimeS - S.now))} of EVA time.</span>`;
+    else if (running && !f) {
+      const left = Math.max(0, S.lightTimeS - S.now);
+      w = `<b>EVA under way on Mars</b><span>The first signal left Mars at T+00:00:00 and arrives at T+${fmtClock(S.lightTimeS)}: in ${fmtMin(left)} of EVA time${
+        replay ? "" : S.speed > 0 ? `, about ${fmtReal(left / S.speed)} from now at the crew's ${S.speed}× speed` : S.hidden ? ". The crew's planner is in a background tab, so its EVA clock is stopped: it arrives once that tab is visible again" : ". The crew's simulation is paused, so it is not getting closer: it arrives once they press play"
+      }.</span>`;
+    }
     wait.innerHTML = w;
     wait.hidden = !w;
+
+    // the crew's simulation: paused, or how fast its EVA clock runs (Earth's delay runs on that clock)
+    const sim = $("#mc-sim");
+    if (!replay && running && S.crewOnline) {
+      sim.hidden = false;
+      sim.className = `mc-sim ${S.speed > 0 ? "run" : "paused"}`;
+      sim.innerHTML = S.speed > 0
+        ? `<b>EVA clock running at ${S.speed}×</b><span>One light time (${fmtLight(S.lightTimeS)} on Mars' clock) passes in ${fmtReal(S.lightTimeS / S.speed)} here.</span>`
+        : S.hidden
+          ? `<b>The crew's planner is in a background tab</b><span>The browser stops the EVA clock there, and with it everything in flight between Mars and Earth. Keep the planner visible (side by side, or on another device) to keep the EVA running.</span>`
+          : `<b>The crew paused the simulation</b><span>The EVA clock is stopped, and so is everything still in flight between Mars and Earth. It resumes when they press play.</span>`;
+    } else if (!replay && running && !S.crewOnline) {
+      sim.hidden = false;
+      sim.className = "mc-sim paused";
+      sim.innerHTML = `<b>No crew device connected</b><span>The EVA clock runs on at the last speed until what is in flight has arrived.</span>`;
+    } else sim.hidden = true;
 
     // banner: an alert that has reached Earth
     const banner = $("#mc-banner");
