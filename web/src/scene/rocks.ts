@@ -81,6 +81,7 @@ const FRAG = /* glsl */ `
       float sg = pow(max(dot(normalize(vW - cameraPosition), uSunDir), 0.0), 14.0) * smoothstep(-0.06, 0.02, uSunDir.y);
       gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.6, 0.72, 0.9), fogFactor * sg * 0.45);
     #endif
+    gl_FragColor.rgb = outColor(gl_FragColor.rgb);
   }
 `;
 
@@ -164,7 +165,7 @@ export class Rocks {
     shared: ShadowUniforms,
   ) {
     const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog]);
-    Object.assign(uniforms, { uMap: map, uShadowAoi: shared.uShadowAoi, uShadowAoiN: shared.uShadowAoiN, uSunDir: shared.uSunDir, uHalf: { value: half }, uMatRock: this.matRock, uMatRockSize: this.matRockSize });
+    Object.assign(uniforms, { uMap: map, uShadowAoi: shared.uShadowAoi, uShadowAoiN: shared.uShadowAoiN, uSunDir: shared.uSunDir, uHalf: { value: half }, uMatRock: this.matRock, uMatRockSize: this.matRockSize, uLinearOut: shared.uLinearOut });
     const material = new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG, fog: true });
     this.meshes = [11, 23, 37].map((seed) => {
       const mesh = new THREE.InstancedMesh(rockGeometry(seed), material, MAX_PER_SHAPE);

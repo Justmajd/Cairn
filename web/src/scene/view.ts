@@ -8,6 +8,7 @@ import type { SiteData } from "../data/loaders";
 import type { MeasuredPath, PathSample, Poi, RegionMeta, XY } from "../types";
 import { esc } from "../ui/dom";
 import { ic } from "../ui/icons";
+import { PostFX } from "./post";
 import { Rocks } from "./rocks";
 import { buildRegion, buildSky, buildTerrain, byteTexture, packedGridTexture, geologyLut, heightTexture, rgbaTexture, LAYER_IDS, LayerId, makeShadowUniforms, ShadowBaker, ShadowUniforms, SKY_HORIZON, Terrain } from "./terrain";
 
@@ -90,6 +91,8 @@ export class SceneView {
   private bakedFast = false;
   private readonly rocks: Rocks;
   private readonly rocksOn: boolean;
+  private readonly post: PostFX | null;
+  private postSuspended = false;
   private fogBase = new THREE.Color();
   private dayK = 1;
   private sunChangedAt = 0;
@@ -158,7 +161,7 @@ export class SceneView {
     this.fogBase = this.fog.color.clone();
     this.scene.fog = this.fog;
 
-    this.sky = buildSky(this.shared.uSunDir);
+    this.sky = buildSky(this.shared.uSunDir, this.shared.uLinearOut);
     this.sky.mesh.scale.setScalar(40000);
     this.scene.add(this.sky.mesh);
 
@@ -192,6 +195,7 @@ export class SceneView {
     this.scene.add(this.terrain.mesh);
     this.rocks = new Rocks(grid, this.half, (x, y) => (grid.heightAt(x, y) - this.zRef) * this.exag, this.terrain.uniforms.uMap as THREE.IUniform<THREE.Texture>, sh);
     this.rocksOn = quality === "high";
+    this.post = quality === "high" ? new PostFX() : null;
     this.scene.add(this.rocks.group);
     this.region = tex.region ? buildRegion(tex.region.meta, tex.region.heights, this.zRef, tex.region.map, grid.size, quality === "low" ? 2 : 1, sh) : null;
     if (this.region) this.scene.add(this.region.mesh);
@@ -248,6 +252,14 @@ export class SceneView {
     u.uMatOn.value = 1;
     this.rocks.setMaterial(m.rock.texture, m.rock.sizeM);
     this.dirty = true;
+  }
+
+  /** Draw the 3D views through the post-processing pipeline (AO, glare); the flat map directly. */
+  drawScene(): void {
+    const post = this.post && !this.postSuspended && this.mode !== "plan" ? this.post : null;
+    this.shared.uLinearOut.value = post ? 1 : 0;
+    if (post) post.render(this.renderer, this.scene, this.camera);
+    else this.renderer.render(this.scene, this.camera);
   }
 
   /** Compile every shader without blocking (KHR_parallel_shader_compile where available). */
@@ -312,7 +324,7 @@ export class SceneView {
     const fading = Math.abs(this.fogTarget - this.fog.density) > 1e-7;
     if (!moved && !fading && !this.dirty) return false;
     this.dirty = false;
-    this.renderer.render(this.scene, this.camera);
+    this.drawScene();
     this.labels.render(this.scene, this.camera);
     this.declutterLabels();
     return true;
@@ -392,7 +404,10 @@ export class SceneView {
     const avg = p.sum / p.n;
     p.sum = 0;
     p.n = 0;
-    if (avg > 21 && this.dpr > 1) {
+    if (avg > 21 && this.post && !this.postSuspended && this.mode !== "plan") {
+      this.postSuspended = true; // slow GPU: drop the post effects (AO, glare) before dropping resolution
+      p.good = 0;
+    } else if (avg > 21 && this.dpr > 1) {
       if (now - p.raisedAt < 3000) {
         this.dprMax = this.dpr - 0.25; // the last step up was too much: stay below it
         p.raisedAt = -1e9;

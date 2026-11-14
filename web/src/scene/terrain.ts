@@ -13,6 +13,11 @@ export const LAYER_IDS = { none: 0, risk: 1, slope: 2, sand: 3, thermal: 4, geol
 export type LayerId = keyof typeof LAYER_IDS;
 
 export const COMMON = /* glsl */ `
+  // CAIRN's shaders compute display colours; with post-processing on they are decoded to linear here and
+  // encoded again by the final pass (so they mix correctly with three.js's own materials, which are linear)
+  uniform float uLinearOut;
+  vec3 srgbToLinear(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }
+  vec3 outColor(vec3 c) { return uLinearOut > 0.5 ? srgbToLinear(clamp(c, 0.0, 1.0)) : c; }
   // HiRISE / CTX are single grey bands: tint with a Mars ramp (display colour, not measured colour).
   vec3 marsTint(float g) {
     vec3 c = mix(vec3(0.13, 0.075, 0.05), vec3(0.66, 0.40, 0.255), smoothstep(0.0, 0.55, g));
@@ -452,6 +457,7 @@ const AOI_FRAG = /* glsl */ `
       float sg = pow(max(dot(normalize(vWorld - cameraPosition), uSunDir), 0.0), 14.0) * smoothstep(-0.06, 0.02, uSunDir.y);
       gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.6, 0.72, 0.9), fogFactor * sg * 0.45);
     #endif
+    gl_FragColor.rgb = outColor(gl_FragColor.rgb);
   }
 `;
 
@@ -488,6 +494,7 @@ const REGION_FRAG = /* glsl */ `
       float sg = pow(max(dot(normalize(vWorld - cameraPosition), uSunDir), 0.0), 14.0) * smoothstep(-0.06, 0.02, uSunDir.y);
       gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.6, 0.72, 0.9), fogFactor * sg * 0.45);
     #endif
+    gl_FragColor.rgb = outColor(gl_FragColor.rgb);
   }
 `;
 
@@ -577,6 +584,8 @@ export interface ShadowUniforms {
   uShadowAoiN: THREE.IUniform<number>;
   uShadowReg: THREE.IUniform<THREE.Texture | null>;
   uShadowRegN: THREE.IUniform<number>;
+  /** 1 while the post-processing pipeline is on: shaders write linear colour, the final pass encodes it */
+  uLinearOut: THREE.IUniform<number>;
 }
 
 /** Heights (metres above `zRef`) as a half-float texture: hardware-filtered and precise to ~0.25 m. */
@@ -617,6 +626,7 @@ export function makeShadowUniforms(): ShadowUniforms {
     uShadowAoiN: { value: 2 },
     uShadowReg: { value: null },
     uShadowRegN: { value: 2 },
+    uLinearOut: { value: 0 },
   };
 }
 
@@ -991,7 +1001,7 @@ export function buildRegion(region: RegionMeta, heights: Float32Array, zRef: num
 }
 
 /** Sky dome: butterscotch haze at the horizon, darker overhead; a flat dark backdrop in the map view. */
-export function buildSky(sunDir: THREE.IUniform<THREE.Vector3>): { mesh: THREE.Mesh; setMapMode: (k: number) => void; setSunElevation: (deg: number) => void } {
+export function buildSky(sunDir: THREE.IUniform<THREE.Vector3>, linearOut: THREE.IUniform<number>): { mesh: THREE.Mesh; setMapMode: (k: number) => void; setSunElevation: (deg: number) => void } {
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
@@ -1005,10 +1015,12 @@ export function buildSky(sunDir: THREE.IUniform<THREE.Vector3>): { mesh: THREE.M
       uMap: { value: 1 },
       uDay: { value: 1 },
       uSunDir: sunDir,
+      uLinearOut: linearOut,
     },
     vertexShader: /* glsl */ `varying vec3 vDir; void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */ `
       uniform vec3 uHorizon; uniform vec3 uZenith; uniform vec3 uMapBg; uniform float uMap; uniform float uDay; uniform vec3 uSunDir;
+      uniform float uLinearOut;
       varying vec3 vDir;
       void main() {
         vec3 d = normalize(vDir);
@@ -1025,7 +1037,9 @@ export function buildSky(sunDir: THREE.IUniform<THREE.Vector3>): { mesh: THREE.M
         float glow = (pow(m, 18.0) * (0.16 + 0.6 * low) + pow(m, 300.0) * 0.45) * up;
         c = mix(c, vec3(0.6, 0.72, 0.9) * mix(0.55, 1.0, uDay), clamp(glow, 0.0, 0.85));
         c = mix(c, vec3(1.0, 0.98, 0.94), smoothstep(0.9999893, 0.9999953, mu) * up);
-        gl_FragColor = vec4(mix(c, uMapBg, uMap), 1.0);
+        c = mix(c, uMapBg, uMap);
+        if (uLinearOut > 0.5) c = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
+        gl_FragColor = vec4(c, 1.0);
       }`,
   });
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), material);
