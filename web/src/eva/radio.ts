@@ -157,8 +157,11 @@ export interface RelaySuggestion {
 export function bestRelay(shadow: Uint8Array, grid: TerrainGrid, legs: MeasuredPath[], mastM = RELAY_MAST_M): RelaySuggestion | null {
   const before = radioCoverage(shadow, grid, legs);
   if (before.lostS < 30) return null;
-  // blackout steps of the walk, in walking order
-  const lost: { x: number; y: number; dt: number; order: number }[] = [];
+  // blackout steps of the walk, in walking order; candidates at least every `spacing` metres.  Both are
+  // capped (about 160 candidates, 400 blackout points) so a long plan still searches in well under a second.
+  const totalM = legs.reduce((sum, l) => sum + l.distance, 0);
+  const spacing = Math.max(8, totalM / 160);
+  const lostAll: { x: number; y: number; dt: number; order: number }[] = [];
   const cands: { x: number; y: number; leg: number; sample: number; order: number; alongM: number }[] = [];
   let order = 0;
   let along = 0;
@@ -170,14 +173,22 @@ export function bestRelay(shadow: Uint8Array, grid: TerrainGrid, legs: MeasuredP
       along += b.dist - a.dist;
       const mx = (a.x + b.x) / 2;
       const my = (a.y + b.y) / 2;
-      if (!inContact(shadow, grid, mx, my)) lost.push({ x: mx, y: my, dt: b.time - a.time, order });
+      if (!inContact(shadow, grid, mx, my)) lostAll.push({ x: mx, y: my, dt: b.time - a.time, order });
       // the relay's mast sees the rover where a suit antenna would need to rise by less than the extra height
-      if (along - lastCand >= 8 && radioDepthAt(shadow, grid, b.x, b.y) <= mastM - SUIT_ANTENNA_M) {
+      if (along - lastCand >= spacing && radioDepthAt(shadow, grid, b.x, b.y) <= mastM - SUIT_ANTENNA_M) {
         cands.push({ x: b.x, y: b.y, leg: li, sample: i, order, alongM: along });
         lastCand = along;
       }
     }
   });
+  // thin the blackout points evenly, carrying the time of the ones skipped
+  const stride = Math.max(1, Math.ceil(lostAll.length / 400));
+  const lost: typeof lostAll = [];
+  for (let i = 0; i < lostAll.length; i += stride) {
+    let dt = 0;
+    for (let j = i; j < Math.min(lostAll.length, i + stride); j++) dt += lostAll[j].dt;
+    lost.push({ ...lostAll[i], dt });
+  }
   let best: (typeof cands)[number] | null = null;
   let bestS = 0;
   for (const c of cands) {
