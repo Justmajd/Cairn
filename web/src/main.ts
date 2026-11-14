@@ -122,9 +122,10 @@ async function boot(): Promise<void> {
   performance.mark("cairn:ready");
   progress("Ready", 1);
   $("#loading").hidden = true;
-  // a shared plan link opens straight on the plan
+  // a shared plan link opens straight on the plan; ?demo=1 plays the guided demo (for a booth screen or recording)
   const sharedPlan = /(^#|&)(stops|add)=/.test(location.hash);
-  if (query.get("skip") !== "1" && !sharedPlan) showBriefing(site, () => {}, sites);
+  if (query.get("demo") === "1") void app.startDemo();
+  else if (query.get("skip") !== "1" && !sharedPlan) showBriefing(site, () => {}, sites);
 
   if (useHi) {
     loadTexture(site.base + hi!.file)
