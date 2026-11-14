@@ -1,7 +1,8 @@
 import {
-  ArrowRight, BookOpen, Box, CalendarClock, Check, ChevronDown, ChevronUp, Clock, Compass, Database, Footprints,
-  Home, Image, Info, Layers, Map, Minus, Pause, Play, Plus, Radiation, RotateCcw, RotateCw, Route, ScanEye,
-  SkipForward, SlidersHorizontal, Square, Telescope, TriangleAlert, Video, X, createElement, type IconNode,
+  ArrowRight, Bandage, BookOpen, Box, CalendarClock, Check, ChevronDown, ChevronUp, Clock, Compass, Database, Download,
+  Footprints, GitCompareArrows, HardDriveDownload, Home, Image, Info, Layers, Map, Minus, Pause, Play, Plus, Radiation,
+  RadioTower, RotateCcw, RotateCw, Route, ScanEye, Siren, SkipForward, SlidersHorizontal, Square, Telescope,
+  TriangleAlert, Video, Volume2, VolumeX, Wind, X, createElement, type IconNode,
 } from "lucide";
 
 /** Lucide icons (ISC licence) as SVG strings, for use in HTML templates. */
@@ -49,4 +50,13 @@ export const ic = {
   later: svg(CalendarClock, 16),
   science: svg(Telescope, 14),
   chev: svg(ChevronDown, 14),
+  download: svg(Download, 15),
+  voiceOn: svg(Volume2, 15),
+  voiceOff: svg(VolumeX, 15),
+  radio: svg(RadioTower, 14),
+  siren: svg(Siren, 15),
+  leak: svg(Wind, 15),
+  ankle: svg(Bandage, 15),
+  compare: svg(GitCompareArrows, 14),
+  offline: svg(HardDriveDownload, 15),
 };

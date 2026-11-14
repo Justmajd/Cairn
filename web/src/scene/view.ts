@@ -371,17 +371,20 @@ export class SceneView {
     );
   }
 
-  /** Where the camera's line of sight first meets the ground, marched over the height grids. */
-  private sightOnGround(maxDist: number): THREE.Vector3 | null {
-    const o = this.camera.position;
-    const d = this.camera.getWorldDirection(sightDir);
+  /**
+   * Where a ray first meets the ground (walk area or surroundings), marched over the height grids:
+   * each step is a fraction of the height above the ground, so it is fine near the surface and fast above it.
+   */
+  private marchRay(o: THREE.Vector3, d: THREE.Vector3, maxDist: number): THREE.Vector3 | null {
     const above = (t: number) => o.y + d.y * t - this.groundYBelow(o.x + d.x * t, o.z + d.z * t);
-    if (above(0) <= 0) return null;
-    const steps = 96;
+    let h = above(0);
+    if (h <= 0) return null;
     let prev = 0;
-    for (let i = 1; i <= steps; i++) {
-      const t = Math.pow(i / steps, 1.5) * maxDist; // finer steps close to the camera
-      if (above(t) <= 0) {
+    let t = 0;
+    for (let i = 0; i < 700 && t < maxDist; i++) {
+      t += Math.max(0.5, h * 0.45);
+      h = above(t);
+      if (h <= 0) {
         let a = prev;
         let b = t;
         for (let k = 0; k < 14; k++) {
@@ -394,6 +397,11 @@ export class SceneView {
       prev = t;
     }
     return null;
+  }
+
+  /** Where the camera's line of sight meets the ground. */
+  private sightOnGround(maxDist: number): THREE.Vector3 | null {
+    return this.marchRay(this.camera.position, this.camera.getWorldDirection(sightDir), maxDist);
   }
 
   /**
@@ -730,14 +738,25 @@ export class SceneView {
     return !!this.tween || !!this.fly || this.mode === "fly";
   }
 
-  /** Centre the view on a ground point (double-click). */
+  /** Glide to a ground point in the walk area. */
   focusOn(p: XY): void {
+    this.glideTo(this.ground(p.x, p.y));
+  }
+
+  /**
+   * Double-click: glide to a world point on the ground — walk area or surroundings — keeping the
+   * viewing angle and moving in closer (to 50 % of the distance in 3D, 60 % on the map).
+   */
+  private glideTo(target: THREE.Vector3): void {
     if (this.tween || this.fly || this.mode === "walk" || this.mode === "fly") return;
-    const target = this.ground(p.x, p.y);
-    const delta = target.clone().sub(this.controls.target);
-    if (this.mode === "plan") delta.y = 0;
+    const plan = this.mode === "plan";
+    const to = target.clone();
+    if (plan) to.y = this.controls.target.y; // the map keeps its pivot height
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    const dist = offset.length();
+    offset.setLength(Math.min(dist, plan ? Math.max(300, dist * 0.6) : Math.max(140, dist * 0.5)));
     const orbit = this.mode === "orbit";
-    this.startTween(this.camera.position.clone().add(delta), this.controls.target.clone().add(delta), this.camera.fov, 0.5, () => {
+    this.startTween(to.clone().add(offset), to, this.camera.fov, 0.9, () => {
       if (orbit) this.releaseOrbit();
       else {
         this.controls.enabled = true;
@@ -928,10 +947,21 @@ export class SceneView {
     this.shadowDirty = true;
   }
 
+  /** Swap in a sharper HiRISE image of the walk area (the 25 cm one, once it has downloaded). */
+  setSurfaceImage(map: THREE.Texture, px: number): void {
+    const u = this.terrain.uniforms;
+    const old = u.uMap.value as THREE.Texture;
+    u.uMap.value = map;
+    (u.uMapSize.value as THREE.Vector2).set(px, px);
+    if (old !== map) old.dispose();
+    this.dirty = true;
+  }
+
   /** Colour the walk area with a data layer (computed on the GPU from the data grids). */
   setLayer(id: LayerId, opacity: number): void {
     const u = this.terrain.uniforms;
     if (id === "shelter" && this.shelterTex) u.uShelter.value = this.shelterTex;
+    if (id === "radio" && this.radioTex) u.uRadio.value = this.radioTex;
     u.uLayer.value = LAYER_IDS[id];
     u.uLayerMix.value = opacity;
     this.dirty = true;
@@ -940,6 +970,17 @@ export class SceneView {
   setLayerOpacity(opacity: number): void {
     this.terrain.uniforms.uLayerMix.value = opacity;
     this.dirty = true;
+  }
+
+  /** Radio shadow per node (depth below the rover's line of sight, see eva/radio). */
+  private radioTex: THREE.DataTexture | null = null;
+  setRadioShadow(depth: Uint8Array): void {
+    this.radioTex?.dispose();
+    this.radioTex = byteTexture(depth, this.site.grid.n);
+    if (this.terrain.uniforms.uLayer.value === LAYER_IDS.radio) {
+      this.terrain.uniforms.uRadio.value = this.radioTex;
+      this.dirty = true;
+    }
   }
 
   /** Minutes of walking back to the shelter per node, from the return-cost field (255 = cut off). */
@@ -1252,7 +1293,13 @@ export class SceneView {
     el.addEventListener("dblclick", (ev) => {
       window.clearTimeout(clickTimer);
       const p = this.pick(ev.clientX, ev.clientY);
-      if (p) this.focusOn(p);
+      if (p) return this.focusOn(p);
+      // outside the walk area: find the spot on the surrounding terrain
+      const rect = el.getBoundingClientRect();
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(((ev.clientX - rect.left) / rect.width) * 2 - 1, -((ev.clientY - rect.top) / rect.height) * 2 + 1), this.camera);
+      const hit = this.marchRay(ray.ray.origin, ray.ray.direction, this.camera.far);
+      if (hit) this.glideTo(hit);
     });
     el.addEventListener("contextmenu", (ev) => ev.preventDefault());
     window.addEventListener("keydown", (ev) => {

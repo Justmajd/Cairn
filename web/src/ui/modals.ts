@@ -1,3 +1,4 @@
+import { ROVER_ANTENNA_M, SUIT_ANTENNA_M } from "../eva/radio";
 import type { SiteData } from "../data/loaders";
 import { ALERT_FACTOR } from "../replay/mission";
 import { EvaParams, PARAM_NOTES } from "../eva/params";
@@ -63,6 +64,11 @@ export function showAssumptions(site: SiteData, p: EvaParams): void {
        <li><b>Model:</b> ${esc(r.model.description)} Modelled peak: ${Math.round(r.model.peakUGyH).toLocaleString()} µGy/h. Assumed onset at Mars: ${esc(r.event.assumedOnsetUtc.replace("T", " ").replace(":00Z", " UTC"))}.</li>
        <li><b>Alert:</b> CAIRN raises the alarm when the outdoor dose rate exceeds ${ALERT_FACTOR}× background. The real DONKI notification (${esc(r.donki.alert.messageID)}) was issued ${r.donki.alert.delayAfterCmeStartH.toFixed(1)} hours after the eruption and did not list Mars — a crew needs on-site detection.</li>
        <li><b>Shelter:</b> dose rate inside the rover is ${p.shelterFactor}× outdoors (assumption).</li>
+     </ul>
+     <h3>Radio contact and practice emergencies</h3>
+     <ul>
+       <li><b>Radio:</b> suit radios work on UHF, which needs a clear line of sight on Mars. CAIRN sweeps rays from an antenna ${ROVER_ANTENNA_M} m up the rover's mast across the 1 m HiRISE terrain (and the curvature of Mars) and marks where a suit antenna ${SUIT_ANTENNA_M} m above the ground loses sight of it. No relay or reflections are assumed: a worst case.</li>
+       <li><b>Suit leak:</b> oxygen use doubles from that moment. <b>Twisted ankle:</b> walking takes twice as long. In both, CAIRN routes the quickest safe way home from the current position and compares the oxygen needed with what is left (both assumptions for practice, not suit data).</li>
      </ul>
      <h3>Sun, shadows and terrain shielding</h3>
      <ul>

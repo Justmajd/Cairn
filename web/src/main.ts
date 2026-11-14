@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { App } from "./app";
-import { loadSite, loadSites } from "./data/loaders";
+import { dataUrl, loadSite, loadSites } from "./data/loaders";
 import { DEFAULT_PARAMS } from "./eva/params";
 import { Router } from "./routing/client";
 import { SceneView } from "./scene/view";
@@ -11,6 +11,7 @@ import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "./styles/main.css";
 import { showBriefing } from "./ui/briefing";
+import { initOffline } from "./ui/offline";
 import { $ } from "./ui/dom";
 
 function progress(label: string, fraction: number): void {
@@ -35,10 +36,11 @@ async function boot(): Promise<void> {
 
   const [site, sites] = await Promise.all([loadSite(progress), loadSites()]);
   document.title = `CAIRN — ${site.meta.name.split(" — ")[0]} · Marswalk Route Planner`;
-  // Use the full 25 cm HiRISE image when the GPU can hold an 8192 px texture; otherwise the 50 cm version.
+  // Start on the 50 cm HiRISE image; the full 25 cm one streams in after the planner is up,
+  // when the GPU can hold an 8192 px texture.
   const hi = site.meta.texture.hi;
   const useHi = !!hi && quality === "high" && query.get("tex") !== "4k" && maxTextureSize() >= hi.px;
-  const chosen = useHi ? hi! : site.meta.texture;
+  const chosen = site.meta.texture;
   progress(`HiRISE surface image (${Math.round(chosen.mPerPx * 100)} cm per pixel)`, 0.75);
   const grey = (t: THREE.Texture) => {
     t.format = THREE.RedFormat; // one grey band: a quarter of the GPU memory of RGBA
@@ -49,7 +51,7 @@ async function boot(): Promise<void> {
   };
   const [texture, relief, regionMap] = await Promise.all([
     loadTexture(site.base + chosen.file).then(grey),
-    loadTexture(site.base + (site.meta.relief?.file ?? "relief.png")),
+    loadTexture(dataUrl(site.meta.relief?.file ?? "relief.png")),
     site.region ? loadTexture(site.base + site.region.meta.texture.file).then(grey) : Promise.resolve(null),
   ]);
   relief.generateMipmaps = true;
@@ -73,12 +75,25 @@ async function boot(): Promise<void> {
   if (regionMap) regionMap.anisotropy = texture.anisotropy;
   const app = new App(site, view, router, field, sites);
   view.start((dt) => app.tick(dt));
-  (window as unknown as { cairn: unknown }).cairn = { app, view, site, field, textureMPerPx: chosen.mPerPx };
+  const debug = { app, view, site, field, textureMPerPx: chosen.mPerPx };
+  (window as unknown as { cairn: unknown }).cairn = debug;
 
   progress("Ready", 1);
   $("#loading").hidden = true;
   if (query.get("skip") !== "1") showBriefing(site, () => {}, sites);
+
+  if (useHi) {
+    loadTexture(site.base + hi!.file)
+      .then((t) => {
+        grey(t).anisotropy = texture.anisotropy;
+        view.setSurfaceImage(t, hi!.px);
+        debug.textureMPerPx = hi!.mPerPx;
+      })
+      .catch((err) => console.warn("25 cm image not loaded; staying on 50 cm", err));
+  }
 }
+
+initOffline();
 
 // Trackpad pinch arrives as ctrl+wheel: keep it for the map instead of zooming the whole page.
 window.addEventListener("wheel", (ev) => ev.ctrlKey && ev.preventDefault(), { passive: false });

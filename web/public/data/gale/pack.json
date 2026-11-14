@@ -1,0 +1,45 @@
+{
+ "version": 1,
+ "files": {
+  "height.u16": {
+   "file": "height.u16.pk",
+   "enc": "delta16",
+   "bytes": 2101250
+  },
+  "slope.u8": {
+   "file": "slope.u8.pk",
+   "enc": "delta8",
+   "bytes": 1050625
+  },
+  "sand.u8": {
+   "file": "sand.u8.pk",
+   "enc": "delta8",
+   "bytes": 1050625
+  },
+  "effort.u8": {
+   "file": "effort.u8.pk",
+   "enc": "delta8",
+   "bytes": 1050625
+  },
+  "risk.u8": {
+   "file": "risk.u8.pk",
+   "enc": "gzip",
+   "bytes": 1050625
+  },
+  "shield.u8": {
+   "file": "shield.u8.pk",
+   "enc": "delta8",
+   "bytes": 1050625
+  },
+  "region.u16": {
+   "file": "region.u16.pk",
+   "enc": "delta16",
+   "bytes": 219122
+  },
+  "relief.png": {
+   "file": "relief.webp",
+   "enc": "image",
+   "bytes": 4954971
+  }
+ }
+}

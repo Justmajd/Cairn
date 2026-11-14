@@ -7,6 +7,7 @@ import urllib.request
 import numpy as np
 
 from common import CFG, HERE, N, OUT, RAW, SITE, SIZE, in_aoi, local_to_node, lonlat_to_local, write_json
+from pack_web import read_grid
 
 CAMERA_NAMES = {"NAVCAM_LEFT": "Navigation Camera (left)", "MCZ_LEFT": "Mastcam-Z (left)",
                 "SHERLOC_WATSON": "SHERLOC WATSON close-up camera", "FRONT_HAZCAM_LEFT_A": "Front Hazard Camera",
@@ -49,7 +50,7 @@ def main():
     by_rmc = {f["properties"]["RMC"]: f["properties"] for f in way}
     index = {r["id"]: r for rows in json.load(open(os.path.join(RAW, "images_index.json"))).values() for r in rows}
     cfg = json.load(open(os.path.join(HERE, "config", STOPS)))
-    slope = np.fromfile(os.path.join(OUT, "slope.u8"), dtype=np.uint8).reshape(N, N)
+    slope = np.frombuffer(read_grid("slope.u8"), dtype=np.uint8).reshape(N, N)
     os.makedirs(os.path.join(OUT, "images"), exist_ok=True)
 
     pois = []

@@ -100,3 +100,33 @@ describe("Mission with a storm", () => {
     expect(pr.horizonS).toBeGreaterThanOrEqual(m.plannedEndS);
   });
 });
+
+describe("Practice emergencies", () => {
+  it("a suit leak doubles oxygen use on the walk home and ends the EVA in the rover", () => {
+    const m = new Mission(plan(), rad, P, lookup, null);
+    m.advance(300); // part-way to the first stop
+    const p = m.pose();
+    const home = measurePath(grid, [{ x: p.x, y: p.y }, rover], P);
+    const before = m.o2UsedL;
+    const em = m.emergencyHome("leak", home, rover);
+    expect(em.needL).toBeCloseTo(2 * (home.energy + P.restingW * home.time) / (P.kJPerLitreO2 * 1000), 6);
+    const events = run(m, 5);
+    expect(events.some((e) => e.type === "sheltered")).toBe(true);
+    expect(events[events.length - 1]).toEqual({ type: "complete", aborted: true });
+    expect(m.visited).toEqual([]);
+    // walk home used twice the normal oxygen (plus two minutes at rest in the rover)
+    const restInRover = (P.restingW * 120) / (P.kJPerLitreO2 * 1000);
+    expect(m.o2UsedL - before).toBeCloseTo(em.needL + restInRover, 3);
+  });
+
+  it("a twisted ankle doubles the time home", () => {
+    const m = new Mission(plan(), rad, P, lookup, null);
+    m.advance(300);
+    const p = m.pose();
+    const home = measurePath(grid, [{ x: p.x, y: p.y }, rover], P);
+    const em = m.emergencyHome("ankle", home, rover);
+    expect(em.homeTimeS).toBeCloseTo(home.time * 2, 6);
+    const t0 = m.t;
+    run(m, 5, (e) => e.type === "sheltered" && expect(m.t - t0).toBeCloseTo(home.time * 2, 3));
+  });
+});

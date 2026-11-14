@@ -9,7 +9,7 @@ export const SKY_HORIZON = 0xd9a878;
 export const MAP_BG = 0x0f0d0c;
 
 /** Map layers coloured on the GPU from the data grids. */
-export const LAYER_IDS = { none: 0, risk: 1, slope: 2, sand: 3, thermal: 4, geology: 5, shelter: 6, shield: 7, minerals: 8 } as const;
+export const LAYER_IDS = { none: 0, risk: 1, slope: 2, sand: 3, thermal: 4, geology: 5, shelter: 6, shield: 7, minerals: 8, radio: 9 } as const;
 export type LayerId = keyof typeof LAYER_IDS;
 
 const COMMON = /* glsl */ `
@@ -153,6 +153,7 @@ const AOI_FRAG = /* glsl */ `
   uniform sampler2D uRisk;
   uniform sampler2D uThermal;
   uniform sampler2D uShelter;
+  uniform sampler2D uRadio;
   uniform sampler2D uShield;
   uniform sampler2D uMinerals;
   uniform sampler2D uGeo;
@@ -199,21 +200,44 @@ const AOI_FRAG = /* glsl */ `
     return c4;
   }
 
+  // Hazard colours from the Okabe-Ito palette (readable with red-green colour blindness):
+  // sky blue = easy, yellow, orange, vermillion = hard; impassable ground is purple AND hatched,
+  // so it never depends on colour alone.
+  const vec3 OK_BLUE = vec3(0.34, 0.71, 0.91);
+  const vec3 OK_YELLOW = vec3(0.94, 0.89, 0.26);
+  const vec3 OK_ORANGE = vec3(0.9, 0.62, 0.0);
+  const vec3 OK_VERMILLION = vec3(0.84, 0.37, 0.0);
+  const vec3 OK_PURPLE = vec3(0.55, 0.16, 0.45);
+
+  // diagonal stripes on the ground, anti-aliased so they fade to a flat tint when zoomed far out
+  float hatch(float spacing) {
+    float k = (vWorld.x - vWorld.z) / spacing;
+    float w = fwidth(k);
+    float f = abs(fract(k) - 0.5);
+    return 1.0 - smoothstep(0.32 - w, 0.32 + w, f);
+  }
+
+  vec4 impassable(vec4 c, float amount) {
+    vec4 stripes = mix(vec4(OK_PURPLE, 0.86), vec4(0.98, 0.9, 0.96, 0.9), hatch(9.0) * 0.75);
+    return mix(c, stripes, amount);
+  }
+
   vec4 layerColor(vec2 g) {
     if (uLayer == 1) {
       float effort = texture2D(uEffort, g).r * 255.0 / 50.0;
       float riskRaw = texture2D(uRisk, g).r * 255.0;
       float total = effort * min(riskRaw, 254.0) / 50.0;
       vec4 c = ramp(total, 1.0, 1.25, 1.9, 2.8, 4.5,
-        vec4(0.12, 0.78, 0.43, 0.0), vec4(0.12, 0.78, 0.43, 0.35), vec4(0.94, 0.86, 0.16, 0.55),
-        vec4(0.98, 0.51, 0.08, 0.68), vec4(0.9, 0.2, 0.16, 0.78));
-      return mix(c, vec4(0.48, 0.0, 0.16, 0.86), smoothstep(200.0, 250.0, riskRaw));
+        vec4(OK_BLUE, 0.0), vec4(OK_BLUE, 0.4), vec4(OK_YELLOW, 0.58),
+        vec4(OK_ORANGE, 0.7), vec4(OK_VERMILLION, 0.8));
+      return impassable(c, smoothstep(200.0, 250.0, riskRaw));
     }
     if (uLayer == 2) {
       float deg = texture2D(uSlope, g).r * 255.0;
-      return ramp(deg, 5.0, 10.0, 15.0, 20.0, 25.0,
-        vec4(0.16, 0.78, 0.47, 0.0), vec4(0.47, 0.86, 0.31, 0.45), vec4(1.0, 0.86, 0.0, 0.6),
-        vec4(1.0, 0.55, 0.0, 0.7), vec4(0.92, 0.16, 0.16, 0.82));
+      vec4 c = ramp(deg, 5.0, 10.0, 15.0, 20.0, 25.0,
+        vec4(OK_BLUE, 0.0), vec4(OK_BLUE, 0.45), vec4(OK_YELLOW, 0.6),
+        vec4(OK_ORANGE, 0.72), vec4(OK_VERMILLION, 0.82));
+      return impassable(c, step(250.0, texture2D(uRisk, g).r * 255.0));
     }
     if (uLayer == 3) {
       float s = texture2D(uSand, g).r;
@@ -252,19 +276,28 @@ const AOI_FRAG = /* glsl */ `
         vec4(0.55, 0.85, 1.0, 0.72), vec4(0.85, 0.97, 1.0, 0.85));
       return c;
     }
+    if (uLayer == 9) {
+      // radio shadow: metres the suit antenna sits below the line of sight to the rover's mast
+      float depth = texture2D(uRadio, g).r * 255.0 * 0.25;
+      if (depth <= 0.5) return vec4(0.0);
+      vec4 c = mix(vec4(0.62, 0.66, 0.9, 0.4), vec4(0.06, 0.07, 0.18, 0.74), smoothstep(0.5, 5.0, depth));
+      // dots: dead zones read as "no signal" without relying on colour
+      vec2 cellUv = fract(vWorld.xz / 7.0) - 0.5;
+      float pip = 1.0 - smoothstep(0.12, 0.12 + fwidth(vWorld.x) / 7.0 * 1.5, length(cellUv));
+      return mix(c, vec4(0.85, 0.88, 1.0, c.a), pip * 0.55 * step(2.0, depth));
+    }
     if (uLayer == 6) {
       float raw = texture2D(uShelter, g).r * 255.0;
       float minutes = raw / 4.0;
       vec4 c = ramp(minutes, 0.0, 6.0, 12.0, 18.0, 24.0,
-        vec4(0.2, 0.95, 0.5, 0.55), vec4(0.75, 0.95, 0.25, 0.55), vec4(1.0, 0.8, 0.15, 0.6),
-        vec4(1.0, 0.45, 0.1, 0.65), vec4(0.85, 0.12, 0.25, 0.68));
-      if (minutes > 24.0) c = mix(c, vec4(0.85, 0.12, 0.25, 0.68), clamp((minutes - 24.0) / 12.0, 0.0, 1.0));
+        vec4(OK_BLUE, 0.55), vec4(OK_YELLOW, 0.55), vec4(OK_ORANGE, 0.62),
+        vec4(OK_VERMILLION, 0.66), vec4(OK_PURPLE, 0.7));
       // contour every 2 minutes, one screen pixel wide at any zoom
       float k = minutes / 2.0;
       float w = fwidth(k) * 1.1;
       float line = 1.0 - smoothstep(0.0, w, min(fract(k), 1.0 - fract(k)));
       c = mix(c, vec4(0.05, 0.03, 0.02, 0.85), line * 0.8);
-      return mix(c, vec4(0.25, 0.0, 0.12, 0.85), smoothstep(240.0, 252.0, raw));
+      return impassable(c, smoothstep(240.0, 252.0, raw));
     }
     return vec4(0.0);
   }
@@ -666,6 +699,7 @@ export function buildTerrain(
     uRisk: { value: layers.risk },
     uThermal: { value: layers.thermal },
     uShelter: { value: layers.slope },
+    uRadio: { value: layers.slope },
     uGeo: { value: layers.geology },
     uGeoLut: { value: layers.geoLut },
     uShield: { value: layers.shield },

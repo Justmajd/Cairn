@@ -1,11 +1,12 @@
 import type { LayerId } from "./scene/terrain";
 import { measurePath } from "./data/grid";
 import type { SiteData, SiteEntry } from "./data/loaders";
-import { buildBudget, EvaBudget, o2Litres, ReturnLookup, Segment, walkO2 } from "./eva/budget";
+import { buildBudget, EvaBudget, o2Litres, ReturnLookup, sampleAtTime, Segment, walkO2 } from "./eva/budget";
 import { DEFAULT_PARAMS, EvaParams } from "./eva/params";
 import { RadiationModel } from "./eva/radiation";
+import { RadioCoverage, radioCoverage, radioDepthAt, radioShadow, RADIO_LOST_M } from "./eva/radio";
 import { fmtLmst, MARS_HOUR_S, SolarGeometry, solarGeometry, sunAt, SunPosition } from "./eva/sun";
-import { Mission, MissionEvent } from "./replay/mission";
+import { EmergencyKind, Mission, MissionEvent } from "./replay/mission";
 import type { FieldResult, Router } from "./routing/client";
 import type { SceneView } from "./scene/view";
 import type { MeasuredPath, PathSample, Poi, XY } from "./types";
@@ -17,6 +18,9 @@ import { showAssumptions, showSources, stopCardHtml } from "./ui/modals";
 import { openPanorama } from "./ui/panorama";
 import { DemoRunner, DemoStep } from "./ui/demo";
 import { CueRow, showCueCard } from "./ui/cuecard";
+import { ExportPlan, routeGeoJson, routeKml, saveFile } from "./ui/export";
+import { promptInstall, saveForOffline } from "./ui/offline";
+import { spokenDist, spokenTime, turnWords, Voice } from "./ui/voice";
 
 interface Plan {
   order: Poi[]; // rover, stops…, rover
@@ -24,6 +28,19 @@ interface Plan {
   straight: MeasuredPath[];
   budget: EvaBudget;
   routeMs: number;
+  radio: RadioCoverage;
+}
+
+/** Terrain classes of the Traversability layer (same thresholds as the map colours). */
+const HAZARD_CLASSES = ["easy", "moderate", "hard", "very hard", "impassable"] as const;
+const HAZARD_COLORS = ["#56b4e9", "#f0e442", "#e69f00", "#d55e00", "#8c2973"];
+
+interface RoverCheck {
+  distanceM: number;
+  sols: [number, number];
+  track: number[]; // share of the drive per hazard class
+  area: number[]; // share of the whole walk area per hazard class
+  maxSlopeDeg: number;
 }
 
 interface Layer {
@@ -34,19 +51,23 @@ interface Layer {
   legend: [string, string] | null; // low / high labels under the colour ramp
 }
 
+/** Impassable ground: purple stripes on the map, so it never relies on colour alone. */
+const HATCH = "repeating-linear-gradient(135deg,#8c2973 0 3px,#f2dcec 3px 5px)";
+
 const LAYERS: Layer[] = [
   { id: "none", name: "Image", source: "hirise_ortho", swatch: "linear-gradient(135deg,#5a3422,#b57650 55%,#f0c9a2)", legend: null },
-  { id: "risk", name: "Traversability", source: "hirise_dtm", swatch: "linear-gradient(90deg,#1ec86e,#f0dc28,#fa8214,#e63228,#7a0029)", legend: ["easy", "impassable"] },
-  { id: "slope", name: "Slope", source: "hirise_dtm", swatch: "linear-gradient(90deg,#78dc50,#ffdc00,#ff8c00,#eb2828)", legend: ["5°", "25°+"] },
+  { id: "risk", name: "Traversability", source: "hirise_dtm", swatch: `${HATCH} right / 22% 100% no-repeat, linear-gradient(90deg,#56b4e9,#f0e442,#e69f00 55%,#d55e00 78%)`, legend: ["easy", "impassable"] },
+  { id: "slope", name: "Slope", source: "hirise_dtm", swatch: `${HATCH} right / 22% 100% no-repeat, linear-gradient(90deg,#56b4e9,#f0e442,#e69f00 55%,#d55e00 78%)`, legend: ["5°", "too steep"] },
   { id: "sand", name: "Loose sand", source: "sand", swatch: "linear-gradient(90deg,rgba(255,194,77,.15),#ffc24d)", legend: ["firm", "loose"] },
   { id: "thermal", name: "Night thermal", source: "themis", swatch: "linear-gradient(90deg,#140a5a,#731491,#d13d5c,#fa9926,#faf099)", legend: ["cold · sand", "warm · rock"] },
   { id: "minerals", name: "Minerals", source: "crism", swatch: "linear-gradient(135deg,#b8e04a 0 33%,#4da3ff 33% 66%,#ff5ad1 66%)", legend: null },
   { id: "geology", name: "Geology", source: "geology", swatch: "linear-gradient(90deg,#e69f00 0 25%,#56b4e9 25% 50%,#009e73 50% 75%,#f0e442 75%)", legend: null },
   { id: "shield", name: "Sky shielding", source: "hirise_dtm", swatch: "linear-gradient(90deg,rgba(64,140,255,.2),#4d9bff,#d9f5ff)", legend: ["open sky", "−15 % dose"] },
-  { id: "shelter", name: "To shelter", source: "hirise_dtm", swatch: "linear-gradient(90deg,#33f280,#bff240,#ffcc26,#ff731a,#d91f40)", legend: ["0 min", "24+ min"] },
+  { id: "radio", name: "Radio contact", source: "hirise_dtm", swatch: "radial-gradient(circle at 30% 50%,rgba(158,168,230,.25) 0 30%,#141633 31%)", legend: ["line of sight to the rover", "no signal"] },
+  { id: "shelter", name: "To shelter", source: "hirise_dtm", swatch: "linear-gradient(90deg,#56b4e9,#f0e442,#e69f00,#d55e00,#8c2973)", legend: ["0 min", "24+ min"] },
 ];
 
-const SPEEDS = [60, 120, 300];
+const SPEEDS = [10, 60, 120, 300];
 
 const heroDist = (m: number) => (m >= 1000 ? `<b>${(m / 1000).toFixed(2)}<small>km</small></b>` : `<b>${Math.round(m)}<small>m</small></b>`);
 function heroDur(s: number): string {
@@ -106,6 +127,11 @@ export class App {
   private readonly hintSeen = new Set<string>();
 
   private readonly lookup: ReturnLookup;
+  /** Radio shadow of the rover's mast antenna over the walk area (see eva/radio). */
+  private readonly radio: Uint8Array;
+  private radioLost = false;
+  private readonly voice = new Voice();
+  private roverCheckCache: RoverCheck | null = null;
 
   constructor(
     private readonly site: SiteData,
@@ -126,6 +152,9 @@ export class App {
       const node = site.grid.nodeAt(x, y);
       return { timeS: field.time[node], energyJ: field.energy[node] };
     };
+
+    this.radio = radioShadow(site.grid, this.rover);
+    view.setRadioShadow(this.radio);
 
     setText($("#site-name"), site.meta.name);
     this.bindChrome();
@@ -156,7 +185,8 @@ export class App {
     $("#about-menu").innerHTML = `
       <button data-about="briefing">${ic.book}<span><b>Mission briefing</b><small>The site, the story and why it matters</small></span></button>
       <button data-about="sources">${ic.data}<span><b>Data sources</b><small>Where every layer and number comes from</small></span></button>
-      <button data-about="model">${ic.sliders}<span><b>Suit and model assumptions</b><small>Oxygen, walking and radiation models</small></span></button>`;
+      <button data-about="model">${ic.sliders}<span><b>Suit and model assumptions</b><small>Oxygen, walking and radiation models</small></span></button>
+      <button data-about="offline">${ic.offline}<span><b>Use offline</b><small>Save this site to the device and install CAIRN as an app. No network needed after that.</small></span></button>`;
     $("#nav").innerHTML = `
       <button data-menu="view" title="Display settings">${ic.sliders}</button>
       <i></i>
@@ -199,6 +229,7 @@ export class App {
       about.hidden = true;
       if (item === "briefing") showBriefing(this.site, () => {}, this.sites);
       else if (item === "sources") showSources(this.site);
+      else if (item === "offline") void this.goOffline();
       else showAssumptions(this.site, this.P);
     });
     // the gesture hint goes away once it has been used
@@ -229,6 +260,8 @@ export class App {
       menu.hidden = true;
       about.hidden = true;
       viewMenu.hidden = true;
+      const exportMenu = document.getElementById("export-menu");
+      if (exportMenu) exportMenu.hidden = true;
     });
 
     const left = $("#left");
@@ -279,7 +312,18 @@ export class App {
       if (act === "start") this.startEva();
       else if (act === "fly") this.setView("fly");
       else if (act === "cue") this.openCueCard();
+      else if (act === "export") {
+        ev.stopPropagation();
+        const menu = document.getElementById("export-menu");
+        if (menu) menu.hidden = !menu.hidden;
+      } else if (act === "kml" || act === "geojson") this.exportRoute(act);
       else if (act === "resume") this.resumeRemaining();
+      else if (act === "show-radio") this.selectLayer("radio");
+      else if (act === "show-track") {
+        this.showTrack = !this.showTrack;
+        this.view.setTrackVisible(this.showTrack);
+        this.renderRight();
+      } else if (act === "emergency") void this.triggerEmergency(t.dataset.kind as EmergencyKind);
       else if (act === "replan") this.backToPlanning();
       else if (act === "sources") showSources(this.site, t.dataset.id);
       else if (act === "model") showAssumptions(this.site, this.P);
@@ -295,6 +339,10 @@ export class App {
       } else if (act === "speed") {
         this.speed = Number(t.dataset.v);
         this.renderBottom();
+      } else if (act === "voice") {
+        this.voice.set(!this.voice.enabled);
+        this.renderBottom();
+        if (this.voice.enabled) this.voice.say("Voice guidance on.", "urgent");
       } else if (act === "skip") this.skipAhead();
       else if (act === "end") this.backToPlanning();
       else if (act === "chart") {
@@ -353,7 +401,7 @@ export class App {
     hint.innerHTML =
       this.viewMode === "plan"
         ? "<b>Drag</b> pan <i></i> <b>Scroll</b> zoom <i></i> <b>Click</b> add a stop <i></i> <b>3D</b> to rotate"
-        : "<b>Drag</b> rotate <i></i> <b>Shift-drag</b> pan <i></i> <b>Scroll</b> zoom <i></i> <b>Double-click</b> centre";
+        : "<b>Drag</b> rotate <i></i> <b>Shift-drag</b> pan <i></i> <b>Scroll</b> zoom <i></i> <b>Double-click</b> fly there";
   }
 
   /** Local mean solar time at EVA time `tS`. */
@@ -466,7 +514,10 @@ export class App {
       segments.push({ kind: "walk", path, to, label: to.short });
       if (to.kind !== "shelter") segments.push({ kind: "dwell", poi: to, durationS: to.dwellMin * 60, sheltered: false });
     });
-    this.plan = { order, legs, straight, budget: buildBudget(segments, this.P, this.lookup, (poi) => grid.shieldAt(poi.x, poi.y)), routeMs: result.ms };
+    this.plan = {
+      order, legs, straight, budget: buildBudget(segments, this.P, this.lookup, (poi) => grid.shieldAt(poi.x, poi.y)), routeMs: result.ms,
+      radio: radioCoverage(this.radio, grid, legs),
+    };
     this.planError = null;
     this.afterPlan();
   }
@@ -608,7 +659,7 @@ export class App {
           <i class="swatch" style="background:${l.swatch}"></i><span>${esc(l.name)}</span>
         </label>`;
     const primary = primaryIds.map((id) => chip(avail.find((l) => l.id === id)!)).join("");
-    const groups: [string, LayerId[]][] = [["Safety", ["risk", "shelter", "slope", "sand"]], ["Science", ["minerals", "geology", "thermal"]], ["Radiation", ["shield"]]];
+    const groups: [string, LayerId[]][] = [["Safety", ["risk", "shelter", "radio", "slope", "sand"]], ["Science", ["minerals", "geology", "thermal"]], ["Radiation", ["shield"]]];
     const more = groups
       .map(([name, ids]) => {
         const ls = rest.filter((l) => ids.includes(l.id));
@@ -761,6 +812,7 @@ export class App {
             <div class="meter"><i style="width:${Math.min(100, usedPct).toFixed(1)}%"></i><u style="left:${(100 - reservePct).toFixed(1)}%"></u></div>
             <p class="o2-sub"><b class="${margin >= 0 ? "good" : "bad"}">${margin >= 0 ? `${Math.round(margin)} L spare` : `${Math.round(-margin)} L short`}</b> after walking home from the farthest point and keeping the ${reservePct}% reserve</p>
           </div>
+          ${this.radioLine()}
           <label class="slider start"><span>Leave the rover at <b id="start-val">${fmtLmst(this.startLmst)} LMST</b></span>
             <input type="range" id="start" min="6" max="17" step="0.25" value="${this.startLmst}"/>
             <small id="sun-val">Sun ${this.sunText(sunStart)} → ${this.sunText(sunEnd)} at ${fmtLmst(this.lmstAt(b.totalTimeS))}</small></label>
@@ -795,6 +847,7 @@ export class App {
               </tbody>
             </table>
           </section>
+          ${this.roverCheckHtml()}
           <section>
             <h3>Simulation</h3>
             <label class="switch"><span>Replay the 20 May 2024 solar storm</span><input class="sr" type="checkbox" id="opt-storm" ${this.storm ? "checked" : ""}/><i></i></label>
@@ -803,9 +856,14 @@ export class App {
         </details>
       </div>
       <footer class="panel-foot">
-        <div class="foot-row two">
-          <button class="secondary" data-act="fly" title="Fly along the planned route">${ic.flight}<span>Fly the route</span></button>
+        <div class="foot-row three">
+          <button class="secondary" data-act="fly" title="Fly along the planned route">${ic.flight}<span>Fly route</span></button>
           <button class="secondary" data-act="cue" title="One-page printable plan">${ic.book}<span>Cue card</span></button>
+          <button class="secondary" data-act="export" aria-haspopup="menu" title="Save the route for Google Earth or GIS tools">${ic.download}<span>Export</span></button>
+        </div>
+        <div class="menu list" id="export-menu" role="menu" hidden>
+          <button data-act="kml">${ic.download}<span><b>KML</b><small>Google Earth in Mars mode</small></span></button>
+          <button data-act="geojson">${ic.download}<span><b>GeoJSON</b><small>QGIS and other map tools · Mars 2000 coordinates</small></span></button>
         </div>
         <button class="primary big" data-act="start" ${b.feasible ? "" : "disabled"}>${ic.play}<span>Start EVA</span></button>
       </footer>`;
@@ -822,6 +880,7 @@ export class App {
           <dl class="kv">
             <dt>Distance left</dt><dd id="lv-dist"></dd>
             <dt>Walked so far</dt><dd id="lv-walked"></dd>
+            <dt>Radio</dt><dd id="lv-radio"></dd>
           </dl>
         </section>
         <section>
@@ -832,6 +891,14 @@ export class App {
             <dt>Way home from here</dt><dd id="lv-home"></dd>
             ${this.buddy ? `<dt>Buddy separation</dt><dd id="lv-buddy"></dd>` : ""}
           </dl>
+        </section>
+        <section class="drill">
+          <header class="sec-head"><h2>Practice an emergency</h2></header>
+          <p class="note">Something goes wrong out here. CAIRN finds the quickest safe way home and checks the oxygen.</p>
+          <div class="foot-row two">
+            <button class="secondary" data-act="emergency" data-kind="leak" title="Oxygen use doubles">${ic.leak}<span>Suit leak</span></button>
+            <button class="secondary" data-act="emergency" data-kind="ankle" title="Walking speed halves">${ic.ankle}<span>Twisted ankle</span></button>
+          </div>
         </section>
         <section>
           <header class="sec-head"><h2>Radiation</h2><button class="link" data-act="sources" data-id="rad">${ic.info}<span>Source</span></button></header>
@@ -866,8 +933,9 @@ export class App {
 
   private renderSummary(host: HTMLElement): void {
     const m = this.mission!;
-    const aborted = m.alertS !== null;
+    const aborted = m.alertS !== null || m.emergency !== null;
     const pr = m.projection;
+    const em = m.emergency;
     const remaining = m.remaining();
     const visited = m.visited.map((id) => this.poi(id)?.short ?? id);
     host.innerHTML = `
@@ -878,7 +946,7 @@ export class App {
           }</header>
           <div class="hero">
             <div><span>Walked</span>${heroDist(m.distanceM)}</div>
-            <div><span>${aborted ? "To all-clear" : "Time outside"}</span>${heroDur(m.t)}</div>
+            <div><span>${m.alertS !== null ? "To all-clear" : "Time outside"}</span>${heroDur(m.t)}</div>
           </div>
           <dl class="kv">
             <dt>Stops completed</dt><dd>${visited.length ? esc(visited.join(", ")) : "none"}</dd>
@@ -886,7 +954,11 @@ export class App {
             <dt>Dose received</dt><dd>${fmtDose(m.doseUGy)}</dd>
           </dl>
           ${
-            pr
+            em
+              ? `<div class="avoided"><span>${em.kind === "leak" ? "Suit leak" : "Twisted ankle"} at ${fmtClock(em.atS)} into the EVA</span><b>${Math.round(this.P.o2SupplyL - m.o2UsedL)} L left</b>
+                  <small>CAIRN sent the crew home at once: ${fmtDist(em.homeDistM)} in ${fmtDur(em.homeTimeS)}${em.kind === "ankle" ? " at half speed" : ", using oxygen twice as fast"}. The walk home needed ${Math.round(em.needL)} L of the ${Math.round(em.leftL)} L left.</small></div>
+                 <p class="note">${em.leftL - em.needL >= this.P.o2SupplyL * this.P.reserveFraction ? "The oxygen reserve was never touched." : em.leftL >= em.needL ? "The crew made it home on the reserve." : "Not enough oxygen to walk home: the rover would have to drive out to meet the crew."}</p>`
+              : pr
               ? `<div class="avoided"><span>Dose avoided by sheltering</span><b>${fmtDose(pr.avoidedUGy)}</b>
                   <small>${fmtDose(pr.shelterUGy)} received vs ${fmtDose(pr.continueUGy)} had the crew finished the walk, compared at the planned end of the EVA. Rover shielding ×${this.P.shelterFactor} is an assumption.</small></div>
                  <p class="note">Alert to shelter: ${fmtDur(pr.arriveS - pr.alertS)} over ${fmtDist(pr.shelterDistM)}. RAD measured elevated dose rates for about two sols after this storm, so the remaining objectives move to a later sol.</p>`
@@ -922,6 +994,7 @@ export class App {
                  <button class="icon solid" data-act="pause" title="${this.paused ? "Resume" : "Pause"}">${this.paused ? ic.play : ic.pause}</button>
                  <div class="seg small">${SPEEDS.map((v) => `<button data-act="speed" data-v="${v}" class="${v === this.speed ? "on" : ""}">${v}×</button>`).join("")}</div>
                  <button class="ghost" data-act="skip" title="Jump to the end of the current step">${ic.skip}<span>Skip</span></button>
+                 ${this.voice.supported ? `<button class="ghost voice${this.voice.enabled ? " on" : ""}" data-act="voice" title="Spoken directions" aria-pressed="${this.voice.enabled}">${this.voice.enabled ? ic.voiceOn : ic.voiceOff}<span>Voice</span></button>` : ""}
                  <button class="ghost" data-act="end">${ic.stop}<span>End EVA</span></button>
                </div>`
             : `<h2>Elevation along the route</h2>`
@@ -929,8 +1002,8 @@ export class App {
         ${
           open
             ? `<div class="key">
-                 <span><i style="background:#3ddc84"></i>&lt; 10°</span><span><i style="background:#f5d02e"></i>10–18°</span>
-                 <span><i style="background:#ff8a1f"></i>18–25°</span><span><i style="background:#ff4d4d"></i>too steep</span>
+                 <span><i style="background:#56b4e9"></i>&lt; 10°</span><span><i style="background:#f0e442"></i>10–18°</span>
+                 <span><i style="background:#e69f00"></i>18–25°</span><span><i style="background:${HATCH}"></i>too steep</span>
                  <span><i class="sand"></i>sand</span>${straight ? `<span><i class="dash"></i>straight line</span>` : ""}
                </div>`
             : summary
@@ -1109,6 +1182,35 @@ export class App {
     await this.demo.start();
   }
 
+  /** Arrival time (EVA seconds) at each stop of the plan, rover first and last. */
+  private stopTimes(): { poi: Poi; arriveS: number }[] {
+    if (!this.plan) return [];
+    const out = [{ poi: this.rover, arriveS: 0 }];
+    let t = 0;
+    for (const seg of this.plan.budget.segments) {
+      if (seg.kind === "walk") {
+        t += seg.path.time;
+        if (seg.to) out.push({ poi: seg.to, arriveS: t });
+      } else t += seg.durationS;
+    }
+    return out;
+  }
+
+  /** Save the planned route as KML (Google Earth, Mars mode) or GeoJSON (GIS tools). */
+  private exportRoute(kind: "kml" | "geojson"): void {
+    if (!this.plan) return;
+    const b = this.plan.budget;
+    const plan: ExportPlan = {
+      site: this.site.meta, legs: this.plan.legs, distanceM: b.distanceM, timeS: b.totalTimeS, o2UsedL: b.o2UsedL,
+      startLmst: fmtLmst(this.startLmst),
+      stops: this.stopTimes().map((s) => ({ ...s, lmst: fmtLmst(this.lmstAt(s.arriveS)) })),
+    };
+    const name = `cairn-${this.site.id}-eva`;
+    if (kind === "kml") saveFile(`${name}.kml`, "application/vnd.google-earth.kml+xml", routeKml(plan));
+    else saveFile(`${name}.geojson`, "application/geo+json", routeGeoJson(plan));
+    this.toast(kind === "kml" ? "Saved the route as KML — open it in Google Earth, switched to Mars." : "Saved the route as GeoJSON (Mars 2000 longitude / latitude).");
+  }
+
   /** One-page printable plan: map, timeline, oxygen turn-back values, storm protocol. */
   private openCueCard(): void {
     if (!this.plan) return;
@@ -1218,6 +1320,7 @@ export class App {
     this.paused = false;
     this.shelterPath = null;
     this.shelteredAtS = null;
+    this.radioLost = false;
     $("#pin-menu").hidden = true;
     this.closeCard();
     this.pushRoutes();
@@ -1226,10 +1329,13 @@ export class App {
     this.renderBottom();
     this.setView("walk");
     this.toast("EVA started. Visor view — drag to look around, or switch to Map / 3D.", 5000);
+    const first = this.mission.next();
+    if (first.poi) this.voice.say(`EVA started. Heading to ${this.waypointName(first.poi)}. ${spokenDist(first.distM)}, about ${spokenTime(first.etaS)}.`);
   }
 
   private backToPlanning(): void {
     this.mission = null;
+    this.voice.stop();
     this.phase = "planning";
     this.shelterPath = null;
     this.shelteredAtS = null;
@@ -1269,6 +1375,8 @@ export class App {
       this.view.setAstronaut({ x: pose.x, y: pose.y, headingRad: pose.headingRad, moving: pose.moving && !this.paused }, dt);
       this.view.setBuddy(this.buddy ? m.buddyPose() : null);
       if (this.viewMode === "orbit" && pose.moving && !this.paused) this.view.follow(pose.x, pose.y, dt);
+      this.watchRadio(m);
+      if (this.viewMode === "walk" && !this.paused) this.guide(m);
     }
     const sun = this.sunAtEva(m && this.phase !== "planning" ? m.t : 0);
     const key = `${sun.elevation.toFixed(2)}/${sun.azimuth.toFixed(2)}`;
@@ -1298,8 +1406,11 @@ export class App {
       if (ev.type === "arrive" && ev.poi.kind !== "shelter") {
         this.openCard(ev.poi.id, true);
         this.toast(`Arrived at ${ev.poi.short}. ${ev.poi.dwellMin} min of science.`);
+        this.voice.say(`Arrived at ${ev.poi.name}. ${spokenTime(ev.poi.dwellMin * 60)} of science.`);
       } else if (ev.type === "depart") {
         if (this.cardPoi === ev.poi.id) this.closeCard();
+        const n = this.mission?.next();
+        if (n?.poi) this.voice.say(`Heading to ${this.waypointName(n.poi)}. ${spokenDist(n.distM)}, about ${spokenTime(n.etaS)}.`);
       } else if (ev.type === "alert") void this.onAlert(ev.rateUGyH);
       else if (ev.type === "sheltered") this.onSheltered();
       else if (ev.type === "complete") this.onComplete(ev.aborted);
@@ -1332,6 +1443,7 @@ export class App {
           : `No useful natural cover nearby: terrain here blocks under 3% of the dose.`
       }</span></div>`;
     alert.hidden = false;
+    this.voice.say(`Solar particle event. Dose rate ${Math.round(rate / this.rad.baseline)} times background. Abort the EVA. Return to the rover: ${spokenDist(path.distance)}, ${spokenTime(path.time)}.`, "urgent");
     const box = document.getElementById("stormbox");
     if (box) {
       box.hidden = false;
@@ -1346,7 +1458,11 @@ export class App {
     this.shelteredAtS = m.t;
     const alert = $("#alert");
     alert.className = "safe";
-    alert.innerHTML = `<div class="ico">${ic.home}</div><div><b>Crew in shelter</b><span>Inside the rover ${fmtDur(m.t - (m.alertS ?? m.t))} after the alert. Dose rate cut to ${this.P.shelterFactor}× outdoors.</span></div>`;
+    const em = m.emergency;
+    alert.innerHTML = em
+      ? `<div class="ico">${ic.home}</div><div><b>Crew back in the rover</b><span>Home ${fmtDur(m.t - em.atS)} after the ${em.kind === "leak" ? "suit leak" : "injury"}, with ${Math.round(this.P.o2SupplyL - m.o2UsedL)} L of oxygen left.</span></div>`
+      : `<div class="ico">${ic.home}</div><div><b>Crew in shelter</b><span>Inside the rover ${fmtDur(m.t - (m.alertS ?? m.t))} after the alert. Dose rate cut to ${this.P.shelterFactor}× outdoors.</span></div>`;
+    this.voice.say(em ? `You are back in the rover, with ${Math.round(this.P.o2SupplyL - m.o2UsedL)} litres of oxygen left.` : "You are inside the rover. Radiation shelter reached.", "urgent");
     $("#stage").classList.remove("storm");
     this.speed = 300;
     this.renderBottom();
@@ -1390,6 +1506,172 @@ export class App {
       }
     }
     return best;
+  }
+
+  // ================================================================ radio, voice, emergencies
+  /** One line in the plan: how much of the walk keeps line of sight to the rover's antenna. */
+  private radioLine(): string {
+    const rc = this.plan?.radio;
+    if (!rc) return "";
+    const whole = rc.lostS < 20;
+    const text = whole
+      ? "In radio contact with the rover the whole way."
+      : `In radio contact for <b>${Math.floor(rc.coveredFraction * 100)}%</b> of the walk · ${rc.gaps} blackout${rc.gaps > 1 ? "s" : ""}, longest ${fmtDur(Math.max(60, rc.longestGapS))}`;
+    return `<div class="radio-line${whole ? "" : " warn"}">${ic.radio}<span>${text}</span><button class="link" data-act="show-radio">Show</button></div>`;
+  }
+
+  /** Tell the crew when the terrain cuts the line of sight to the rover, and when it comes back. */
+  private watchRadio(m: Mission): void {
+    const p = m.pose();
+    const lost = !m.sheltered && m.phase !== "complete" && radioDepthAt(this.radio, this.site.grid, p.x, p.y) > RADIO_LOST_M;
+    if (lost === this.radioLost) return;
+    this.radioLost = lost;
+    if (lost) {
+      this.toast("Radio contact with the rover lost: the terrain blocks the line of sight.", 4000);
+      this.voice.say("Radio contact with the rover lost. Terrain is blocking the line of sight.");
+    } else {
+      this.toast("Radio contact with the rover restored.", 2500);
+      this.voice.say("Radio contact restored.");
+    }
+  }
+
+  /** "Waypoint 2, Boxwork ridge" — or the rover. */
+  private waypointName(poi: Poi): string {
+    if (poi.kind === "shelter") return "the rover";
+    const k = this.plan?.order.findIndex((p, i) => p.id === poi.id && i > 0) ?? -1;
+    return k > 0 ? `waypoint ${k}, ${poi.name}` : poi.name;
+  }
+
+  /** Routine spoken directions in the visor: distance, turn, steep ground or sand ahead. */
+  private guide(m: Mission): void {
+    if (!this.voice.enabled) return;
+    const seg = m.segment;
+    const n = m.next();
+    if (!seg || seg.kind !== "walk" || !n.poi || n.distM < 8 || m.phase === "holding") return;
+    const s = sampleAtTime(seg.path, m.segT);
+    const samples = seg.path.samples;
+    const ahead = samples.find((q) => q.dist >= s.dist + 25) ?? samples[samples.length - 1];
+    const bearing = (Math.atan2(ahead.x - s.x, ahead.y - s.y) * 180) / Math.PI;
+    const turn = ((bearing - (s.headingRad * 180) / Math.PI + 540) % 360) - 180;
+    let steep = 0;
+    let sand = false;
+    for (const q of samples) {
+      if (q.dist < s.dist || q.dist > s.dist + 50) continue;
+      steep = Math.max(steep, q.slopeDeg);
+      sand ||= q.sand > 0.5;
+    }
+    const name = n.poi.kind === "shelter" ? "Rover" : this.waypointName(n.poi).replace(/^w/, "W");
+    this.voice.say(
+      `${name}, ${spokenDist(n.distM)}, ${turnWords(turn)}.${steep >= 15 ? ` Slope ahead ${Math.round(steep)} degrees.` : ""}${sand ? " Loose sand ahead." : ""}`,
+      "routine",
+    );
+  }
+
+  /**
+   * Practice emergency during the EVA: stop, find the quickest safe way home from here, check the
+   * oxygen with the new consumption, and walk home.
+   */
+  private async triggerEmergency(kind: EmergencyKind): Promise<void> {
+    const m = this.mission;
+    if (!m || m.phase !== "eva" || m.emergency || m.alertS !== null || !m.segment) return;
+    m.hold();
+    this.closeCard();
+    const pose = m.pose();
+    const res = await this.router.shelterPath({ x: pose.x, y: pose.y });
+    if (this.mission !== m) return;
+    const pts = res.path ?? [{ x: pose.x, y: pose.y }, { x: this.rover.x, y: this.rover.y }];
+    const path = measurePath(this.site.grid, pts, this.P);
+    const em = m.emergencyHome(kind, path, this.rover);
+    this.shelterPath = path;
+    this.paused = false;
+    this.pushRoutes();
+    this.renderBottom();
+    this.updateLive();
+    const spare = em.leftL - em.needL;
+    const reserve = this.P.o2SupplyL * this.P.reserveFraction;
+    const verdict = spare >= reserve ? "Makes it home with the reserve untouched" : spare >= 0 ? "Makes it home, using the reserve" : "Not enough oxygen to walk home";
+    const title = kind === "leak" ? "Suit leak — oxygen use doubled" : "Twisted ankle — walking at half speed";
+    const alert = $("#alert");
+    alert.className = spare >= 0 ? "danger drill" : "danger";
+    alert.innerHTML = `<div class="ico">${kind === "leak" ? ic.leak : ic.ankle}</div><div><b>${title}</b>
+      <span>Quickest safe way home: ${fmtDist(path.distance)} · ${fmtDur(em.homeTimeS)}. Needs ${Math.round(em.needL)} L of the ${Math.round(em.leftL)} L left.</span>
+      <span class="go">${verdict}: ${spare >= 0 ? `${Math.round(spare)} L to spare` : `${Math.round(-spare)} L short`} · route found in ${Math.max(1, Math.round(res.ms))} ms</span>
+      <span class="sub2">${spare >= 0 ? "Turn back now. The buddy stays alongside." : "Call the rover to drive out and meet the crew."}</span></div>`;
+    alert.hidden = false;
+    this.voice.say(
+      `${kind === "leak" ? "Suit leak. Oxygen use doubled." : "Ankle injury. Walking at half speed."} Return to the rover: ${spokenDist(path.distance)}, ${spokenTime(em.homeTimeS)}. ${
+        spare >= 0 ? `Enough oxygen, ${Math.round(spare)} litres to spare.` : "Not enough oxygen. Rover, drive out to meet the crew."
+      }`,
+      "urgent",
+    );
+  }
+
+  // ================================================================ offline
+  private async goOffline(): Promise<void> {
+    const name = this.site.meta.name.split(" — ")[0];
+    this.toast(`Saving ${name} for offline use…`, 60000);
+    try {
+      const mb = (b: number) => Math.round(b / 1e6);
+      const r = await saveForOffline(this.site.id, (done, total, bytes, totalBytes) =>
+        this.toast(`Saving for offline use… ${done} of ${total} files · ${mb(bytes)} of ${mb(totalBytes)} MB`, 60000),
+      );
+      this.toast(`${name} now works offline (${mb(r.bytes)} MB saved on this device).`, 5000);
+      await promptInstall();
+    } catch (err) {
+      this.toast(err instanceof Error ? err.message : String(err), 6000);
+    }
+  }
+
+  // ================================================================ rover check
+  private hazardClass(node: number): number {
+    const g = this.site.grid;
+    const r = g.risk[node];
+    if (r >= 250) return 4;
+    const total = (g.effort[node] / g.effortScale) * (Math.min(r, 254) / g.riskScale);
+    return total <= 1.25 ? 0 : total <= 1.9 ? 1 : total <= 2.8 ? 2 : 3;
+  }
+
+  /** How the rover's real drive through the walk area scores on CAIRN's terrain model. */
+  private roverCheck(): RoverCheck | null {
+    if (this.roverCheckCache) return this.roverCheckCache;
+    const g = this.site.grid;
+    const pts = this.site.rover.traverse.filter(([x, y]) => g.inside(x, y));
+    if (pts.length < 3) return null;
+    const drive = measurePath(g, pts.map(([x, y]) => ({ x, y })), this.P);
+    const track = [0, 0, 0, 0, 0];
+    for (let i = 1; i < drive.samples.length; i++) {
+      const a = drive.samples[i - 1];
+      const b = drive.samples[i];
+      track[this.hazardClass(g.nodeAt((a.x + b.x) / 2, (a.y + b.y) / 2))] += b.dist - a.dist;
+    }
+    const area = [0, 0, 0, 0, 0];
+    for (let i = 0; i < g.n * g.n; i++) area[this.hazardClass(i)]++;
+    const norm = (v: number[]) => {
+      const sum = v.reduce((s, x) => s + x, 0) || 1;
+      return v.map((x) => x / sum);
+    };
+    this.roverCheckCache = {
+      distanceM: drive.distance, sols: [pts[0][2], pts[pts.length - 1][2]], track: norm(track), area: norm(area), maxSlopeDeg: drive.maxSlopeDeg,
+    };
+    return this.roverCheckCache;
+  }
+
+  private roverCheckHtml(): string {
+    const rc = this.roverCheck();
+    if (!rc) return "";
+    const pct = (v: number) => `${Math.round(v * 100)}%`;
+    const bar = (shares: number[]) =>
+      `<div class="hz-bar">${shares.map((v, i) => (v > 0.002 ? `<i style="width:${(v * 100).toFixed(1)}%;background:${i === 4 ? "repeating-linear-gradient(135deg,#8c2973 0 3px,#f2dcec 3px 5px)" : HAZARD_COLORS[i]}" title="${HAZARD_CLASSES[i]} ${pct(v)}"></i>` : "")).join("")}</div>`;
+    const easyTrack = rc.track[0] + rc.track[1];
+    const easyArea = rc.area[0] + rc.area[1];
+    return `<section class="rover-check">
+      <h3>Check against ${esc(this.roverName)}'s real drive</h3>
+      <p>${pct(easyTrack)} of ${esc(this.roverName)}'s ${fmtDist(rc.distanceM)} drive here is on ground CAIRN rates easy or moderate, against ${pct(easyArea)} of the area. The rover drivers kept to the ground CAIRN prefers.</p>
+      <div class="hz"><span>Rover drive</span>${bar(rc.track)}<span>Whole area</span>${bar(rc.area)}</div>
+      <div class="legend units hz-key">${HAZARD_CLASSES.map((c, i) => `<span><i style="background:${i === 4 ? "repeating-linear-gradient(135deg,#8c2973 0 3px,#f2dcec 3px 5px)" : HAZARD_COLORS[i]}"></i>${c}</span>`).join("")}</div>
+      <p class="note">Sols ${rc.sols[0]}–${rc.sols[1]}, rover positions joined by straight lines; steepest ground on the drive ${rc.maxSlopeDeg}°. A rover is not an astronaut, so this checks the terrain model, not the walking model.</p>
+      <button class="link" data-act="show-track">${ic.compare}<span>${this.showTrack ? "Hide" : "Show"} the real track on the map</span></button>
+    </section>`;
   }
 
   // ================================================================ live readouts
@@ -1438,6 +1720,11 @@ export class App {
     setText($("#lv-next"), ph.name);
     setText($("#lv-dist"), n.distM > 0 ? `${fmtDist(n.distM)} · ${fmtDur(n.etaS)}` : m.sheltered ? "—" : `${fmtDur(n.etaS)} on site`);
     setText($("#lv-walked"), fmtDist(m.distanceM));
+    const lr = document.getElementById("lv-radio");
+    setText(lr, m.sheltered ? "in the rover" : this.radioLost ? "no line of sight to the rover" : "in contact with the rover");
+    if (lr) lr.className = this.radioLost && !m.sheltered ? "warnc" : "";
+    const drillOff = m.phase !== "eva" || m.emergency !== null || m.alertS !== null || !m.segment;
+    for (const b of document.querySelectorAll<HTMLButtonElement>(".drill button")) b.disabled = drillOff;
     $("#lv-o2bar").style.width = `${Math.max(0, (m.o2UsedL / P.o2SupplyL) * 100).toFixed(1)}%`;
     setText($("#lv-o2"), `${Math.round(left)} L`);
     const mg = $("#lv-margin");
@@ -1498,6 +1785,7 @@ export class App {
         <div class="hud-item"><span>O₂</span><div class="meter"><i id="hud-o2bar"></i><u style="left:${((1 - this.P.reserveFraction) * 100).toFixed(1)}%"></u></div><b id="hud-o2">—</b></div>
         <div class="hud-item"><span>Walk-back</span><b id="hud-margin">—</b></div>
         <div class="hud-item"><span>Way home</span><b id="hud-home">—</b></div>
+        <div class="hud-item" id="hud-radiobox"><span>Radio</span><b id="hud-radio">—</b></div>
         <div class="hud-item"><span>EVA clock</span><b id="hud-clock">00:00:00</b></div>
       </div>
       <div class="hud-side right">
@@ -1566,6 +1854,8 @@ export class App {
     setText(mg, `${margin >= 0 ? "+" : ""}${Math.round(margin)} L`);
     mg.className = margin >= 0 ? "" : "bad";
     setText($("#hud-home"), fmtDur(m.returnTimeS()));
+    setText($("#hud-radio"), this.radioLost ? "No signal" : "Rover ✓");
+    $("#hud-radiobox").className = `hud-item${this.radioLost ? " warn" : ""}`;
     setText($("#hud-clock"), fmtClock(m.t));
     setText($("#hud-rate"), fmtRate(m.doseRate));
     $("#hud-ratebox").className = `hud-item${m.outdoorRate > this.rad.baseline * 3 ? " bad" : ""}`;
@@ -1620,6 +1910,7 @@ export class App {
         ${minerals ? `<dt>CRISM</dt><dd>${esc(minerals)}</dd>` : ""}
         ${shieldCut >= 2 ? `<dt>Sky shielding</dt><dd>−${shieldCut}% dose</dd>` : ""}
         <dt>To shelter</dt><dd>${Number.isFinite(home) ? fmtDur(home) : "cut off"}</dd>
+        <dt>Radio</dt><dd class="${this.radio[node] * 0.25 > RADIO_LOST_M ? "warnc" : ""}">${this.radio[node] * 0.25 > RADIO_LOST_M ? "no signal" : "rover in sight"}</dd>
       </dl>`;
     probe.hidden = false;
     probe.style.left = `${Math.min(rect.width - 250, clientX - rect.left + 16)}px`;

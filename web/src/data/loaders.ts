@@ -1,6 +1,7 @@
 import type { ContextData, GeologyUnit, Poi, ProvenanceEntry, RegionMeta, ReplayData, RoverData, SiteMeta, WeatherData } from "../types";
 import type { PanoramaSet } from "../ui/panorama";
 import { TerrainGrid } from "./grid";
+import { undelta16, undelta8 } from "./pack";
 
 export interface SiteData {
   id: string;
@@ -34,6 +35,33 @@ export const SITE_ID = new URLSearchParams(location.search).get("site") ?? "jeze
 export const DATA_ROOT = `${import.meta.env.BASE_URL}data/`;
 export const DATA_BASE = `${DATA_ROOT}${SITE_ID}/`;
 
+/** Packed data files (see data-pipeline/pack_web.py): original name → packed file and encoding. */
+interface PackEntry {
+  file: string;
+  enc: "gzip" | "delta8" | "delta16" | "image";
+}
+let pack: Record<string, PackEntry> = {};
+
+async function loadPack(): Promise<void> {
+  try {
+    const res = await fetch(DATA_BASE + "pack.json");
+    if (res.ok) pack = ((await res.json()) as { files: Record<string, PackEntry> }).files;
+  } catch {
+    pack = {};
+  }
+}
+
+/** URL of a site file, following the pack table (e.g. relief.png → relief.webp). */
+export function dataUrl(name: string): string {
+  return DATA_BASE + (pack[name]?.file ?? name);
+}
+
+async function gunzip(buf: Uint8Array): Promise<Uint8Array> {
+  if (buf[0] !== 0x1f || buf[1] !== 0x8b) return buf; // a server already inflated it
+  const stream = new Blob([buf as Uint8Array<ArrayBuffer>]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
 async function json<T>(name: string): Promise<T> {
   const res = await fetch(DATA_BASE + name);
   if (!res.ok) throw new Error(`Could not load ${name} (${res.status})`);
@@ -41,9 +69,13 @@ async function json<T>(name: string): Promise<T> {
 }
 
 async function bytes(name: string): Promise<Uint8Array> {
-  const res = await fetch(DATA_BASE + name);
+  const entry = pack[name];
+  const res = await fetch(dataUrl(name));
   if (!res.ok) throw new Error(`Could not load ${name} (${res.status})`);
-  return new Uint8Array(await res.arrayBuffer());
+  const buf = new Uint8Array(await res.arrayBuffer());
+  if (!entry || entry.enc === "image") return buf;
+  const raw = await gunzip(buf);
+  return entry.enc === "delta8" ? undelta8(raw) : entry.enc === "delta16" ? undelta16(raw) : raw;
 }
 
 export async function loadSites(): Promise<SiteEntry[]> {
@@ -58,7 +90,7 @@ export async function loadSites(): Promise<SiteEntry[]> {
 /** Load every data file for the site.  `progress` gets a label and a 0..1 fraction. */
 export async function loadSite(progress: (label: string, fraction: number) => void): Promise<SiteData> {
   progress("Reading site description", 0.02);
-  const meta = await json<SiteMeta>("site.json");
+  const [meta] = await Promise.all([json<SiteMeta>("site.json"), loadPack()]);
   const n = meta.grid.n;
   const g = meta.grids;
 

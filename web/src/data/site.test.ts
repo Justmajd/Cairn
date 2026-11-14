@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gunzipSync } from "node:zlib";
 import { beforeAll, describe, expect, it } from "vitest";
 import { buildBudget, Segment } from "../eva/budget";
 import { DEFAULT_PARAMS as P } from "../eva/params";
@@ -8,14 +9,21 @@ import { astar, buildReturnField, pathToShelter, ReturnField } from "../routing/
 import { smoothPath } from "../routing/smooth";
 import type { MeasuredPath, Poi, SiteMeta } from "../types";
 import { measurePath, TerrainGrid } from "./grid";
+import { undelta16, undelta8 } from "./pack";
 
 /** Integration test against the real site data produced by the pipeline (both sites). */
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../public/data");
 
 describe.each(["jezero", "gale"])("%s site data", (siteId) => {
 const DIR = resolve(ROOT, siteId);
-const bin = (name: string) => new Uint8Array(readFileSync(resolve(DIR, name)));
 const json = <T,>(name: string) => JSON.parse(readFileSync(resolve(DIR, name), "utf8")) as T;
+/** A grid as the app sees it: raw, or packed by the pipeline (see data/pack.ts). */
+const bin = (name: string): Uint8Array => {
+  const entry = json<{ files: Record<string, { file: string; enc: string }> }>("pack.json").files[name];
+  if (!entry) return new Uint8Array(readFileSync(resolve(DIR, name)));
+  const raw = new Uint8Array(gunzipSync(readFileSync(resolve(DIR, entry.file))));
+  return entry.enc === "delta8" ? undelta8(raw) : entry.enc === "delta16" ? undelta16(raw) : raw;
+};
 
 let grid: TerrainGrid;
 let pois: Record<string, Poi>;

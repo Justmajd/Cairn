@@ -5,6 +5,30 @@ import type { MeasuredPath, Poi } from "../types";
 
 export type Phase = "eva" | "holding" | "to-shelter" | "sheltered" | "complete";
 
+/** Practice emergencies: a suit leak doubles oxygen use; a twisted ankle halves walking speed. */
+export type EmergencyKind = "leak" | "ankle";
+
+export interface Emergency {
+  kind: EmergencyKind;
+  atS: number; // EVA time it happened
+  homeDistM: number;
+  homeTimeS: number;
+  needL: number; // oxygen needed to walk home
+  leftL: number; // oxygen left when it happened
+}
+
+/** Oxygen-use and walking-time multipliers for each practice emergency. */
+export const EMERGENCY_EFFECT: Record<EmergencyKind, { o2: number; slow: number }> = {
+  leak: { o2: 2, slow: 1 },
+  ankle: { o2: 1, slow: 2 },
+};
+
+/** A copy of a walk that takes `factor` times as long (same ground, same energy). */
+export function slowedPath(path: MeasuredPath, factor: number): MeasuredPath {
+  if (factor === 1) return path;
+  return { ...path, time: path.time * factor, samples: path.samples.map((s) => ({ ...s, time: s.time * factor })) };
+}
+
 export type MissionEvent =
   | { type: "arrive"; poi: Poi }
   | { type: "depart"; poi: Poi }
@@ -52,6 +76,10 @@ export class Mission {
   visited: string[] = [];
   alertS: number | null = null;
   projection: Projection | null = null;
+  emergency: Emergency | null = null;
+  /** Oxygen-use and walking-time multipliers (1 unless an emergency is running). */
+  o2Factor = 1;
+  slowFactor = 1;
   readonly plannedEndS: number;
   readonly plannedSegments: Segment[];
   private segments: Segment[];
@@ -134,15 +162,51 @@ export class Mission {
     return { poi: seg.to, distM: seg.path.distance - s.dist, etaS: seg.path.time - this.segT, label: "Walking to" };
   }
 
+  /** Oxygen needed to walk home from a position, with any emergency multipliers. */
+  homeO2L(x: number, y: number): number {
+    if (this.o2Factor === 1 && this.slowFactor === 1) return returnO2(x, y, this.lookup, this.params);
+    const r = this.lookup(x, y);
+    return o2Litres(r.energyJ, r.timeS * this.slowFactor, this.params.restingW, this.params) * this.o2Factor;
+  }
+
   /** Oxygen left after walking home from the current position and keeping the reserve (litres). */
   walkBackMarginL(): number {
     const p = this.pose();
-    return this.o2UsableL - this.o2UsedL - returnO2(p.x, p.y, this.lookup, this.params);
+    return this.o2UsableL - this.o2UsedL - this.homeO2L(p.x, p.y);
   }
 
   returnTimeS(): number {
     const p = this.pose();
-    return this.lookup(p.x, p.y).timeS;
+    return this.lookup(p.x, p.y).timeS * this.slowFactor;
+  }
+
+  /** Stop the clock (while the app finds the way home). */
+  hold(): void {
+    if (this.phase === "eva") this.phase = "holding";
+  }
+
+  /**
+   * Practice emergency: from now on oxygen use and walking time change, and the rest of the plan is
+   * replaced by the walk home on `path` (measured at normal pace; it is slowed here if need be).
+   */
+  emergencyHome(kind: EmergencyKind, path: MeasuredPath, shelter: Poi): Emergency {
+    const fx = EMERGENCY_EFFECT[kind];
+    this.o2Factor = fx.o2;
+    this.slowFactor = fx.slow;
+    const home = slowedPath(path, fx.slow);
+    this.emergency = {
+      kind, atS: this.t, homeDistM: path.distance, homeTimeS: home.time,
+      needL: o2Litres(home.energy, home.time, this.params.restingW, this.params) * fx.o2,
+      leftL: this.params.o2SupplyL - this.o2UsedL,
+    };
+    this.segments = [
+      ...this.segments.slice(0, this.segIndex),
+      { kind: "walk", path: home, to: shelter, label: "Rover" },
+      { kind: "dwell", poi: shelter, durationS: 120, sheltered: true },
+    ];
+    this.segT = 0;
+    this.phase = "to-shelter";
+    return this.emergency;
   }
 
   /** Advance the mission clock by `dtSim` seconds.  Returns what happened. */
@@ -153,7 +217,7 @@ export class Mission {
       const seg = this.segment;
       if (!seg) {
         this.phase = "complete";
-        events.push({ type: "complete", aborted: this.alertS !== null });
+        events.push({ type: "complete", aborted: this.alertS !== null || this.emergency !== null });
         break;
       }
       const dur = segmentDuration(seg);
@@ -164,10 +228,11 @@ export class Mission {
       if (seg.kind === "walk") {
         const a = sampleAtTime(seg.path, this.segT);
         const b = sampleAtTime(seg.path, this.segT + step);
-        this.o2UsedL += o2Litres(b.energy - a.energy, step, this.params.restingW, this.params);
+        this.o2UsedL += o2Litres(b.energy - a.energy, step, this.params.restingW, this.params) * this.o2Factor;
         this.distanceM += b.dist - a.dist;
       } else {
-        this.o2UsedL += o2Litres(0, step, seg.sheltered ? this.params.restingW : this.params.workingW, this.params);
+        // inside the rover the suit is off its own supply
+        this.o2UsedL += o2Litres(0, step, seg.sheltered ? this.params.restingW : this.params.workingW, this.params) * (seg.sheltered ? 1 : this.o2Factor);
       }
       let factor = this.params.shelterFactor;
       if (!this.sheltered) {
@@ -184,7 +249,7 @@ export class Mission {
         this.stormAnnounced = true;
         events.push({ type: "storm-onset" });
       }
-      if (this.alertS === null && this.stormAnnounced && this.outdoorRate >= ALERT_FACTOR * this.rad.baseline) {
+      if (this.alertS === null && this.emergency === null && this.stormAnnounced && this.outdoorRate >= ALERT_FACTOR * this.rad.baseline) {
         this.alertS = this.t;
         this.phase = "holding"; // freeze until the app has the shelter route
         events.push({ type: "alert", rateUGyH: this.outdoorRate });
@@ -208,7 +273,7 @@ export class Mission {
         this.segT = 0;
         if (this.segIndex >= this.segments.length) {
           this.phase = "complete";
-          events.push({ type: "complete", aborted: this.alertS !== null });
+          events.push({ type: "complete", aborted: this.alertS !== null || this.emergency !== null });
         }
       }
     }

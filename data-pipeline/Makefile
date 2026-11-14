@@ -24,6 +24,7 @@ build:
 	$(PY) build_context.py
 	$(PY) build_provenance.py
 	$(PY) build_panoramas.py
+	$(PY) pack_web.py
 
 # Gale Crater (Curiosity): download the HiRISE DTM + orthoimages listed in config/gale.json into raw/gale first
 gale:
@@ -37,6 +38,7 @@ gale:
 	CAIRN_SITE=gale $(PY) build_context.py
 	CAIRN_SITE=gale $(PY) build_provenance.py
 	CAIRN_SITE=gale $(PY) build_panoramas.py
+	CAIRN_SITE=gale $(PY) pack_web.py
 
 clean:
 	rm -rf ../web/public/data/jezero

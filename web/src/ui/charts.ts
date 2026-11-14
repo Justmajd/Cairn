@@ -2,8 +2,9 @@ import type { RadiationModel } from "../eva/radiation";
 import type { MeasuredPath, Poi, ReplayData } from "../types";
 import { esc, fmtDist } from "./dom";
 
+/** Okabe-Ito colours (safe with red-green colour blindness), matching the map layers. */
 const slopeColor = (deg: number, blocked: boolean): string =>
-  blocked ? "#ff4d4d" : deg < 10 ? "#3ddc84" : deg < 18 ? "#f5d02e" : "#ff8a1f";
+  blocked ? "#cc79a7" : deg < 10 ? "#56b4e9" : deg < 18 ? "#f0e442" : "#e69f00";
 
 export interface ProfileHandle {
   /** Move the "you are here" cursor to a distance along the route (metres), or hide it. */

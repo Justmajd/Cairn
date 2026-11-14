@@ -1,0 +1,173 @@
+{
+"files": [
+{
+"path": "context.jpg",
+"bytes": 1024611
+},
+{
+"path": "context.json",
+"bytes": 19370
+},
+{
+"path": "effort.u8.pk",
+"bytes": 296626
+},
+{
+"path": "geology.json",
+"bytes": 1023
+},
+{
+"path": "geology.u8.pk",
+"bytes": 5515
+},
+{
+"path": "global.jpg",
+"bytes": 302052
+},
+{
+"path": "height.u16.pk",
+"bytes": 1001765
+},
+{
+"path": "images/NLF_1151_0769112624_722ECM_N0522638NCAM14150_01_195J.jpg",
+"bytes": 58464
+},
+{
+"path": "images/NLF_1154_0769389547_755ECM_N0522644NCAM03154_09_095J.jpg",
+"bytes": 150561
+},
+{
+"path": "images/NLF_1169_0770713652_145ECM_N0525032NCAM14168_04_195J.jpg",
+"bytes": 84270
+},
+{
+"path": "images/NLF_1172_0770979129_113ECM_N0526980NCAM14171_01_195J.jpg",
+"bytes": 93784
+},
+{
+"path": "images/NLF_1210_0774361908_130ECM_N0560000NCAM03210_10_195J.jpg",
+"bytes": 167705
+},
+{
+"path": "images/NLF_1211_0774440401_066ECM_N0560000NCAM15210_04_195J.jpg",
+"bytes": 84625
+},
+{
+"path": "images/NLF_1231_0776216101_776ECM_N0563368NCAM15230_01_195J.jpg",
+"bytes": 90023
+},
+{
+"path": "images/SIF_1212_0774536757_953EBY_N0560000SRLC01024_0000LMJ.jpg",
+"bytes": 203965
+},
+{
+"path": "images/SIF_1239_0776967346_765EBY_N0563438SRLC08050_0000LMJ.jpg",
+"bytes": 176279
+},
+{
+"path": "images/ZL0_1155_0769468584_831EBY_N0522644ZCAM09193_0480LMJ.jpg",
+"bytes": 108682
+},
+{
+"path": "images/ZL0_1168_0770638741_646EBY_N0525032ZCAM07125_1100LMJ.jpg",
+"bytes": 235639
+},
+{
+"path": "images/ZL0_1171_0770903225_928EBY_N0526980ZCAM09210_0630LMJ.jpg",
+"bytes": 157903
+},
+{
+"path": "images/ZL0_1171_0770903573_928EBY_N0526980ZCAM09210_0630LMJ.jpg",
+"bytes": 227019
+},
+{
+"path": "images/ZL0_1217_0774980058_772EBY_N0560000ZCAM09264_1100LMJ.jpg",
+"bytes": 180497
+},
+{
+"path": "images/ZL0_1234_0776478674_473EBY_N0563438ZCAM09288_1100LMJ.jpg",
+"bytes": 231861
+},
+{
+"path": "minerals.json",
+"bytes": 921
+},
+{
+"path": "minerals.rgba.pk",
+"bytes": 349685
+},
+{
+"path": "pack.json",
+"bytes": 1012
+},
+{
+"path": "pois.json",
+"bytes": 11312
+},
+{
+"path": "provenance.json",
+"bytes": 9755
+},
+{
+"path": "region.jpg",
+"bytes": 1374022
+},
+{
+"path": "region.json",
+"bytes": 389
+},
+{
+"path": "region.u16.pk",
+"bytes": 653458
+},
+{
+"path": "relief.webp",
+"bytes": 304280
+},
+{
+"path": "replay.json",
+"bytes": 28626
+},
+{
+"path": "risk.u8.pk",
+"bytes": 561737
+},
+{
+"path": "rover.json",
+"bytes": 11108
+},
+{
+"path": "sand.u8.pk",
+"bytes": 199967
+},
+{
+"path": "shield.u8.pk",
+"bytes": 132327
+},
+{
+"path": "site.json",
+"bytes": 3172
+},
+{
+"path": "slope.u8.pk",
+"bytes": 402599
+},
+{
+"path": "texture.jpg",
+"bytes": 4019062
+},
+{
+"path": "texture_8k.jpg",
+"bytes": 14317847
+},
+{
+"path": "thermal.u8.pk",
+"bytes": 90488
+},
+{
+"path": "weather.json",
+"bytes": 2929
+}
+],
+"totalBytes": 27376935
+}

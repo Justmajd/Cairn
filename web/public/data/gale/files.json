@@ -1,0 +1,185 @@
+{
+"files": [
+{
+"path": "context.jpg",
+"bytes": 949775
+},
+{
+"path": "context.json",
+"bytes": 35179
+},
+{
+"path": "effort.u8.pk",
+"bytes": 355254
+},
+{
+"path": "global.jpg",
+"bytes": 302052
+},
+{
+"path": "height.u16.pk",
+"bytes": 1129798
+},
+{
+"path": "images/4571MH0002270001604096R00_DXXX.jpg",
+"bytes": 291532
+},
+{
+"path": "images/4604MH0002240021700141C00_DXXX.jpg",
+"bytes": 92367
+},
+{
+"path": "images/4616MH0001680011700415C00_DXXX.jpg",
+"bytes": 253389
+},
+{
+"path": "images/4649MH0001680021701496C00_DXXX.jpg",
+"bytes": 258323
+},
+{
+"path": "images/4791MH0008640011703751C00_DXXX.jpg",
+"bytes": 265511
+},
+{
+"path": "images/NLB_803291799EDR_S1162214NCAM00269M_.jpg",
+"bytes": 263719
+},
+{
+"path": "images/NLB_803291861EDR_S1162214NCAM00269M_.jpg",
+"bytes": 265664
+},
+{
+"path": "images/NLB_806305865EDR_S1172538NCAM00265M_.jpg",
+"bytes": 404126
+},
+{
+"path": "images/NLB_806305920EDR_S1172538NCAM00265M_.jpg",
+"bytes": 415620
+},
+{
+"path": "images/NLB_806306182EDR_F1172538NCAM00264M_.jpg",
+"bytes": 504316
+},
+{
+"path": "images/NLB_807730725EDR_F1180372NCAM00283M_.jpg",
+"bytes": 525260
+},
+{
+"path": "images/NLB_807730909EDR_F1180372NCAM00283M_.jpg",
+"bytes": 489052
+},
+{
+"path": "images/NLB_810034800EDR_F1182268NCAM00267M_.jpg",
+"bytes": 559762
+},
+{
+"path": "images/NLB_810035968EDR_F1182268NCAM00268M_.jpg",
+"bytes": 622342
+},
+{
+"path": "images/NLB_822633005EDR_D1200574TRAV01464M_.jpg",
+"bytes": 40915
+},
+{
+"path": "images/NLB_822633932EDR_S1200574NCAM00279M_.jpg",
+"bytes": 328129
+},
+{
+"path": "images/NLB_822634066EDR_F1200574NCAM00278M_.jpg",
+"bytes": 542293
+},
+{
+"path": "pack.json",
+"bytes": 736
+},
+{
+"path": "panoramas.json",
+"bytes": 9146
+},
+{
+"path": "panoramas/midbox.jpg",
+"bytes": 914653
+},
+{
+"path": "panoramas/ridge.jpg",
+"bytes": 906767
+},
+{
+"path": "panoramas/ridgetop.jpg",
+"bytes": 799794
+},
+{
+"path": "panoramas/rover.jpg",
+"bytes": 842743
+},
+{
+"path": "panoramas/sajama.jpg",
+"bytes": 964966
+},
+{
+"path": "pois.json",
+"bytes": 10192
+},
+{
+"path": "provenance.json",
+"bytes": 7171
+},
+{
+"path": "region.jpg",
+"bytes": 1813184
+},
+{
+"path": "region.json",
+"bytes": 401
+},
+{
+"path": "region.u16.pk",
+"bytes": 111596
+},
+{
+"path": "relief.webp",
+"bytes": 786648
+},
+{
+"path": "replay.json",
+"bytes": 28626
+},
+{
+"path": "risk.u8.pk",
+"bytes": 665678
+},
+{
+"path": "rover.json",
+"bytes": 19783
+},
+{
+"path": "sand.u8.pk",
+"bytes": 152420
+},
+{
+"path": "shield.u8.pk",
+"bytes": 348683
+},
+{
+"path": "site.json",
+"bytes": 2098
+},
+{
+"path": "slope.u8.pk",
+"bytes": 577624
+},
+{
+"path": "texture.jpg",
+"bytes": 3882052
+},
+{
+"path": "texture_8k.jpg",
+"bytes": 14555448
+},
+{
+"path": "weather.json",
+"bytes": 2832
+}
+],
+"totalBytes": 36297619
+}
