@@ -291,6 +291,9 @@ Node 24 runs the `.ts` files directly (type stripping). Constraints: no TypeScri
   negative-delay trick so redraws (4×/s) don't restart them.
 - Dev: Vite proxies `/api` and `/hab` to `CAIRN_HAB` (default `localhost:8787`). A scratch hab for
   testing: `PORT=8799 CAIRN_DATA=/tmp/x node server/index.ts` and `CAIRN_HAB=localhost:8799 npx vite`.
+- Deploy: Railway, one service from `web/` (`web/railway.json`: build `npm run build:deploy`, start
+  `node server/index.ts`, health `/api/health`). Needs a volume with `CAIRN_DATA` pointing at it, and
+  must stay at **one replica** (rooms are in memory). Steps in README → "Deploy on Railway".
 
 ---
 

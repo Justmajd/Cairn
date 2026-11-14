@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "vite",
     "dev:all": "node scripts/dev-all.mjs",
@@ -14,7 +17,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json",
     "hab": "node --watch server/index.ts",
-    "start": "npm run build && node server/index.ts"
+    "start": "npm run build && node server/index.ts",
+    "build:deploy": "npm run fetch-speech && npm run build"
   },
   "dependencies": {
     "@breezystack/lamejs": "1.2.7",

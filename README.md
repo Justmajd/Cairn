@@ -51,7 +51,7 @@ Every layer, photo and reading names its mission, instrument and product in the 
 
 ## Run it
 
-Requires Node.js 20 or newer. All data is already in the repository, so no downloads are needed.
+Requires Node.js 24 or newer (the hab server runs its TypeScript directly). All data is already in the repository, so no downloads are needed.
 
 ```bash
 cd web
@@ -65,7 +65,7 @@ Open the address Vite prints (normally http://localhost:5173).
 |---|---|
 | `npm run dev:all` | Development: frontend and hab server together, one terminal (Ctrl+C stops both) |
 | `npm run dev` | Development server (frontend only) |
-| `npm test` | 94 unit and integration tests (including the hab server end to end) |
+| `npm test` | 96 unit and integration tests (including the hab server end to end) |
 | `npm run build` | Type-check and build to `web/dist/` |
 | `npm run preview` | Serve the built app |
 | `npm start` | Build, then serve the app with the hab server (Mission Control, shared notebook) |
@@ -102,6 +102,27 @@ The server prints its network address too (e.g. `http://192.168.1.10:8787`), so 
 **Phones and tablets need https:// to use the microphone** (browsers allow it only on https or localhost). `npm run dev:https` (or `npm run start:https`) makes a certificate for this computer's network address (`web/.cert/`, not committed) and serves over https. The certificate is self-signed, so each device warns once: choose *Advanced → Proceed* (Chrome) or *Show Details → visit this website* (Safari), and recording works from then on. If the computer's Wi-Fi address changes, a new certificate is made automatically.
 
 For development, `npm run dev:all` starts both in one terminal (open http://localhost:5173; Ctrl+C stops both), or run `npm run hab` (restarts on changes) next to `npm run dev`; Vite forwards `/api` and `/hab` to it. Environment: `PORT` (8787), `HOST` (`0.0.0.0`), `CAIRN_DATA` (`web/hab-data`), `CAIRN_DIST` (`web/dist`).
+
+### Deploy on Railway
+
+The hab server serves the app, the API and the WebSocket from one process, so CAIRN runs as a single
+Railway service. `web/railway.json` holds the build and start commands and the health check.
+
+1. Create a project from this GitHub repository.
+2. In the service's **Settings**: set **Root Directory** to `web` and **Config file path** to
+   `/web/railway.json` (Railway does not look for the config file inside the root directory).
+3. Add a **Volume** to the service, mounted at `/data`, and set the variable `CAIRN_DATA=/data`.
+   Without it, notebooks, voice notes and EVA records are lost on every deploy.
+4. Under **Networking**, generate a domain. It is https, so the microphone works on phones, and
+   Mission Control connects over `wss://` on the same address.
+
+The build downloads the speech model (`npm run build:deploy` runs `fetch-speech`, then `build`).
+Railway sets `PORT`; the server listens on `0.0.0.0`.
+
+Keep the service at **one replica**: each site's room (light-time relay, Mission Control, EV2) lives
+in the server's memory, so two replicas would split the crew from Earth. The built app is about
+170 MB, of which 87 MB is site data, so most of the cost is outgoing traffic: a visitor opening one
+site downloads tens of MB.
 
 ## Controls
 
