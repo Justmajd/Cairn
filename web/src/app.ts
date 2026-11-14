@@ -1046,7 +1046,10 @@ export class App {
     const pr = m.projection;
     const em = m.emergency;
     const remaining = m.remaining();
-    const visited = m.visited.map((id) => this.poi(id)?.short ?? id);
+    const visited = [
+      ...m.visited.map((id) => this.poi(id)?.short ?? id),
+      ...m.reached.filter((id) => !m.visited.includes(id)).map((id) => `${this.poi(id)?.short ?? id} (science cut short)`),
+    ];
     host.innerHTML = `
       <div class="scroll">
         <section class="summary">
@@ -1058,7 +1061,7 @@ export class App {
             <div><span>${m.alertS !== null ? "To all-clear" : "Time outside"}</span>${heroDur(m.t)}</div>
           </div>
           <dl class="kv">
-            <dt>Stops completed</dt><dd>${visited.length ? esc(visited.join(", ")) : "none"}</dd>
+            <dt>Stops reached</dt><dd>${visited.length ? esc(visited.join(", ")) : "none"}</dd>
             <dt>Oxygen used</dt><dd>${Math.round(m.o2UsedL)} L of ${this.P.o2SupplyL} L</dd>
             <dt>Dose received</dt><dd>${fmtDose(m.doseUGy)}</dd>
           </dl>

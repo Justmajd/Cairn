@@ -73,7 +73,8 @@ export class Mission {
   distanceM = 0;
   o2UsedL = 0;
   doseUGy = 0;
-  visited: string[] = [];
+  visited: string[] = []; // stops whose science was finished
+  reached: string[] = []; // stops the crew got to (science maybe cut short)
   alertS: number | null = null;
   projection: Projection | null = null;
   emergency: Emergency | null = null;
@@ -259,6 +260,7 @@ export class Mission {
       if (this.segT >= dur - 1e-6) {
         if (seg.kind === "walk") {
           if (seg.to) events.push({ type: "arrive", poi: seg.to });
+          if (seg.to && seg.to.kind !== "shelter" && !this.reached.includes(seg.to.id)) this.reached.push(seg.to.id);
           if (this.phase === "to-shelter") {
             this.phase = "sheltered";
             events.push({ type: "sheltered" });
