@@ -11,6 +11,9 @@ Built for the **2026 NASA Space Apps Challenge** — *Interplanetary Survival Gu
   <img src="docs/img/visor.jpg" width="49%" alt="CAIRN visor during a walk to Cheyava Falls: oxygen, way home, radio, dose and the minimap" />
 </p>
 
+**Live app: [cairn-mars.up.railway.app](https://cairn-mars.up.railway.app)** — Mission Control at
+[cairn-mars.up.railway.app/?view=mission](https://cairn-mars.up.railway.app/?view=mission).
+
 - [Introduction](docs/introduction.md) — the idea, the story and the vision
 - [Project plan](docs/plan.md) — technical design and schedule
 - [Data sources](docs/data-sources.md) — every dataset, with links and credits
@@ -113,7 +116,7 @@ commands and the health check; they hand over to `web/`.
    root).
 2. Add a **Volume** to the service, mounted at `/data`, and set the variable `CAIRN_DATA=/data`.
    Without it, notebooks, voice notes and EVA records are lost on every deploy.
-3. Under **Networking**, generate a domain. It is https, so the microphone works on phones, and
+3. Under **Networking**, generate a domain (the live app is at `cairn-mars.up.railway.app`). It is https, so the microphone works on phones, and
    Mission Control connects over `wss://` on the same address.
 
 The build downloads the speech model (`npm run build:deploy` runs `fetch-speech`, then `build`).

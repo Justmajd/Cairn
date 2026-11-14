@@ -15,7 +15,7 @@ CAIRN plans safe walks (EVAs) for the first astronauts on Mars, on real NASA ter
 ## Links
 
 - Demo video: [link]
-- Live app: [link — Railway deployment]
+- Live app: https://cairn-mars.up.railway.app (Mission Control: https://cairn-mars.up.railway.app/?view=mission)
 - Code: [link to the public repository]
 
 ## What it does
