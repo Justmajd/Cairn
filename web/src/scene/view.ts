@@ -40,6 +40,9 @@ const GREY: Rgb = [0.55, 0.6, 0.62];
 const GREEN: Rgb = [0.45, 1.0, 0.55];
 
 const EYE_HEIGHT_M = 1.7;
+/** Closest the map and 3D cameras may come to the ground (m). */
+const CAMERA_CLEARANCE_M = 3;
+const sightDir = new THREE.Vector3();
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
 interface Tween {
@@ -332,7 +335,7 @@ export class SceneView {
     return { now: this.dpr, max: this.dprMax };
   }
 
-  /** Height of the ground below a world point (world units), for the near clipping plane. */
+  /** Height of the ground below a world point (world units), interpolated like the mesh. */
   private groundYBelow(x: number, z: number): number {
     const gx = x + this.half;
     const gy = this.half - z;
@@ -341,11 +344,87 @@ export class SceneView {
     const r = this.regionHeights;
     if (r) {
       const o = this.shared.uRegOrigin.value;
-      const c = Math.round((x - o.x) / r.cell);
-      const row = Math.round((z - o.y) / r.cell);
-      if (c >= 0 && row >= 0 && c < r.n && row < r.n) return (r.heights[row * r.n + c] - this.zRef) * this.exag;
+      const fc = (x - o.x) / r.cell;
+      const fr = (z - o.y) / r.cell;
+      const c = Math.floor(fc);
+      const row = Math.floor(fr);
+      if (c >= 0 && row >= 0 && c < r.n - 1 && row < r.n - 1) {
+        const h = r.heights;
+        const i = row * r.n + c;
+        const tx = fc - c;
+        const top = h[i] + (h[i + 1] - h[i]) * tx;
+        const bottom = h[i + r.n] + (h[i + r.n + 1] - h[i + r.n]) * tx;
+        return (top + (bottom - top) * (fr - row) - this.zRef) * this.exag;
+      }
     }
     return 0;
+  }
+
+  /** Highest ground at and around a point: the camera must clear all of it, not just one sample. */
+  private groundAround(x: number, z: number, r: number): number {
+    return Math.max(
+      this.groundYBelow(x, z),
+      this.groundYBelow(x + r, z),
+      this.groundYBelow(x - r, z),
+      this.groundYBelow(x, z + r),
+      this.groundYBelow(x, z - r),
+    );
+  }
+
+  /** Where the camera's line of sight first meets the ground, marched over the height grids. */
+  private sightOnGround(maxDist: number): THREE.Vector3 | null {
+    const o = this.camera.position;
+    const d = this.camera.getWorldDirection(sightDir);
+    const above = (t: number) => o.y + d.y * t - this.groundYBelow(o.x + d.x * t, o.z + d.z * t);
+    if (above(0) <= 0) return null;
+    const steps = 96;
+    let prev = 0;
+    for (let i = 1; i <= steps; i++) {
+      const t = Math.pow(i / steps, 1.5) * maxDist; // finer steps close to the camera
+      if (above(t) <= 0) {
+        let a = prev;
+        let b = t;
+        for (let k = 0; k < 14; k++) {
+          const m = (a + b) / 2;
+          if (above(m) > 0) a = m;
+          else b = m;
+        }
+        return o.clone().addScaledVector(d, b);
+      }
+      prev = t;
+    }
+    return null;
+  }
+
+  /**
+   * Keep the camera out of the ground.  In the 3D view the point it turns around is pinned to the
+   * surface it is looking at, so dragging over hills or zooming towards them never leaves the pivot
+   * buried; then the camera itself is held a few metres above the ground below it.
+   * Returns true when the camera or its target moved.
+   */
+  private keepAboveGround(): boolean {
+    const cam = this.camera.position;
+    const t = this.controls.target;
+    let moved = false;
+    if (this.mode === "orbit" && !this.tween) {
+      const gap = t.y - this.groundYBelow(t.x, t.z);
+      const dist = cam.distanceTo(t);
+      if (Math.abs(gap) > Math.max(1.5, dist * 0.02)) {
+        const hit = this.sightOnGround(Math.max(3000, dist * 3));
+        if (hit) t.copy(hit);
+        else if (gap < 0) {
+          t.y -= gap;
+          cam.y -= gap;
+        }
+        moved = true;
+      }
+    }
+    const floor = this.groundAround(cam.x, cam.z, 6) + CAMERA_CLEARANCE_M;
+    if (cam.y < floor) {
+      cam.y = floor;
+      moved = true;
+    }
+    return moved;
   }
 
   /**
@@ -379,6 +458,7 @@ export class SceneView {
       this.controls.target.lerpVectors(tw.fromTarget, tw.toTarget, k);
       this.camera.fov = tw.fromFov + (tw.toFov - tw.fromFov) * k;
       this.camera.updateProjectionMatrix();
+      this.keepAboveGround();
       this.camera.lookAt(this.controls.target);
       if (tw.t >= 1) {
         this.tween = null;
@@ -398,6 +478,7 @@ export class SceneView {
       this.updateWalkCamera(dt);
     } else {
       this.controls.update();
+      if (this.keepAboveGround()) this.camera.lookAt(this.controls.target);
     }
 
     this.updateClip();
