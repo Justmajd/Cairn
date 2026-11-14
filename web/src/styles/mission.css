@@ -213,3 +213,7 @@ li.fresh { animation: log-in 0.9s var(--ease-glide) both; }
 .mc-comms textarea { border-radius: 12px; border-color: rgb(var(--steel-rgb) / 0.2); transition: border-color var(--t-micro), box-shadow var(--t-micro); }
 .mc-comms textarea:focus { outline: none; border-color: rgb(var(--fern-rgb) / 0.55); box-shadow: 0 0 0 3px rgb(var(--fern-rgb) / 0.12); }
 .mc-sim.run b { color: var(--accent); }
+/* an EVA under way at another site, offered while this one has nothing running */
+.mc-wait .mc-elsewhere { display: block; margin: 10px auto 0; padding: 10px 14px; max-width: 460px; border: 1px solid rgb(var(--fern-rgb) / 0.45); border-radius: var(--r-md); background: rgb(var(--fern-rgb) / 0.07); color: var(--text); }
+.mc-wait .mc-elsewhere i { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
+.mc-wait .mc-elsewhere a { color: var(--accent); font-weight: 600; white-space: nowrap; }

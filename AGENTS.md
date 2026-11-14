@@ -242,6 +242,7 @@ glow, `playOnce`), `dom.ts` (helpers, formatters), `icons.ts` (Lucide).
 | Two astronauts on two devices (EV1 + EV2) | `app.ts` (`member`), `server/index.ts` |
 | Earth sends a revised plan; crew accepts/declines | `server/room.ts` (`say` with change, `reply`) |
 | Replay of past EVAs in Mission Control | `server/store.ts` (EVA records), `dashboard.ts` |
+| Live EVA card on the main menu (any site → that EVA's Mission Control / Join as EV2); Mission Control points to a live EVA elsewhere | `hab/live.ts` (`/api/live`, no `HabLink`, keeps the menu light), `ui/briefing.ts` `watchLive`, `dashboard.ts` |
 
 ---
 
@@ -272,7 +273,8 @@ Node 24 runs the `.ts` files directly (type stripping). Constraints: no TypeScri
 
 - `index.ts` — static serving of `web/dist` (gzip, ETag, immutable assets, path safety); REST
   `/api/health`, `/api/notebook/<site>[/<id>]` (GET/PUT/DELETE), `/api/audio/<site>/<id>` (voice notes),
-  `/api/evas/<site>` (finished EVA records); WebSocket `/hab` with one room per site; persists live
+  `/api/evas/<site>` (finished EVA records), `/api/live` (EVAs under way on every site, `LiveEva`;
+  rooms of running EVAs are restored at startup so it lists them before anyone reconnects); WebSocket `/hab` with one room per site; persists live
   state to `live.json`; optional HTTPS (`HTTPS=1`, cert from `scripts/cert.mjs`).
   Env: `PORT` (8787), `HOST`, `CAIRN_DATA` (hab-data dir), `CAIRN_DIST`.
 - `room.ts` — `Room`: the **light-time relay**. Telemetry frames, log lines and notes from the crew
