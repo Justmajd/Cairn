@@ -6,6 +6,11 @@ A Marswalk route planner for the first human explorers on Mars, built on officia
 
 Built for the **2026 NASA Space Apps Challenge** — *Interplanetary Survival Guide: Martian Map*.
 
+<p>
+  <img src="docs/img/planner.jpg" width="49%" alt="CAIRN planner at Jezero: the safe route, safety checks, and a radio warning with the suggested relay" />
+  <img src="docs/img/visor.jpg" width="49%" alt="CAIRN visor during a walk to Cheyava Falls: oxygen, way home, radio, dose and the minimap" />
+</p>
+
 - [Introduction](docs/introduction.md) — the idea, the story and the vision
 - [Project plan](docs/plan.md) — technical design and schedule
 - [Data sources](docs/data-sources.md) — every dataset, with links and credits
