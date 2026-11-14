@@ -499,9 +499,23 @@ export class App {
     });
     const first = ok.indexOf(true);
     const last = ok.lastIndexOf(true);
-    const text = first < 0
+    // sunrise and sunset: where the Sun's elevation crosses the horizon, to the minute
+    const cross = (from: number, to: number) => {
+      let a = from;
+      let b = to;
+      const up = sunAt(this.lat, b, this.solar).elevation > 0;
+      for (let i = 0; i < 20; i++) {
+        const m = (a + b) / 2;
+        if ((sunAt(this.lat, m, this.solar).elevation > 0) === up) b = m;
+        else a = m;
+      }
+      return b;
+    };
+    const rise = cross(0, 12);
+    const set = cross(24, 12);
+    const text = `${first < 0
       ? "No start time keeps the Sun above 8° for the whole walk: shorten it."
-      : `Daylight the whole way when leaving ${fmtLmst(6 + first * 0.25)}–${fmtLmst(6 + last * 0.25)} (green).`;
+      : `Daylight the whole way when leaving ${fmtLmst(6 + first * 0.25)}–${fmtLmst(6 + last * 0.25)} (green).`} Sunrise ${fmtLmst(rise)}, sunset ${fmtLmst(set)}.`;
     return { gradient: `linear-gradient(90deg, ${stops.join(", ")})`, text };
   }
 
