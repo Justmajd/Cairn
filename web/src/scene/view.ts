@@ -504,7 +504,17 @@ export class SceneView {
     }
   }
 
+  /** Seconds into the "To shelter" flood animation, or null when it is not running. */
+  private revealT: number | null = null;
+
   private update(dt: number): void {
+    if (this.revealT !== null) {
+      this.revealT += dt;
+      const minutes = (this.revealT / 2.2) * 40; // 40 minutes of walking in 2.2 s
+      this.terrain.uniforms.uReveal.value = minutes >= 40 ? 1000 : minutes;
+      if (minutes >= 40) this.revealT = null;
+      this.dirty = true;
+    }
     if (this.tween) {
       const tw = this.tween;
       tw.t = Math.min(1, tw.t + dt / tw.duration);
@@ -1013,6 +1023,9 @@ export class SceneView {
   setLayer(id: LayerId, opacity: number): void {
     const u = this.terrain.uniforms;
     if (id === "shelter" && this.shelterTex) u.uShelter.value = this.shelterTex;
+    // the way home floods outward from the rover when the layer opens: every point, worked out at start-up
+    if (id === "shelter" && u.uLayer.value !== LAYER_IDS.shelter && !reducedMotion.matches) this.revealT = 0;
+    else if (id !== "shelter") this.revealT = null;
     if (id === "radio" && this.radioTex) u.uRadio.value = this.radioTex;
     u.uLayer.value = LAYER_IDS[id];
     u.uLayerMix.value = opacity;

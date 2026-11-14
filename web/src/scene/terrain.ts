@@ -153,6 +153,7 @@ const AOI_FRAG = /* glsl */ `
   uniform sampler2D uRisk;
   uniform sampler2D uThermal;
   uniform sampler2D uShelter;
+  uniform float uReveal; // minutes from the rover shown so far (the layer floods outward when it opens)
   uniform sampler2D uRadio;
   uniform sampler2D uShield;
   uniform sampler2D uMinerals;
@@ -297,7 +298,15 @@ const AOI_FRAG = /* glsl */ `
       float w = fwidth(k) * 1.1;
       float line = 1.0 - smoothstep(0.0, w, min(fract(k), 1.0 - fract(k)));
       c = mix(c, vec4(0.05, 0.03, 0.02, 0.85), line * 0.8);
-      return impassable(c, smoothstep(240.0, 252.0, raw));
+      c = impassable(c, smoothstep(240.0, 252.0, raw));
+      if (uReveal < 900.0) {
+        // flooding outward from the rover: a bright front, nothing beyond it yet
+        float ahead = smoothstep(uReveal - 0.4, uReveal, minutes);
+        float front = 1.0 - smoothstep(0.0, 0.8, abs(minutes - uReveal + 0.4));
+        c = mix(c, vec4(1.0, 1.0, 1.0, 0.9), front * 0.85);
+        c.a *= 1.0 - ahead;
+      }
+      return c;
     }
     return vec4(0.0);
   }
@@ -699,6 +708,7 @@ export function buildTerrain(
     uRisk: { value: layers.risk },
     uThermal: { value: layers.thermal },
     uShelter: { value: layers.slope },
+    uReveal: { value: 1000 },
     uRadio: { value: layers.slope },
     uGeo: { value: layers.geology },
     uGeoLut: { value: layers.geoLut },
