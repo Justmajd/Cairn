@@ -16,14 +16,14 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { createServer as createHttpsServer } from "node:https";
 import { readFileSync } from "node:fs";
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { networkInterfaces } from "node:os";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { readFile } from "node:fs/promises";
 import { WebSocketServer, type WebSocket } from "ws";
-import { SAFE_ID, type ClientMsg, type Member, type NoteRecord, type Role, type ServerMsg } from "../src/hab/protocol.ts";
+import { SAFE_ID, type ClientMsg, type LiveEva, type Member, type NoteRecord, type Role, type ServerMsg } from "../src/hab/protocol.ts";
 import { Room, type Out } from "./room.ts";
 import { MAX_AUDIO_BYTES, Store } from "./store.ts";
 
@@ -213,6 +213,25 @@ async function api(req: IncomingMessage, res: ServerResponse, parts: string[]): 
       sites: [...rooms.values()].map((r) => ({ site: r.site, crew: r.crewOnline, eva: r.evaId, running: r.running, mc: inRoom(r.site, "mc").length })),
     });
   }
+  if (what === "live") {
+    // EVAs under way right now, on any site: the main menu offers each one's own Mission Control
+    const live: LiveEva[] = [...rooms.values()]
+      .filter((r) => r.running && r.evaId)
+      .map((r) => ({
+        site: r.site,
+        siteName: typeof r.plan?.siteName === "string" ? r.plan.siteName : r.site,
+        evaId: r.evaId!,
+        now: r.now,
+        speed: r.speed,
+        lightTimeS: r.lightTimeS,
+        crewOnline: r.crewOnline,
+        hidden: r.crewHidden,
+        ev2: ev2s(r.site).length,
+        mc: inRoom(r.site, "mc").length,
+        stops: Array.isArray(r.plan?.stops) ? r.plan.stops.filter((s) => s.kind !== "shelter").length : 0,
+      }));
+    return json(res, 200, { live });
+  }
   if (!site || !SAFE_ID.test(site) || (id !== undefined && !SAFE_ID.test(id))) return json(res, 400, { error: "bad site or id" });
   const method = req.method ?? "GET";
 
@@ -381,6 +400,18 @@ const ticker = setInterval(() => {
   lastTick = now;
   for (const r of rooms.values()) deliver(r.site, r.tick(dt));
 }, 250);
+
+// Bring back the rooms of EVAs that were under way when the hab stopped, so /api/live lists them
+// before anyone reconnects.
+void readdir(store.root, { withFileTypes: true })
+  .then(async (dirs) => {
+    for (const d of dirs) {
+      if (!d.isDirectory() || !SAFE_ID.test(d.name)) continue;
+      const live = await store.live<{ evaId?: string; running?: boolean }>(d.name);
+      if (live?.evaId && live.running) await room(d.name);
+    }
+  })
+  .catch(() => {}); // no hab-data yet: nothing to resume
 
 server.listen(PORT, HOST, () => {
   const lan = Object.values(networkInterfaces())

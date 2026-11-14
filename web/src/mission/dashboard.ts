@@ -5,7 +5,8 @@
  * receives.  Messages typed here reach the crew one light time later.
  */
 import { HabLink, habApi, type LinkState } from "../hab/link";
-import type { EarthMessage, EvaRecord, Frame, LogEntry, McSnapshot, NoteRecord, PlanChange, PlanInfo, ServerMsg } from "../hab/protocol";
+import { liveEvas, liveSiteName, liveState } from "../hab/live";
+import type { EarthMessage, EvaRecord, Frame, LiveEva, LogEntry, McSnapshot, NoteRecord, PlanChange, PlanInfo, ServerMsg } from "../hab/protocol";
 import { $, esc, fmtClock, LOGO_SVG } from "../ui/dom";
 import "../styles/mission.css";
 
@@ -282,6 +283,18 @@ export function startMissionControl(site: string): void {
     draw();
   }, 100);
 
+  /** EVAs under way on other sites: offered from here while this site has none running. */
+  let elsewhere: LiveEva[] = [];
+  const pollElsewhere = async () => {
+    if (document.hidden || replay) return;
+    const next = ((await liveEvas()) ?? []).filter((e) => e.site !== site);
+    const changed = next.map((e) => e.evaId).join() !== elsewhere.map((e) => e.evaId).join();
+    elsewhere = next;
+    if (changed) render();
+  };
+  void pollElsewhere();
+  window.setInterval(pollElsewhere, 10_000);
+
   function render(): void {
     for (const st of S.plan?.stops ?? []) stopNames.set(st.id, st.short);
     const dot = (el: HTMLElement, on: boolean, text: string, title: string) => {
@@ -313,6 +326,11 @@ export function startMissionControl(site: string): void {
         replay ? "" : S.speed > 0 ? `, about ${fmtReal(left / S.speed)} from now at the crew's ${S.speed}× speed` : S.hidden ? ". The crew's planner is in a background tab, so its EVA clock is stopped: it arrives once that tab is visible again" : ". The crew's simulation is paused, so it is not getting closer: it arrives once they press play"
       }.</span>`;
     }
+    // nothing under way here, but an EVA is live at another site: offer its Mission Control
+    if (w && !running && elsewhere.length && S.link === "online")
+      w += elsewhere
+        .map((e) => `<span class="mc-elsewhere"><i aria-hidden="true"></i>An EVA is under way at <b>${esc(liveSiteName(e))}</b> (T+${fmtClock(e.now)}, ${esc(liveState(e))}). <a href="?view=mission&site=${encodeURIComponent(e.site)}">Open its Mission Control →</a></span>`)
+        .join("");
     wait.innerHTML = w;
     wait.hidden = !w;
 

@@ -945,6 +945,23 @@ svg.timeline .sunt { fill: #f0e442; font: 500 9px var(--mono); }
 .brief-mc.ev2:hover { background: rgba(198, 244, 50, 0.12); }
 @media (max-width: 560px) { .brief-links { grid-template-columns: 1fr; } }
 
+/* main menu: an EVA under way on the hab, with its own Mission Control */
+.brief-live { display: grid; gap: 8px; margin: 14px 0 22px; }
+.brief-live[hidden] { display: none; }
+.brief-live-row { position: relative; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px 14px; padding: 12px 14px; border-radius: var(--r-md); border: 1px solid rgb(var(--fern-rgb) / 0.45); background: linear-gradient(135deg, rgb(var(--fern-rgb) / 0.1), rgb(var(--fern-rgb) / 0.03) 60%), rgba(18, 17, 16, 0.6); box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08); animation: pop-in 0.45s var(--ease-glide) backwards; }
+.brief-live-row .pulse { position: relative; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+.brief-live-row .pulse::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--accent); animation: live-pulse 1.8s ease-out infinite; }
+@keyframes live-pulse { from { transform: scale(1); opacity: 0.7; } to { transform: scale(3); opacity: 0; } }
+.brief-live-row .t { display: grid; gap: 2px; min-width: 0; }
+.brief-live-row small { font: 500 10px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+.brief-live-row b { font: 600 15px var(--sans); }
+.brief-live-row .clock { font: 12px var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.brief-live-row .who { font-size: 12px; color: var(--text-2); }
+.brief-live-row .acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.brief-live-row .acts button { width: auto; white-space: nowrap; }
+@media (max-width: 560px) { .brief-live-row { grid-template-columns: auto 1fr; } .brief-live-row .acts { grid-column: 1 / -1; justify-content: stretch; } .brief-live-row .acts button { flex: 1; } }
+@media (prefers-reduced-motion: reduce) { .brief-live-row { animation: none; } .brief-live-row .pulse::after { animation: none; opacity: 0; } }
+
 /* Two astronauts on two devices */
 .crew-badge { margin-left: 6px; padding: 2px 8px; border-radius: 999px; font: 600 11px var(--mono); color: #2a1d00; background: var(--warn); white-space: nowrap; }
 .crew-note { margin: 6px 2px 0; font-size: 12px; color: var(--text-2); }
