@@ -18,8 +18,8 @@ Pick a site, pick the stops, and CAIRN plans the walk from the pressurised rover
 
 1. **Layers real mission data** on a 2 × 2 km walk area set in up to 16 km of surrounding terrain: HiRISE elevation (1 m) and imagery (25 cm), CRISM minerals, THEMIS night-time thermal, the USGS geologic map, loose sand, terrain sky-shielding and minutes to shelter.
 2. **Finds the safest walking route** (walking energy × fall risk) between the stops you pick or any point you click, and shows it against the straight line — which crosses ground too steep to walk at both sites.
-3. **Budgets the EVA**: distance, time, oxygen, walk-back margin and radiation dose — with the **real Sun** for the chosen sol and start time, casting shadows from the real terrain.
-4. **Shows what you will see**: rover photos taken at each stop, and at Gale a **360° panorama** CAIRN stitched from Curiosity's Navcam frames.
+3. **Budgets the EVA**: distance, time, oxygen, walk-back margin and radiation dose — with the **real Sun** for the chosen sol and start time, casting shadows from the real terrain. The start-time slider shows which departures keep daylight for the whole walk (and sunrise and sunset), the cue card marks stops that are in shade on arrival, and a click on *Longest way home* or *Steepest ground* flies to that point of the route.
+4. **Shows what you will see**: rover photos taken at each stop, and at Gale a **360° panorama** CAIRN stitched from Curiosity's Navcam frames. Stops without photos (your own, placed on the map) get a HiRISE close-up from orbit.
 5. **Walks the route** in a first-person visor view with compass, oxygen, dose, weather and a minimap.
 6. **Replays a real solar storm** (20 May 2024, measured by Curiosity's RAD). CAIRN finds the way back to the rover in milliseconds, names the nearest natural cover, and reports the dose avoided.
 7. **Checks radio contact.** A line-of-sight model of the rover's antenna over the real terrain shows where hills cut the link, how much of the walk stays in contact, and — where it does not — the best spot on the route for the crew to stand up a portable relay (on Jezero's default walk: 85% → 100%).
@@ -31,7 +31,7 @@ Pick a site, pick the stops, and CAIRN plans the walk from the pressurised rover
 13. **Works offline and installs as an app.** About → Use offline saves a whole site on the device — astronauts on Mars will not have the internet.
 14. **Plays a two-minute guided demo** of the core story (Demo button or the briefing).
 
-Colour-blind safe throughout: map layers and charts use the Okabe-Ito palette, and impassable ground is also hatched.
+Colour-blind safe throughout: map layers and charts use the Okabe-Ito palette, and impassable ground is also hatched. Keyboard shortcuts (press `?`), screen-reader announcements for alerts, and reduced motion are supported; on phones the screen stays on during a walk and alerts vibrate.
 
 Every layer, photo and reading names its mission, instrument and product in the **Data sources** panel and in [docs/data-sources.md](docs/data-sources.md).
 
@@ -50,7 +50,7 @@ Open the address Vite prints (normally http://localhost:5173).
 | Command | What it does |
 |---|---|
 | `npm run dev` | Development server |
-| `npm test` | 55 unit and integration tests |
+| `npm test` | 58 unit and integration tests |
 | `npm run build` | Type-check and build to `web/dist/` |
 | `npm run preview` | Serve the built app |
 
@@ -67,6 +67,7 @@ Offline mode needs the built app (`npm run build`, then `npm run preview` or any
 | **Map** | Drag to move · scroll to zoom · double-click to fly there · click to add a stop | `+` `−` |
 | **3D** | Drag to rotate and tilt · Shift-drag or right-drag to move · scroll to zoom · double-click to fly there (also outside the walk area) | Arrow keys rotate and tilt · `+` `−` · `N` faces north |
 | **Visor** | Drag to look around | |
+| **Any** | Hover the elevation chart to see that point on the map | `1` `2` `3` switch views · `Space` pauses the EVA · `Esc` closes · `?` lists shortcuts |
 
 The buttons at the bottom-right of the map do the same things.
 
