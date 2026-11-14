@@ -1,5 +1,5 @@
 {
- "source": "USGS Mars 2020 TRN CTX DTM (20 m) and orthomosaic (6 m)",
+ "source": "The Gale HiRISE DTM (DTEEC_019698_1750_019988_1750) resampled to 20 m, and orthoimage ESP_019698_1750_RED_C (1 m/px)",
  "n": 331,
  "cellM": 20.48,
  "sizeM": 6758.400000000001,

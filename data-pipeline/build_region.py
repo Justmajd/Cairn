@@ -116,7 +116,7 @@ def main():
     Image.fromarray(np.clip(mapped, 0, 255).astype(np.uint8), "L").save(os.path.join(OUT, "region.jpg"), quality=88, optimize=True)
 
     write_json("region.json", {
-        "source": "USGS Mars 2020 TRN CTX DTM (20 m) and orthomosaic (6 m)",
+        "source": CFG["region"].get("source", "USGS Mars 2020 TRN CTX DTM (20 m) and orthomosaic (6 m)"),
         "n": n, "cellM": cell, "sizeM": rsize,
         "originLocal": {"x": rx0 - X0, "y": ry0 - Y0},     # south-west corner, metres from the walk-area origin
         "inner": {"from": i0, "to": i1},                     # node index range of the walk area (both axes)

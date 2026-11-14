@@ -1093,7 +1093,9 @@ export class SceneView {
     group.add(this.makeLine(pts, [1, 0.94, 0.86], 1.4, 0.5, 3));
     const el = document.createElement("div");
     el.className = "area-tag";
-    el.innerHTML = "<b>HiRISE</b> 25 cm/px <i></i> <b>CTX</b> 6 m/px outside";
+    const reg = this.site.region?.meta;
+    const outside = reg ? `<i></i> <b>${/CTX/.test(reg.source) ? "CTX" : "HiRISE"}</b> ${reg.texture.mPerPx < 3 ? reg.texture.mPerPx.toFixed(1) : Math.round(reg.texture.mPerPx)} m/px outside` : "";
+    el.innerHTML = `<b>HiRISE</b> ${Math.round(this.site.meta.texture.hi?.mPerPx ? this.site.meta.texture.hi.mPerPx * 100 : this.site.meta.texture.mPerPx * 100)} cm/px ${outside}`;
     const tag = new CSS2DObject(el);
     tag.position.copy(this.ground(1, size - 1, 1));
     tag.center.set(-0.03, -0.35); // just inside the north-west corner
