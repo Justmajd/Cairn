@@ -20,31 +20,10 @@
 @keyframes stars-drift { to { transform: translate3d(-256px, -256px, 0); } }
 @keyframes twinkle { 0%, 100% { opacity: 0.6; } 50% { opacity: 0.4; } }
 
-/* ---------- page transitions (View Transitions API, the way bracken.sh does it) ----------
-   The old screen blurs, drifts up and fades; the new one rises out of a blur.  Named elements morph
-   between the two: the CAIRN logo flies from screen to screen and the briefing's headline becomes the
-   site name in the planner's top bar.  Names are only given during a transition (html[data-vt]), because
-   the planner's top bar is in the page underneath the overlays and two elements may not share a name. */
-::view-transition-old(root) { animation: vt-out 0.32s cubic-bezier(0.33, 1, 0.68, 1) both; }
-::view-transition-new(root) { animation: vt-in 0.65s cubic-bezier(0.16, 0.84, 0.24, 1) both; }
-@keyframes vt-out { to { opacity: 0; filter: blur(6px); transform: translateY(-12px); } }
-@keyframes vt-in { from { opacity: 0; filter: blur(8px); transform: translateY(24px); } }
-::view-transition-group(brand), ::view-transition-group(page-title) { animation-duration: 0.9s; animation-timing-function: cubic-bezier(0.87, 0, 0.13, 1); }
-::view-transition-old(page-title), ::view-transition-new(page-title) { height: 100%; object-fit: fill; }
-::view-transition-old(page-title) { animation: vt-fade-out 0.42s cubic-bezier(0.33, 1, 0.68, 1) both; }
-::view-transition-new(page-title) { animation: vt-fade-in 0.7s cubic-bezier(0.16, 0.84, 0.24, 1) 0.2s both; }
-@keyframes vt-fade-out { to { opacity: 0; } }
-@keyframes vt-fade-in { from { opacity: 0; } }
-
-#loading .logo { view-transition-name: brand; }                       /* first thing a new page shows */
-[data-vt="load-brief-to"] .brief-brand .logo,
-[data-vt="load-app-to"] #topbar .brand .logo,
-[data-vt="enter-from"] .brief-brand .logo,
-[data-vt="enter-to"] #topbar .brand .logo,
-[data-vt="site-brief-from"] .brief-brand .logo,
-[data-vt="site-app-from"] #topbar .brand .logo { view-transition-name: brand; }
-[data-vt="enter-from"] .brief h2,
-[data-vt="enter-to"] #site-name { view-transition-name: page-title; }
+/* ---------- page transitions: the dust sweep (ui/dissolve.ts draws it on this canvas) ---------- */
+.dust-sweep { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 200; pointer-events: auto; }
+/* loading screen: a quick fade onto the briefing or the planner */
+#loading.motion-out { animation: fade-out 0.35s ease-in forwards; }
 
 /* dialogs: a short pop from the console */
 #modal.motion-in { animation: fade-in 0.18s ease-out both; }
@@ -69,10 +48,6 @@
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes fade-out { to { opacity: 0; } }
 
-/* switching sites: the same transition across pages (cross-document View Transitions; others just switch) */
-@view-transition { navigation: auto; }
 @media (prefers-reduced-motion: reduce) {
-  @view-transition { navigation: none; }
-  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
   #loading::before, #briefing::before { animation: none !important; }
 }

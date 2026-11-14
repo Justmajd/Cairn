@@ -12,7 +12,8 @@ import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "./styles/main.css";
 import "./styles/motion.css";
-import { markSiteLinks, pageTransition } from "./ui/motion";
+import { resumeDissolve } from "./ui/dissolve";
+import { hideAnimated, markSiteLinks } from "./ui/motion";
 import { showBriefing } from "./ui/briefing";
 import { initOffline } from "./ui/offline";
 import { $ } from "./ui/dom";
@@ -42,6 +43,7 @@ function offerLiteIfSlow(): void {
 }
 
 async function boot(): Promise<void> {
+  resumeDissolve(); // arrived from another site: pull the dust curtain away
   if (!("DecompressionStream" in window)) {
     throw new Error("this browser cannot unpack CAIRN's compressed map data. Use Chrome or Edge 80+, Firefox 113+ or Safari 16.4+.");
   }
@@ -129,11 +131,9 @@ async function boot(): Promise<void> {
   // a shared plan link opens straight on the plan; ?demo=1 plays the guided demo (for a booth screen or recording)
   const sharedPlan = /(^#|&)(stops|add)=/.test(location.hash);
   const briefing = query.get("demo") !== "1" && query.get("skip") !== "1" && !sharedPlan;
-  // leave the loading screen: the CAIRN logo flies onto the briefing, or into the planner's top bar
-  pageTransition(briefing ? "load-brief" : "load-app", () => {
-    $("#loading").hidden = true;
-    if (briefing) showBriefing(site, () => {}, sites);
-  });
+  // the loading screen fades onto the briefing (or straight onto the planner)
+  if (briefing) showBriefing(site, () => {}, sites);
+  hideAnimated($("#loading"), 350);
   if (query.get("demo") === "1") void app.startDemo();
   markSiteLinks();
 
