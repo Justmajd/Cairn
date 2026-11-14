@@ -34,32 +34,35 @@ export function startMissionControl(site: string): void {
   document.body.className = "mc-body";
   document.body.innerHTML = `
     <div class="mc">
+      <h1 class="vh">CAIRN Mission Control</h1>
+      <p class="vh" id="mc-say" role="status" aria-live="polite"></p>
+      <p class="vh" id="mc-shout" role="alert"></p>
       <header class="mc-top">
         <div class="mc-brand">${LOGO_SVG}<div><b>CAIRN</b><span>Mission Control · Earth</span></div></div>
         <div class="mc-site" id="mc-site">—</div>
         <div class="mc-links"><span id="mc-hab" class="dot">Hab</span><span id="mc-crew" class="dot">Crew</span></div>
         <div class="mc-clocks">
-          <div><span>Earth · EVA clock</span><b id="mc-now">—</b></div>
-          <div class="delay"><span>Signal delay, one way</span><b id="mc-delay">—</b></div>
-          <div><span>Showing Mars at</span><b id="mc-shown">—</b></div>
+          <div><span>Earth clock</span><b id="mc-now">—</b></div>
+          <div class="delay" title="One-way radio delay between Mars and Earth"><span>Signal delay</span><b id="mc-delay">—</b></div>
+          <div><span>Mars as of</span><b id="mc-shown">—</b><small id="mc-shown-lmst"></small></div>
         </div>
       </header>
       <div class="mc-banner" id="mc-banner" hidden></div>
       <main class="mc-grid">
         <section class="mc-card mc-map">
           <header><h2>Crew position</h2><label class="mc-toggle"><input type="checkbox" id="mc-truth"/><span>Show where the crew really is now <em>(Earth can't know this yet)</em></span></label></header>
-          <div class="mc-canvas"><canvas id="mc-canvas"></canvas><div class="mc-wait" id="mc-wait"></div></div>
+          <div class="mc-canvas"><canvas id="mc-canvas" role="img" aria-label="Map of the walk area"></canvas><div class="mc-wait" id="mc-wait"></div></div>
           <footer class="mc-legend"><span><i class="l-route"></i>Planned route</span><span><i class="l-trail"></i>Received track</span><span><i class="l-crew"></i>Last received position</span><span><i class="l-now"></i>Now (not yet known)</span></footer>
         </section>
         <section class="mc-card mc-telemetry">
           <header><h2>Telemetry</h2><small id="mc-age"></small></header>
           <div class="mc-status" id="mc-status">—</div>
           <div class="mc-tiles" id="mc-tiles"></div>
-          <canvas id="mc-chart" class="mc-chart"></canvas>
+          <canvas id="mc-chart" class="mc-chart" role="img" aria-label="Chart of oxygen left and dose rate as received"></canvas>
         </section>
         <section class="mc-card mc-log">
           <header><h2>Crew log</h2><small>as it reaches Earth</small></header>
-          <ol id="mc-log"></ol>
+          <ol id="mc-log" aria-label="Crew log, newest first"></ol>
         </section>
         <section class="mc-card mc-notes">
           <header><h2>Field notebook</h2><small id="mc-notes-n"></small></header>
@@ -67,7 +70,7 @@ export function startMissionControl(site: string): void {
         </section>
         <section class="mc-card mc-comms">
           <header><h2>Message the crew</h2><small id="mc-comms-hint"></small></header>
-          <form id="mc-form"><textarea id="mc-text" rows="2" maxlength="500" placeholder="e.g. Copy the storm alert. Shelter in the rover, report when inside."></textarea><button class="primary" id="mc-send" type="submit">Send</button></form>
+          <form id="mc-form"><label class="vh" for="mc-text">Message to the crew</label><textarea id="mc-text" rows="2" maxlength="500" placeholder="e.g. Copy the storm alert. Shelter in the rover, report when inside."></textarea><button class="primary" id="mc-send" type="submit">Send</button></form>
           <ul id="mc-outbox"></ul>
         </section>
         <section class="mc-card mc-history">
@@ -86,6 +89,13 @@ export function startMissionControl(site: string): void {
 
   // the link is opened last (below), once everything it renders into exists
   let link: HabLink;
+
+  /** Tell screen-reader users what just reached Earth (polite), or an alert (at once). */
+  const announce = (text: string, urgent = false) => {
+    const el = $(urgent ? "#mc-shout" : "#mc-say");
+    el.textContent = "";
+    window.setTimeout(() => (el.textContent = text), 50); // a change, even when the same words repeat
+  };
 
   function apply(m: ServerMsg): void {
     switch (m.type) {
@@ -108,6 +118,7 @@ export function startMissionControl(site: string): void {
         if (!S.eva?.running) S.lightTimeS = m.plan.lightTimeS;
         break;
       case "crew":
+        if (S.crewOnline !== m.online) announce(m.online ? "Crew device connected to the hab." : "Crew device disconnected from the hab.");
         S.crewOnline = m.online;
         break;
       case "eva":
@@ -133,15 +144,20 @@ export function startMissionControl(site: string): void {
         break;
       case "log":
         S.log.push({ entry: m.entry, arrivedT: S.now });
-        if (m.entry.kind === "alert") S.alert = m.entry;
+        if (m.entry.kind === "alert") {
+          S.alert = m.entry;
+          announce(`Received from Mars: ${m.entry.text}. It happened ${fmtLight(S.now - m.entry.t)} ago.`, true);
+        }
         break;
       case "note":
+        if (!S.notes.has(m.note.id)) announce(`${m.note.sample ? "Sample" : "Field note"} ${m.note.label} received${m.note.text ? `: ${m.note.text.replace(/[.\s]+$/, "")}` : ""}.`);
         S.notes.set(m.note.id, { note: m.note, arrivedT: S.now });
         break;
       case "note-removed":
         S.notes.delete(m.id);
         break;
       case "outbox":
+        if (m.msg.delivered && !S.outbox.get(m.msg.id)?.delivered && !m.msg.immediate) announce(`Your message reached the crew: ${m.msg.text}`);
         S.outbox.set(m.msg.id, m.msg);
         break;
     }
@@ -184,7 +200,8 @@ export function startMissionControl(site: string): void {
     $("#mc-now").textContent = S.eva ? `T+${fmtClock(S.now)}` : "no EVA";
     $("#mc-delay").textContent = S.lightTimeS ? fmtLight(S.lightTimeS) : "—";
     const f = lastFrame();
-    $("#mc-shown").textContent = f ? `T+${fmtClock(f.t)} · ${f.lmst} LMST` : S.eva ? "no signal yet" : "—";
+    $("#mc-shown").textContent = f ? `T+${fmtClock(f.t)}` : S.eva ? "no signal yet" : "—";
+    $("#mc-shown-lmst").textContent = f ? `${f.lmst} LMST on Mars` : "";
 
     // waiting messages over the map
     const wait = $("#mc-wait");
@@ -225,7 +242,7 @@ export function startMissionControl(site: string): void {
     $("#mc-status").innerHTML = `<b>${esc(f.status)}</b> ${esc(f.next)}${f.nextDistM > 0 ? ` · ${fmtDistM(f.nextDistM)}` : ""}${S.eva?.ended && S.frames.length && f === lastFrame() ? "" : ""}`;
     const tile = (label: string, value: string, cls = "", sub = "") => `<div class="mc-tile ${cls}"><span>${label}</span><b>${value}</b>${sub ? `<small>${sub}</small>` : ""}</div>`;
     $("#mc-tiles").innerHTML = [
-      tile("Oxygen", `${Math.round(f.o2LeftL)} L`, reserveHit ? "bad" : "", `<i class="bar"><u style="width:${Math.max(0, Math.min(100, (f.o2LeftL / P.o2SupplyL) * 100)).toFixed(1)}%"></u><em style="left:${((P.o2ReserveL / P.o2SupplyL) * 100).toFixed(1)}%"></em></i>`),
+      tile("Oxygen", `${Math.round(f.o2LeftL)} L`, reserveHit ? "bad" : "", `<i class="bar" aria-hidden="true"><u style="width:${Math.max(0, Math.min(100, (f.o2LeftL / P.o2SupplyL) * 100)).toFixed(1)}%"></u><em style="left:${((P.o2ReserveL / P.o2SupplyL) * 100).toFixed(1)}%"></em></i>`),
       tile("Way home", fmtMin(f.homeS), "", f.sheltered ? "inside the rover" : "walking time to the rover"),
       tile("Dose rate", `${f.doseRate.toFixed(f.doseRate < 10 ? 1 : 0)} µGy/h`, rateX >= 3 ? "bad" : rateX >= 1.5 ? "warn" : "", `${rateX.toFixed(rateX >= 10 ? 0 : 1)}× background${f.storm ? " · storm" : ""}`),
       tile("EVA dose", `${f.doseUGy >= 1000 ? `${(f.doseUGy / 1000).toFixed(2)} mGy` : `${f.doseUGy.toFixed(1)} µGy`}`),
@@ -356,6 +373,13 @@ export function startMissionControl(site: string): void {
         g.fill();
       }
     }
+    const lf = lastFrame();
+    canvas.setAttribute(
+      "aria-label",
+      lf
+        ? `Map of the walk area. Planned route with ${P.stops.length} stops. Crew last received at EVA ${fmtClock(lf.t)}: ${lf.status} ${lf.next}${lf.nextDistM > 0 ? `, ${fmtDistM(lf.nextDistM)} to go` : ""}.`
+        : `Map of the walk area. Planned route with ${P.stops.length} stops; no crew position received yet.`,
+    );
     if ($<HTMLInputElement>("#mc-truth").checked && S.live && S.eva) {
       g.beginPath();
       g.arc(X(S.live.x), Y(S.live.y), 9, 0, Math.PI * 2);

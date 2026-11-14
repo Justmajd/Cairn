@@ -47,6 +47,8 @@ export interface HabMap {
   bestFactors: HabFactors;
   stops: number;
   hasIce: boolean;
+  /** The weights the score was made with (HAB_WEIGHTS). */
+  weights: typeof HAB_WEIGHTS;
   ms: number;
   at(x: number, y: number): HabFactors;
 }
@@ -203,6 +205,7 @@ export function habSuitability(fine: TerrainGrid, stops: XY[], ice: XY[] = [], p
     bestFactors: factorsAt(bestI),
     stops: stops.length,
     hasIce: ice.length > 0,
+    weights: HAB_WEIGHTS,
     ms: performance.now() - t0,
     at: (x, y) => factorsAt(grid.nodeAt(x, y)),
   };

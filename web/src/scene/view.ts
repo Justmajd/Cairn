@@ -175,6 +175,7 @@ export class SceneView {
     for (const [id, name] of [["earth", "Earth"], ["phobos", "Phobos"], ["deimos", "Deimos"]]) {
       const el = document.createElement("div");
       el.className = `sky-tag ${id}`;
+      el.setAttribute("aria-hidden", "true"); // drawn over the 3D sky; the HUD and panels say the same in text
       el.innerHTML = `<i></i><span><b>${name}</b><small></small></span>`;
       const obj = new CSS2DObject(el);
       obj.center.set(-0.02, 0.5);
@@ -1083,6 +1084,8 @@ export class SceneView {
       const el = document.createElement("button");
       el.className = `note-pin${n.sample ? " sample" : ""}`;
       el.title = n.text || (n.sample ? "Sample" : "Note");
+      el.dataset.noteId = n.id;
+      el.setAttribute("aria-label", `${n.sample ? "Sample" : "Field note"} ${n.label}${n.text ? `: ${n.text.replace(/[.\s]+$/, "")}` : ""}. Open`);
       el.innerHTML = `<b>${esc(n.label)}</b>`;
       el.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -1139,6 +1142,7 @@ export class SceneView {
     group.renderOrder = 22;
     const el = document.createElement("div");
     el.className = "poi-label ghost";
+    el.setAttribute("aria-hidden", "true"); // moves every frame; the toast and the menu describe it
     const label = document.createElement("span");
     el.appendChild(label);
     const tag = new CSS2DObject(el);

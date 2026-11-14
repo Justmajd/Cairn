@@ -12,7 +12,7 @@
   --line-2: rgba(255, 244, 232, 0.15);
   --text: #f3ede7;
   --text-2: #b8ada4;
-  --text-3: #85796f;
+  --text-3: #968a7f; /* 5.4:1 on panels (WCAG AA for small text) */
   --accent: #46e0cf;
   --accent-ink: #052421;
   --accent-soft: rgba(70, 224, 207, 0.14);
@@ -44,6 +44,8 @@ ul { list-style: none; padding: 0; }
 a { color: var(--accent); cursor: pointer; text-decoration: none; }
 a:hover { text-decoration: underline; }
 .ic { flex: none; display: block; }
+/* text for screen readers only */
+.vh { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
 .sr { position: absolute; top: 0; left: 0; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
 .logo { width: 24px; height: 24px; flex: none; }
 .good { color: var(--good); }
@@ -885,7 +887,8 @@ svg.timeline .sunt { fill: #f0e442; font: 500 9px var(--mono); }
 .note-pin:hover { background: rgba(60, 48, 16, 0.95); }
 .note-tag { display: inline-grid; place-items: center; min-width: 28px; height: 22px; padding: 0 6px; margin-right: 6px; border-radius: 6px; font: 600 12px var(--mono); color: #2a1d00; background: #ffe08a; vertical-align: 2px; }
 .note-tag.sample { background: #8af0c8; color: #00261a; }
-.note-box { width: min(440px, calc(100vw - 32px)); }
+.note-box { width: min(440px, 100%); }
+@media (max-width: 520px) { #modal { padding: 16px; } }
 .note-box .modal-body { display: grid; gap: 12px; }
 .note-where { margin: 0; font: 11px var(--mono); color: var(--text-2); }
 .note-box textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 84px; padding: 10px; border-radius: 8px; border: 1px solid var(--line-2); background: rgba(0, 0, 0, 0.3); color: var(--text); font: 13px/1.45 var(--sans); }

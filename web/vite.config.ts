@@ -44,7 +44,17 @@ export default defineConfig({
   base: "./",
   plugins: [serviceWorker()],
   worker: { format: "es" },
-  build: { target: "es2022", chunkSizeWarningLimit: 900 },
+  build: {
+    target: "es2022",
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        // Three.js in a file of its own: it downloads in parallel with the app, and an app update does
+        // not make returning visitors fetch the 3D engine again
+        manualChunks: (id) => (id.includes("/node_modules/three/") ? "three" : undefined),
+      },
+    },
+  },
   // in development the hab server (npm run hab) answers /api and /hab; Vite forwards them
   server: {
     port: 5173,

@@ -4,9 +4,9 @@ import type { SiteData, SiteEntry } from "./data/loaders";
 import { buildBudget, EvaBudget, o2Litres, ReturnLookup, sampleAtTime, Segment, walkO2 } from "./eva/budget";
 import { DEFAULT_PARAMS, EvaParams } from "./eva/params";
 import { RadiationModel } from "./eva/radiation";
-import { HAB_WEIGHTS, HabMap, habSuitability } from "./eva/hab";
+import type { HabMap } from "./eva/hab";
 import { DUST_PRESETS, dustEffect, fmtVisibility } from "./eva/dust";
-import { editNote, FieldNote, Notebook } from "./ui/notebook";
+import { FieldNote, Notebook } from "./ui/notebook";
 import { HabLink, type LinkState } from "./hab/link";
 import type { Frame, PlanInfo, ServerMsg } from "./hab/protocol";
 import { bestRelay, inContact, lineOfSight, RadioCoverage, radioCoverage, radioShadow, relayFromShadow, RelaySuggestion, RELAY_MAST_M, SUIT_ANTENNA_M } from "./eva/radio";
@@ -26,11 +26,11 @@ import { ic } from "./ui/icons";
 import { hideAnimated, showAnimated } from "./ui/motion";
 import { prefetchSite } from "./data/prefetch";
 import { dissolve } from "./ui/dissolve";
-import { openModal, showAssumptions, showSources, stopCardHtml } from "./ui/modals";
-import { openPanorama } from "./ui/panorama";
-import { DemoRunner, DemoStep } from "./ui/demo";
-import { CueRow, showCueCard } from "./ui/cuecard";
-import { ExportPlan, routeGeoJson, routeKml, saveFile, toLonLat } from "./ui/export";
+import { openModal, stopCardHtml } from "./ui/modals";
+import type { DemoRunner, DemoStep } from "./ui/demo";
+import type { CueRow } from "./ui/cuecard";
+import type { ExportPlan } from "./ui/export";
+import { toLonLat } from "./data/geo";
 import { promptInstall, saveForOffline } from "./ui/offline";
 import { spokenDist, spokenTime, turnWords, Voice } from "./ui/voice";
 
@@ -320,10 +320,10 @@ export class App {
       if (!item) return;
       about.hidden = true;
       if (item === "briefing") showBriefing(this.site, () => {}, this.sites);
-      else if (item === "sources") showSources(this.site);
+      else if (item === "sources") void this.about("sources");
       else if (item === "offline") void this.goOffline();
       else if (item === "keys") this.showShortcuts();
-      else showAssumptions(this.site, this.P);
+      else void this.about("model");
     });
     // the gesture hint goes away once it has been used
     const used = () => {
@@ -376,7 +376,7 @@ export class App {
         if (t.dataset.hab === "park") void this.moveRover(this.hab.best);
         else this.showHabBest();
       } else if (t.dataset.info) this.openCard(t.dataset.info, false);
-      else if (t.dataset.src) showSources(this.site, t.dataset.src);
+      else if (t.dataset.src) void this.about("sources", t.dataset.src);
       else if (t.dataset.remove) this.removeCustom(t.dataset.remove);
       else if (t.dataset.roverReset) void this.moveRover(this.roverHome);
       else if (t.dataset.roverCloser) this.parkCloser();
@@ -427,7 +427,7 @@ export class App {
         ev.stopPropagation();
         const menu = document.getElementById("export-menu");
         if (menu) menu.hidden = !menu.hidden;
-      } else if (act === "kml" || act === "geojson") this.exportRoute(act);
+      } else if (act === "kml" || act === "geojson") void this.exportRoute(act);
       else if (act === "notes-zip") void this.exportNotebook();
       else if (act === "link") void this.copyPlanLink();
       else if (act === "resume") this.resumeRemaining();
@@ -442,8 +442,8 @@ export class App {
       } else if (act === "emergency") void this.triggerEmergency(t.dataset.kind as EmergencyKind);
       else if (act === "replan") this.backToPlanning();
       else if (act === "save-log") this.saveLog();
-      else if (act === "sources") showSources(this.site, t.dataset.id);
-      else if (act === "model") showAssumptions(this.site, this.P);
+      else if (act === "sources") void this.about("sources", t.dataset.id);
+      else if (act === "model") void this.about("model");
     });
 
     window.addEventListener("keydown", (ev) => this.onKey(ev));
@@ -1521,7 +1521,7 @@ export class App {
       "Made with CAIRN from NASA HiRISE terrain. Suit and physiology values are demo assumptions.",
       "",
     ];
-    saveFile(`cairn-${this.site.id}-eva-log.md`, "text/markdown", lines.join("\n"));
+    void import("./ui/export").then(({ saveFile }) => saveFile(`cairn-${this.site.id}-eva-log.md`, "text/markdown", lines.join("\n")));
     this.toast("Saved the EVA log.");
   }
 
@@ -1754,7 +1754,7 @@ export class App {
           if (objective && this.site.panoramas?.panoramas[objective.id]) {
             await d.sleep(2500);
             d.say(`A real 360° view stitched from ${esc(this.roverName)}'s Navcam frames at this exact spot.`);
-            closePano = this.openPano(objective.id, true);
+            closePano = await this.openPano(objective.id, true);
             await d.sleep(8000);
             closePano?.();
             closePano = null;
@@ -1780,6 +1780,7 @@ export class App {
         },
       },
     ];
+    const { DemoRunner } = await import("./ui/demo");
     this.demo = new DemoRunner(steps, {
       title: "Robots built the cairns. Humans will follow them.",
       body: () =>
@@ -1908,7 +1909,7 @@ export class App {
     if (!plan) return;
     const withVoice = this.notebook.notes.filter((n) => n.audio);
     this.toast(withVoice.length ? `Converting ${withVoice.length} voice note${withVoice.length === 1 ? "" : "s"} to MP3…` : "Packing the notebook…", 2500);
-    const { toMp3, zipFiles, saveBlob } = await import("./ui/voiceExport");
+    const [{ toMp3, zipFiles, saveBlob }, { routeKml, routeGeoJson }] = await Promise.all([import("./ui/voiceExport"), import("./ui/export")]);
     const files: Record<string, string | Blob> = {};
     const voiceFile = new Map<string, string>();
     let failed = 0;
@@ -1947,8 +1948,9 @@ export class App {
   }
 
   /** Save the planned route as KML (Google Earth, Mars mode) or GeoJSON (GIS tools). */
-  private exportRoute(kind: "kml" | "geojson"): void {
+  private async exportRoute(kind: "kml" | "geojson"): Promise<void> {
     if (!this.plan) return;
+    const { routeKml, routeGeoJson, saveFile } = await import("./ui/export");
     const b = this.plan.budget;
     const plan: ExportPlan = {
       site: this.site.meta, legs: this.plan.legs, distanceM: b.distanceM, timeS: b.totalTimeS, o2UsedL: b.o2UsedL,
@@ -1964,7 +1966,8 @@ export class App {
   }
 
   /** One-page printable plan: map, timeline, oxygen turn-back values, storm protocol. */
-  private openCueCard(): void {
+  private async openCueCard(): Promise<void> {
+    const { showCueCard } = await import("./ui/cuecard");
     if (!this.plan) return;
     const P = this.P;
     const b = this.plan.budget;
@@ -2035,6 +2038,14 @@ export class App {
     void this.replan();
   }
 
+  // ================================================================ loaded on demand
+  /** About → Data sources / Model assumptions (a separate file, fetched the first time). */
+  private async about(kind: "sources" | "model", focus?: string): Promise<void> {
+    const m = await import("./ui/about");
+    if (kind === "sources") m.showSources(this.site, focus);
+    else m.showAssumptions(this.site, this.P);
+  }
+
   // ================================================================ hab link (Mission Control)
   private renderHabChip(): void {
     const b = document.getElementById("btn-hab");
@@ -2048,6 +2059,8 @@ export class App {
           : "No hab server: the planner works on its own. Start it with `npm start` to link Mission Control and share notes.";
     const label = b.querySelector("span");
     if (label) label.textContent = this.habState === "online" && this.mcWatching ? `Mission Control · ${this.mcWatching}` : "Mission Control";
+    // the label is hidden on small screens: say the state in words too
+    b.setAttribute("aria-label", `Open Mission Control. ${this.habState === "online" ? `Hab connected${this.mcWatching ? `, ${this.mcWatching} screen${this.mcWatching === 1 ? "" : "s"} watching` : ""}` : this.habState === "connecting" ? "Connecting to the hab" : "No hab server"}.`);
   }
 
   /** Open Mission Control for this site, in its own window. */
@@ -2265,7 +2278,7 @@ export class App {
 
   private editNoteDialog(note: FieldNote, isNew: boolean): void {
     const where = `${note.lat.toFixed(5)}° N, ${note.lon.toFixed(5)}° E · ${Math.round(note.elevM)} m${note.evaT !== null ? ` · EVA ${fmtClock(note.evaT)}, ${note.lmst} LMST` : ""}`;
-    editNote(
+    void import("./ui/noteEditor").then(({ editNote }) => editNote(
       this.notebook,
       note,
       isNew,
@@ -2286,7 +2299,7 @@ export class App {
         this.pushNotes();
         this.renderLeft();
       },
-    );
+    ));
   }
 
   private notesHtml(): string {
@@ -2320,7 +2333,8 @@ export class App {
     const key = stops.map((p) => `${p.id}@${Math.round(p.x)},${Math.round(p.y)}`).join("|");
     if (key === this.habKey || this.habBusy) return;
     this.habBusy = true;
-    window.setTimeout(() => {
+    window.setTimeout(async () => {
+      const { habSuitability } = await import("./eva/hab");
       this.hab = habSuitability(this.site.grid, stops, this.pois.filter((p) => p.ice), this.P);
       this.habKey = key;
       this.habBusy = false;
@@ -2349,8 +2363,8 @@ export class App {
     const f = h.bestFactors;
     const pct = (v: number) => `${Math.round(v * 100)}`;
     const bar = (label: string, v: number, detail: string, w: number) =>
-      `<li><span>${label}<em>${w}%</em></span><i><b style="width:${pct(v)}%"></b></i><small>${detail}</small></li>`;
-    const W = HAB_WEIGHTS;
+      `<li><span>${label}<em aria-hidden="true">${w}%</em><span class="vh">: scores ${pct(v)} out of 100, weight ${w} percent.</span></span><i aria-hidden="true"><b style="width:${pct(v)}%"></b></i><small>${detail}</small></li>`;
+    const W = h.weights;
     const wsum = W.shelter + W.radio + W.walk + (f.ice === null ? 0 : W.ice);
     const share = (w: number) => Math.round((w / wsum) * 100);
     const here = h.at(this.rover.x, this.rover.y);
@@ -2379,7 +2393,7 @@ export class App {
   }
 
   /** Open the stitched 360° panorama for a stop; other stops appear as bearings on the compass. */
-  openPano(id: string, autoRotate = false): (() => void) | null {
+  async openPano(id: string, autoRotate = false): Promise<(() => void) | null> {
     const poi = this.poi(id);
     const info = this.site.panoramas?.panoramas[id];
     if (!poi || !info) return null;
@@ -2389,6 +2403,7 @@ export class App {
       .filter((p) => p.id !== id && (p.kind === "shelter" || this.selected.includes(p.id)))
       .map((p) => ({ name: p.short, bearing: (((Math.atan2(p.x - poi.x, p.y - poi.y) * 180) / Math.PI) + 360) % 360, distM: Math.hypot(p.x - poi.x, p.y - poi.y) }))
       .sort((a, b) => a.distM - b.distM);
+    const { openPanorama } = await import("./ui/panorama");
     return openPanorama(this.site.base, poi, info, this.roverName, targets, { autoRotate, onClose: () => (this.paused = wasPaused) });
   }
 

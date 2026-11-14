@@ -19,6 +19,7 @@ body.mc-body { margin: 0; min-height: 100vh; background: var(--bg); color: var(-
 .mc-clocks span { display: block; font: 10px var(--mono); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; }
 .mc-clocks b { display: block; font: 600 17px var(--mono); }
 .mc-clocks .delay b { color: var(--warn); }
+.mc-clocks small { display: block; font: 10px var(--mono); color: var(--text-2); }
 
 .mc-banner { margin: 12px 18px 0; padding: 12px 16px; border-radius: var(--r-md); background: rgba(255, 98, 87, 0.12); border: 1px solid rgba(255, 98, 87, 0.55); display: grid; gap: 2px; animation: mc-pulse 2.4s ease-in-out infinite; }
 .mc-banner b { color: #ff9b92; font-size: 15px; }
@@ -106,8 +107,11 @@ li.empty { color: var(--text-3); background: none !important; padding: 4px 0; }
   .mc-canvas { max-width: 640px; margin: 0 auto; }
 }
 @media (max-width: 700px) {
-  .mc-top { padding: 10px 16px; }
-  .mc-clocks { margin-left: 0; width: 100%; }
-  .mc-clocks div { flex: 1; min-width: 0; }
+  /* phones: the header scrolls away (a pinned 200 px header would eat a quarter of the screen) */
+  .mc-top { position: static; padding: 10px 16px; gap: 10px; }
+  .mc-site { padding-left: 12px; font-size: 14px; }
+  .mc-clocks { margin-left: 0; width: 100%; gap: 6px; }
+  .mc-clocks div { flex: 1; min-width: 0; padding: 6px 8px; }
+  .mc-clocks b { font-size: 14px; white-space: nowrap; }
   .mc-grid { grid-template-columns: 1fr; grid-template-areas: "map" "tel" "log" "notes" "comms" "hist"; padding: 12px 16px; }
 }
