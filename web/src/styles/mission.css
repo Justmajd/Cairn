@@ -12,7 +12,7 @@ body.mc-body { margin: 0; min-height: 100vh; background: var(--bg); color: var(-
 .mc-links .dot { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line-2); font: 11px var(--mono); color: var(--text-2); }
 .mc-links .dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #6b625c; }
 .mc-links .dot.on { color: var(--text); }
-.mc-links .dot.on::before { background: var(--good); box-shadow: 0 0 0 3px rgba(90, 212, 138, 0.18); }
+.mc-links .dot.on::before { background: var(--good); box-shadow: 0 0 0 3px rgba(198, 244, 50, 0.18); }
 .mc-clocks { display: flex; gap: 10px; margin-left: auto; }
 .mc-clocks div { padding: 6px 12px; border-radius: var(--r-md); background: var(--raise); border: 1px solid var(--line); min-width: 128px; }
 .mc-clocks div.delay { border-color: rgba(245, 181, 68, 0.45); background: rgba(245, 181, 68, 0.08); }
@@ -25,6 +25,8 @@ body.mc-body { margin: 0; min-height: 100vh; background: var(--bg); color: var(-
 .mc-banner b { color: #ff9b92; font-size: 15px; }
 .mc-banner span { color: var(--text-2); }
 @keyframes mc-pulse { 50% { border-color: rgba(255, 98, 87, 0.2); } }
+.mc-banner.done { animation: none; background: rgba(245, 181, 68, 0.07); border-color: rgba(245, 181, 68, 0.4); }
+.mc-banner.done b { color: var(--warn); }
 @media (prefers-reduced-motion: reduce) { .mc-banner { animation: none; } }
 
 .mc-grid { display: grid; gap: 12px; padding: 12px 18px 18px; grid-template-columns: minmax(320px, 1.25fr) minmax(300px, 1fr) minmax(280px, 0.9fr); grid-template-areas: "map tel log" "map notes comms" "hist hist hist"; align-items: start; }
@@ -51,7 +53,7 @@ body.mc-body { margin: 0; min-height: 100vh; background: var(--bg); color: var(-
 .mc-wait a { color: var(--accent); }
 .mc-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font-size: 11px; color: var(--text-2); }
 .mc-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
-.l-route { background: #46e0cf; }
+.l-route { background: #c6f432; }
 .l-trail { background: #ffc45c; }
 .l-crew { background: #ffc45c; height: 9px !important; width: 9px !important; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .l-now { border: 1.5px dashed #ff8a8a; height: 8px !important; width: 8px !important; border-radius: 50% !important; }
@@ -117,7 +119,7 @@ li.empty { color: var(--text-3); background: none !important; padding: 4px 0; }
 }
 
 /* Replay of a past EVA */
-.mc-replay { margin: 12px 18px 0; padding: 10px 14px 8px; border-radius: var(--r-md); border: 1px solid rgba(70, 224, 207, 0.45); background: rgba(70, 224, 207, 0.06); display: grid; gap: 6px; }
+.mc-replay { margin: 12px 18px 0; padding: 10px 14px 8px; border-radius: var(--r-md); border: 1px solid rgba(198, 244, 50, 0.45); background: rgba(198, 244, 50, 0.06); display: grid; gap: 6px; }
 .mc-replay[hidden] { display: none; }
 .mc-replay-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .mc-replay-head b { font-size: 14px; }
@@ -133,7 +135,7 @@ li.empty { color: var(--text-3); background: none !important; padding: 4px 0; }
 .mc-replay-key i { display: inline-block; width: 3px; height: 10px; margin-right: 5px; vertical-align: -1px; }
 .k-alert { background: #ff6257; }
 .k-earth { background: #f5b544; }
-.k-msg { background: #46e0cf; }
+.k-msg { background: #c6f432; }
 
 /* Proposing a revised plan */
 .mc-propose { margin: -2px 0 10px; display: grid; gap: 8px; }
@@ -165,3 +167,49 @@ li.empty { color: var(--text-3); background: none !important; padding: 4px 0; }
 /* phones: long clock values shorten instead of widening the page */
 .mc-clocks b, .mc-clocks small { overflow: hidden; text-overflow: ellipsis; }
 .mc-replay-key span { white-space: nowrap; }
+
+/* ---------- the bracken.sh-style layer (tokens, corners and keyframes in theme.css) ---------- */
+body.mc-body { background: radial-gradient(1400px 800px at 15% -10%, #1d1a16, var(--bg) 60%) fixed; }
+.mc-top { background: rgba(14, 13, 12, 0.74); backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); border-bottom-color: rgb(var(--steel-rgb) / 0.14); animation: m-down 0.8s var(--ease-glide) both; }
+.mc-brand b { font: 700 16px var(--display); letter-spacing: 0.16em; }
+.mc-brand span { color: var(--steel); font-size: 9.5px; letter-spacing: 0.16em; }
+.mc-site { font: 700 19px var(--display); text-transform: uppercase; letter-spacing: 0.02em; border-left-color: rgb(var(--steel-rgb) / 0.2); }
+.mc-links .dot { border-radius: 5px; font: 500 10px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; padding: 4px 9px; border-color: rgb(var(--steel-rgb) / 0.22); background: rgba(14, 13, 12, 0.6); }
+.mc-links .dot.on::before { background: var(--accent); box-shadow: none; animation: live-pulse 2s var(--ease-smooth) infinite; }
+.mc-clocks div, .mc-tile { border-radius: 8px; background: rgba(10, 10, 9, 0.5); border-color: rgb(var(--steel-rgb) / 0.12); }
+.mc-clocks span, .mc-tile span { font: 500 9.5px var(--mono); letter-spacing: 0.14em; color: var(--steel); }
+.mc-clocks b, .mc-tile b { font-weight: 400; letter-spacing: -0.02em; }
+.mc-clocks div.delay { background: rgba(245, 181, 68, 0.06); }
+.mc-clocks div.delay::after, .mc-tile.warn::after { --cc: var(--warn); }
+.mc-tile.bad::after { --cc: var(--bad); }
+.mc-card {
+  border-radius: 18px; border-color: rgb(var(--steel-rgb) / 0.14);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.01) 55%), rgba(20, 19, 18, 0.92);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.07), 0 30px 60px -30px rgba(0, 0, 0, 0.8);
+  animation: m-in 0.9s var(--ease-glide) both;
+}
+.mc-grid > .mc-card:nth-child(2) { animation-delay: 0.06s; }
+.mc-grid > .mc-card:nth-child(3) { animation-delay: 0.12s; }
+.mc-grid > .mc-card:nth-child(4) { animation-delay: 0.18s; }
+.mc-grid > .mc-card:nth-child(5) { animation-delay: 0.24s; }
+.mc-grid > .mc-card:nth-child(6) { animation-delay: 0.3s; }
+.mc-card header small { font-size: 10.5px; letter-spacing: 0.04em; }
+.mc-canvas { border-radius: 12px; border: 1px solid rgb(var(--steel-rgb) / 0.12); }
+.mc-wait b { font: 700 16px var(--display); text-transform: uppercase; letter-spacing: 0.02em; }
+.mc-banner { border-radius: 14px; }
+.mc-banner b { font: 700 15px var(--display); text-transform: uppercase; letter-spacing: 0.02em; }
+.mc-banner:not([hidden]) { animation: notice-up 0.7s var(--ease-glide) both, mc-pulse 2.4s ease-in-out 0.7s infinite; }
+.mc-banner.done:not([hidden]) { animation: notice-up 0.7s var(--ease-glide) both; }
+.mc-sim, .mc-replay { border-radius: 14px; }
+.mc-sim:not([hidden]), .mc-replay:not([hidden]) { animation: notice-up 0.6s var(--ease-glide) both; }
+.mc-log li, .mc-notes li, .mc-comms li, .mc-history li { border-radius: 8px; background: rgba(10, 10, 9, 0.45); border: 1px solid rgb(var(--steel-rgb) / 0.08); }
+.mc-comms li { border-left: 3px solid var(--warn); }
+.mc-comms li.done { border-left-color: var(--accent); }
+li.fresh { animation: log-in 0.9s var(--ease-glide) both; }
+@keyframes log-in { from { opacity: 0; transform: translateY(-10px); filter: blur(4px); background: rgb(var(--fern-rgb) / 0.14); } }
+.mc-comms button, .mc-replay button, .mc-propose button, .mc-history li button { border-radius: 999px; transition: transform 0.45s var(--ease-spring), border-color var(--t-micro), color var(--t-micro), background-color var(--t-micro), box-shadow 0.3s; }
+.mc-comms form > button:hover:not(:disabled), #mc-propose-box .primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 30px -10px rgb(var(--fern-rgb) / 0.6); }
+.mc-replay button:hover, .mc-propose > button:hover:not(:disabled), .mc-history li button:hover { background: rgba(18, 17, 16, 0.4); border-color: rgb(var(--fern-rgb) / 0.55); color: var(--accent); }
+.mc-comms textarea { border-radius: 12px; border-color: rgb(var(--steel-rgb) / 0.2); transition: border-color var(--t-micro), box-shadow var(--t-micro); }
+.mc-comms textarea:focus { outline: none; border-color: rgb(var(--fern-rgb) / 0.55); box-shadow: 0 0 0 3px rgb(var(--fern-rgb) / 0.12); }
+.mc-sim.run b { color: var(--accent); }

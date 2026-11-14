@@ -334,9 +334,15 @@ export function startMissionControl(site: string): void {
 
     // banner: an alert that has reached Earth
     const banner = $("#mc-banner");
-    if (S.alert && (running || ended)) {
+    if (S.alert && running) {
       const ago = S.now - S.alert.t;
+      banner.className = "mc-banner";
       banner.innerHTML = `<b>${esc(S.alert.text)}</b><span>Happened on Mars at T+${fmtClock(S.alert.t)}, received now: the crew has been dealing with it for ${fmtMin(ago)}. Any answer reaches them at T+${fmtClock(S.now + S.lightTimeS)} at the earliest.</span>`;
+      banner.hidden = false;
+    } else if (S.alert && ended) {
+      // over: say what happened, without the alarm
+      banner.className = "mc-banner done";
+      banner.innerHTML = `<b>${esc(S.alert.text)} · EVA over</b><span>Happened on Mars at T+${fmtClock(S.alert.t)}; Earth heard it at T+${fmtClock(S.alert.t + S.lightTimeS)}. The crew handled it on their own: nothing Earth sent could have reached them sooner than T+${fmtClock(S.alert.t + 2 * S.lightTimeS)}.</span>`;
       banner.hidden = false;
     } else banner.hidden = true;
 
@@ -375,9 +381,19 @@ export function startMissionControl(site: string): void {
     const items = S.log.slice().sort((a, b) => b.entry.t - a.entry.t);
     $("#mc-log").innerHTML = items.length
       ? items
-          .map(({ entry: e }) => `<li class="${esc(e.kind)}"><time>T+${fmtClock(e.t)}</time><span>${esc(e.text)}</span><small>arrived T+${fmtClock(e.t + S.lightTimeS)}</small></li>`)
+          .map(({ entry: e }) => `<li class="${esc(e.kind)}${fresh(`log|${e.t}|${e.text}`)}"><time>T+${fmtClock(e.t)}</time><span>${esc(e.text)}</span><small>arrived T+${fmtClock(e.t + S.lightTimeS)}</small></li>`)
           .join("")
       : `<li class="empty">${S.eva ? "Nothing has reached Earth yet." : "No EVA running."}</li>`;
+  }
+
+  // lists are redrawn several times a second: an item keeps the time it first appeared, and its
+  // entrance animation resumes where it was (negative delay) instead of restarting on every redraw
+  const seenAt = new Map<string, number>();
+  function fresh(key: string): string {
+    const now = performance.now();
+    const t0 = seenAt.get(key) ?? (seenAt.set(key, now), now);
+    const age = now - t0;
+    return age < 900 ? ` fresh" style="animation-delay:-${Math.round(age)}ms` : "";
   }
 
   function renderNotes(): void {
@@ -389,7 +405,7 @@ export function startMissionControl(site: string): void {
     list.dataset.ids = ids;
     list.innerHTML = notes.length
       ? notes
-          .map(({ note: n }) => `<li><span class="tag${n.sample ? " sample" : ""}">${esc(n.label)}</span><div><p>${esc(n.text || (n.audio ? "Voice note" : n.sample ? "Sample" : "Note"))}</p><small>${n.evaT !== null ? `Taken at T+${fmtClock(n.evaT)}, ${esc(n.lmst)} LMST · ` : "Planning note · "}${n.lat.toFixed(5)}°, ${n.lon.toFixed(5)}°E</small>${n.audio ? `<audio controls preload="none" src="${esc(habApi.audioUrl(site, n.id))}"></audio>` : ""}</div></li>`)
+          .map(({ note: n }) => `<li class="${fresh(`note|${n.id}`)}"><span class="tag${n.sample ? " sample" : ""}">${esc(n.label)}</span><div><p>${esc(n.text || (n.audio ? "Voice note" : n.sample ? "Sample" : "Note"))}</p><small>${n.evaT !== null ? `Taken at T+${fmtClock(n.evaT)}, ${esc(n.lmst)} LMST · ` : "Planning note · "}${n.lat.toFixed(5)}°, ${n.lon.toFixed(5)}°E</small>${n.audio ? `<audio controls preload="none" src="${esc(habApi.audioUrl(site, n.id))}"></audio>` : ""}</div></li>`)
           .join("")
       : `<li class="empty">No notes from the crew.</li>`;
   }
@@ -403,7 +419,7 @@ export function startMissionControl(site: string): void {
         const answer = S.log.find((l) => l.entry.ref === m.id)?.entry;
         const change = m.change ? `<p class="change">Revised plan: ${[...m.change.drop.map((id) => `drop ${esc(stopNames.get(id) ?? id)}`), ...(m.change.add.length ? [`add ${m.change.add.length} stop${m.change.add.length === 1 ? "" : "s"}`] : [])].join(", ")}</p>` : "";
         const reply = m.change ? (answer ? `<b class="${answer.accepted ? "yes" : "no"}">Crew ${answer.accepted ? "accepted" : "declined"} · ${m.immediate ? "heard at once (no EVA running)" : `Earth heard it at T+${fmtClock(answer.t + S.lightTimeS)}`}</b>` : m.delivered ? `<b>Waiting for the crew's answer</b>` : "") : "";
-        return `<li class="${m.delivered ? "done" : "flight"}">${m.text ? `<p>${esc(m.text)}</p>` : ""}${change}<small>Sent T+${fmtClock(m.sentT)} · ${state}</small>${reply}</li>`;
+        return `<li class="${m.delivered ? "done" : "flight"}${fresh(`msg|${m.id}`)}">${m.text ? `<p>${esc(m.text)}</p>` : ""}${change}<small>Sent T+${fmtClock(m.sentT)} · ${state}</small>${reply}</li>`;
       })
       .join("");
     ($("#mc-send") as HTMLButtonElement).disabled = S.link !== "online" || !!replay;
@@ -450,16 +466,16 @@ export function startMissionControl(site: string): void {
       g.stroke();
       g.setLineDash([]);
     };
-    line(P.route, "rgba(70, 224, 207, 0.85)", 2.5);
+    line(P.route, "rgba(198, 244, 50, 0.85)", 2.5);
     for (const s of P.stops) {
       g.beginPath();
       g.arc(X(s.x), Y(s.y), s.kind === "shelter" ? 7 : 6, 0, Math.PI * 2);
-      g.fillStyle = s.kind === "shelter" ? "#f5b544" : "#46e0cf";
+      g.fillStyle = s.kind === "shelter" ? "#f5b544" : "#c6f432";
       g.fill();
       g.strokeStyle = "#0b0d10";
       g.lineWidth = 2;
       g.stroke();
-      g.font = "600 11px 'IBM Plex Sans', sans-serif";
+      g.font = "600 11px 'Geist Sans', sans-serif";
       g.fillStyle = "#fff";
       g.shadowColor = "rgba(0,0,0,0.8)";
       g.shadowBlur = 4;
@@ -500,7 +516,7 @@ export function startMissionControl(site: string): void {
         g.fill();
         g.stroke();
         // with two astronauts, say which is which
-        g.font = "600 10px 'IBM Plex Mono', monospace";
+        g.font = "600 10px 'Geist Mono', monospace";
         g.fillStyle = "#ffe3a8";
         g.shadowColor = "rgba(0,0,0,0.8)";
         g.shadowBlur = 3;
@@ -526,12 +542,12 @@ export function startMissionControl(site: string): void {
       editing.add.forEach((p, i) => {
         g.beginPath();
         g.arc(X(p.x), Y(p.y), 8, 0, Math.PI * 2);
-        g.fillStyle = "rgba(70, 224, 207, 0.25)";
-        g.strokeStyle = "#46e0cf";
+        g.fillStyle = "rgba(198, 244, 50, 0.25)";
+        g.strokeStyle = "#c6f432";
         g.lineWidth = 2;
         g.fill();
         g.stroke();
-        g.font = "600 11px 'IBM Plex Mono', monospace";
+        g.font = "600 11px 'Geist Mono', monospace";
         g.fillStyle = "#fff";
         g.fillText(`+${i + 1}`, X(p.x) + 11, Y(p.y) + 4);
       });
@@ -586,10 +602,10 @@ export function startMissionControl(site: string): void {
     g.moveTo(0, Yv(P.o2ReserveL, P.o2SupplyL));
     g.lineTo(w, Yv(P.o2ReserveL, P.o2SupplyL));
     g.stroke();
-    plot((f) => f.o2LeftL, P.o2SupplyL, "#46e0cf");
+    plot((f) => f.o2LeftL, P.o2SupplyL, "#c6f432");
     plot((f) => f.doseRate, maxRate, "#ff8a5c");
-    g.font = "10px 'IBM Plex Mono', monospace";
-    g.fillStyle = "#46e0cf";
+    g.font = "10px 'Geist Mono', monospace";
+    g.fillStyle = "#c6f432";
     g.fillText("O₂ left", 4, 11);
     g.fillStyle = "#ff8a5c";
     g.fillText("dose rate", 56, 11);

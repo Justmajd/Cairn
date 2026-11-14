@@ -3,6 +3,7 @@ import { $, esc, LOGO_SVG } from "./dom";
 import { dissolve } from "./dissolve";
 import { prefetchSite } from "../data/prefetch";
 import { marsSky } from "../eva/sky";
+import { countUp, playOnce, pointerGlow, scramble } from "./fx";
 
 /**
  * Mission briefing: the site's story, a regional orbital map with the rover's real traverse and the
@@ -38,6 +39,13 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
       return `<g class="place ${p.id}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7"/><text x="${(x + (left ? -13 : 13)).toFixed(1)}" y="${(y + 5).toFixed(1)}" text-anchor="${left ? "end" : "start"}">${esc(p.name)}</text><title>${esc(p.note)}${p.sol !== undefined ? ` (sol ${p.sol})` : ""}</title></g>`;
     })
     .join("");
+  const index = Math.max(0, sites.findIndex((s) => s.id === site.id));
+  const eyebrow = `<p class="eyebrow"><span>Site ${String(index + 1).padStart(2, "0")} / ${String(Math.max(1, sites.length)).padStart(2, "0")}</span><span class="rule" aria-hidden="true">${(sites.length ? sites : [site])
+    .map((_, i) => `<i class="${i === index ? "on" : ""}"></i>`)
+    .join("")}</span><span class="code" id="brief-code">// ${esc(latText)}</span></p>`;
+  // the headline in display capitals, one sentence per line; the second in steel
+  const sentences = story.headline.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const headline = sentences.map((t, i) => `<span class="line"><span class="${i > 0 ? "s" : ""}">${esc(t)}</span></span>`).join("");
   const switcher = sites.length > 1
     ? `<div class="brief-sites" role="tablist">${sites
         .map((s) => `<a role="tab" class="${s.id === site.id ? "on" : ""}" href="?site=${s.id}"><b>${esc(s.name)}</b><span>${esc(s.place)}${s.rover ? ` · ${esc(s.rover)}` : ""}</span></a>`)
@@ -49,7 +57,8 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
       <section class="brief-text">
         <div class="brief-brand">${LOGO_SVG}<div><h1>CAIRN</h1><p>Crew Assisted Integrated Route Navigator</p></div></div>
         ${switcher}
-        <h2>${esc(story.headline)}</h2>
+        ${eyebrow}
+        <h2>${headline}</h2>
         ${story.paragraphs.map((p) => `<p>${p}</p>`).join("")}
         <ul class="brief-facts">${c.facts.map((f) => `<li><b>${esc(f.value)}</b><span>${esc(f.label)}</span></li>`).join("")}</ul>
         <div class="brief-cta">
@@ -66,7 +75,7 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
         <div class="region">
           <img src="${site.base}${c.image}" alt="Regional orbital image around the EVA area" />
           <svg viewBox="0 0 ${W} ${H.toFixed(1)}" preserveAspectRatio="none">
-            ${line ? `<polyline class="trav" points="${line}"/>` : ""}
+            ${line ? `<polyline class="trav" pathLength="1" points="${line}"/>` : ""}
             ${links}
             <rect class="aoi" x="${(u0 * W).toFixed(1)}" y="${(v0 * H).toFixed(1)}" width="${((u1 - u0) * W).toFixed(1)}" height="${((v1 - v0) * H).toFixed(1)}"/>
             <text class="aoi-label" x="${(u0 * W).toFixed(1)}" y="${(v1 * H + 22).toFixed(1)}">EVA area</text>
@@ -87,6 +96,9 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
       </section>
     </div>`;
   host.hidden = false;
+  scramble($("#brief-code", host), 1100);
+  host.querySelectorAll<HTMLElement>(".brief-facts b").forEach((b, i) => countUp(b, 1500, 450 + i * 70));
+  pointerGlow(host, ".brief-mc");
   // pointing at another site warms the cache with its data, so the switch is quick
   host.querySelectorAll<HTMLAnchorElement>(".brief-sites a").forEach((a) => {
     const id = new URLSearchParams(a.search).get("site");
@@ -95,6 +107,7 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
   // into the planner: the headline becomes the site name in the top bar, the logo flies there too
   const close = () => void dissolve(() => {
     host.hidden = true;
+    playOnce(document.getElementById("app"), "boot", 1700); // the console assembles as the curtain opens
   });
   $("#brief-enter", host).addEventListener("click", () => {
     close();

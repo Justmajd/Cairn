@@ -45,6 +45,8 @@ function httpsOptions(): { key: Buffer; cert: Buffer } | undefined {
   return { key: readFileSync(new URL("key.pem", dir)), cert: readFileSync(new URL("cert.pem", dir)) };
 }
 
+const HAB = process.env.CAIRN_HAB ?? "localhost:8787";
+
 // `base: "./"` keeps asset URLs relative, so the build works on GitHub Pages (/cairn-demo/),
 // from `vite preview`, and from any static host without changes.
 export default defineConfig({
@@ -63,13 +65,14 @@ export default defineConfig({
     },
   },
   // in development the hab server (npm run hab) answers /api and /hab; Vite forwards them
+  // (CAIRN_HAB=host:port points at another hab, e.g. a scratch one for testing)
   server: {
     port: 5173,
     strictPort: false,
     https: httpsOptions(),
     proxy: {
-      "/api": { target: "http://localhost:8787", changeOrigin: false },
-      "/hab": { target: "ws://localhost:8787", ws: true },
+      "/api": { target: `http://${HAB}`, changeOrigin: false },
+      "/hab": { target: `ws://${HAB}`, ws: true },
     },
   },
 });

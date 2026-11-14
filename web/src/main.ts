@@ -5,15 +5,18 @@ import { DATA_BASE, dataUrl, loadSite, loadSites } from "./data/loaders";
 import { DEFAULT_PARAMS } from "./eva/params";
 import { Router } from "./routing/client";
 import { SceneView } from "./scene/view";
-import "@fontsource/ibm-plex-sans/400.css";
-import "@fontsource/ibm-plex-sans/500.css";
-import "@fontsource/ibm-plex-sans/600.css";
-import "@fontsource/ibm-plex-mono/400.css";
-import "@fontsource/ibm-plex-mono/500.css";
+import "@fontsource/geist-sans/400.css";
+import "@fontsource/geist-sans/500.css";
+import "@fontsource/geist-sans/600.css";
+import "@fontsource/geist-mono/400.css";
+import "@fontsource/geist-mono/500.css";
+import "@fontsource/tektur/700.css";
 import "./styles/main.css";
 import "./styles/motion.css";
+import "./styles/theme.css";
 import { resumeDissolve } from "./ui/dissolve";
 import { hideAnimated, markSiteLinks } from "./ui/motion";
+import { playOnce } from "./ui/fx";
 import { showBriefing } from "./ui/briefing";
 import { initOffline } from "./ui/offline";
 import { $ } from "./ui/dom";
@@ -134,6 +137,7 @@ async function boot(): Promise<void> {
   const sharedPlan = /(^#|&)(stops|add)=/.test(location.hash);
   const briefing = query.get("demo") !== "1" && query.get("skip") !== "1" && !sharedPlan;
   if (briefing) showBriefing(site, () => {}, sites);
+  else playOnce($("#app"), "boot", 1700);
   if (arrival) {
     // came through the dust sweep: no loading screen, the curtain opens straight onto the site
     $("#loading").hidden = true;

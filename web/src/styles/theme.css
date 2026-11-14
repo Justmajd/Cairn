@@ -1,0 +1,313 @@
+/* ---------- CAIRN visual layer, after bracken.sh's design language ----------
+   Tokens are in main.css (:root).  This layer adds the parts that make the look:
+   - type: Tektur headlines in capitals, Geist Mono labels in spaced capitals ("// 01 · ROUTE"),
+     Geist Mono readouts;
+   - surfaces: glass panels with a lit top edge, steel hairlines, pill buttons, fern for action;
+   - HUD corners: four bracket corners on every readout tile, that close in and turn fern on hover;
+   - motion: glide (fast out, long settle) for things arriving, spring for things you touch,
+     blur-and-rise for anything new.  Only transform, opacity and filter animate, and nothing does
+     with "reduce motion". */
+
+::selection { background: rgb(var(--fern-rgb) / 0.32); color: #fff; }
+body { font-feature-settings: "ss01", "cv11"; }
+* { scrollbar-color: rgb(var(--steel-rgb) / 0.28) transparent; }
+
+/* ---------- surfaces ---------- */
+.panel, .pill, #card, .modal-box, #pin-menu, #site-menu, .menu, #view-menu {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.012) 55%),
+    rgba(18, 17, 16, 0.94);
+  border-color: rgb(var(--steel-rgb) / 0.16);
+  box-shadow: var(--shadow);
+}
+.pill { background: linear-gradient(135deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015) 60%), rgba(18, 17, 16, 0.72); border-radius: 999px; }
+#nav.pill { border-radius: 18px; }
+.modal-box { border-radius: 20px; }
+#card { border-radius: 18px; }
+section { border-bottom-color: rgb(var(--steel-rgb) / 0.1); }
+
+/* section titles: mono, spaced capitals, steel, with the "//" of a code comment */
+.sec-head h2, .bar > h2, .mc-card > header h2, #card .kicker, .demo-step, .pano-bar .kicker {
+  font: 500 10.5px/1.2 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--steel);
+}
+.sec-head h2::before, .mc-card > header h2::before { content: "// "; color: rgb(var(--steel-rgb) / 0.5); }
+#card .kicker { color: var(--accent); }
+
+/* ---------- buttons ---------- */
+button { transition: background-color var(--t-micro), border-color var(--t-micro), color var(--t-micro), transform 0.45s var(--ease-spring), box-shadow 0.3s var(--ease-smooth); }
+button:active:not(:disabled) { transform: scale(0.97); }
+button.primary { border-radius: 999px; background: var(--accent); color: var(--accent-ink); }
+button.primary:hover:not(:disabled) { background: var(--accent-hi); transform: translateY(-2px); box-shadow: 0 12px 30px -10px rgb(var(--fern-rgb) / 0.6); }
+button.primary:active:not(:disabled) { transform: translateY(0) scale(0.97); }
+button.big { border-radius: 999px; }
+button.big:not(.primary) { background: rgba(18, 17, 16, 0.4); border-color: rgb(var(--steel-rgb) / 0.32); }
+button.big:not(.primary):hover:not(:disabled) { border-color: rgb(var(--fern-rgb) / 0.6); color: var(--accent); background: rgba(18, 17, 16, 0.4); }
+button.secondary:hover:not(:disabled) { border-color: rgb(var(--fern-rgb) / 0.5); color: var(--accent); }
+button.icon:hover:not(:disabled), #nav button:hover { color: var(--accent); }
+button.primary .ic { transition: transform 0.45s var(--ease-spring); }
+button.primary:hover:not(:disabled) .ic { transform: translateX(2px); }
+:focus-visible { outline-color: var(--accent) !important; }
+
+/* top bar: the view switch and the actions are pills with a fern-lit selection */
+.seg button, .top-actions button { border-radius: 999px; }
+.seg button.on { background: rgb(var(--fern-rgb) / 0.1); box-shadow: inset 0 0 0 1px rgb(var(--fern-rgb) / 0.3); color: var(--text); }
+.seg button.on .ic { color: var(--accent); }
+.seg button:hover:not(:disabled):not(.on), .top-actions button:hover:not(:disabled) { color: var(--accent); background: transparent; }
+.seg.small { border-radius: 999px; }
+.seg.small button { border-radius: 999px; }
+.brand strong { font: 700 15px var(--display); letter-spacing: 0.14em; }
+.layer.on { box-shadow: inset 0 0 0 1px rgb(var(--fern-rgb) / 0.25); }
+.switch input:checked + i { background: var(--accent); }
+.switch input:checked + i::after { background: var(--accent-ink); }
+.switch i::after { transition: transform 0.45s var(--ease-spring), background-color var(--t-micro); }
+input[type="range"]::-webkit-slider-thumb { background: var(--accent); box-shadow: 0 0 0 4px rgb(var(--fern-rgb) / 0.15), 0 1px 4px rgba(0, 0, 0, 0.5); transition: box-shadow var(--t-micro); }
+input[type="range"]:hover::-webkit-slider-thumb { box-shadow: 0 0 0 6px rgb(var(--fern-rgb) / 0.2), 0 1px 4px rgba(0, 0, 0, 0.5); }
+input[type="range"]::-moz-range-thumb { background: var(--accent); }
+
+/* HUD chips: status pills and the plan's checks */
+.status, .checks button, .hud-chip {
+  border-radius: 5px; font: 500 10.5px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase;
+  border: 1px solid rgb(var(--steel-rgb) / 0.22); background: rgba(14, 13, 12, 0.6);
+}
+.status { padding: 4px 8px 4px 7px; }
+.status.ok { border-color: rgb(var(--fern-rgb) / 0.35); background: rgb(var(--fern-rgb) / 0.07); }
+.status.bad { border-color: rgba(255, 98, 87, 0.4); }
+.status.warn { border-color: rgba(245, 181, 68, 0.4); }
+.status.live { border-color: rgb(var(--fern-rgb) / 0.35); }
+.status .dot { animation: live-pulse 1.8s var(--ease-smooth) infinite; }
+.checks button { height: 22px; padding: 0 8px 0 6px; color: var(--steel); }
+.checks button:hover { color: var(--accent); border-color: rgb(var(--fern-rgb) / 0.5); background: rgba(14, 13, 12, 0.6); }
+.checks button.warn { border-color: rgba(245, 181, 68, 0.45); }
+@keyframes live-pulse {
+  0% { box-shadow: 0 0 0 0 rgb(var(--fern-rgb) / 0.6); }
+  70% { box-shadow: 0 0 0 7px rgb(var(--fern-rgb) / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(var(--fern-rgb) / 0); }
+}
+.hab-chip.online i { background: var(--accent); box-shadow: none; animation: live-pulse 2.2s var(--ease-smooth) infinite; }
+
+/* ---------- readouts: mono numbers in HUD corner frames ---------- */
+.hero { gap: 6px; background: none; border-radius: 0; overflow: visible; }
+.hero > div, .hero > button.spot { border-radius: 8px; background: rgba(10, 10, 9, 0.5); border: 1px solid rgb(var(--steel-rgb) / 0.12); padding: 12px 13px 11px; }
+.hero > button.spot:hover { background: rgba(10, 10, 9, 0.5); border-color: rgb(var(--steel-rgb) / 0.2); }
+.hero span { font: 500 9.5px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--steel); }
+.hero b { font: 400 23px var(--mono); letter-spacing: -0.03em; }
+.clock { font-weight: 400; letter-spacing: -0.03em; }
+
+.hero > div, .hero > button.spot, .brief-facts li, .hud-item, .avoided, .brief-sites a, .mc-tile, .mc-clocks > div { position: relative; }
+:is(.hero > div, .hero > button.spot, .brief-facts li, .hud-item, .avoided, .brief-sites a, .mc-tile, .mc-clocks > div)::after {
+  --cc: rgb(var(--steel-rgb) / 0.6);
+  --cl: 8px;
+  content: ""; position: absolute; inset: 4px; pointer-events: none;
+  background:
+    linear-gradient(var(--cc), var(--cc)) 0 0 / var(--cl) 1px,
+    linear-gradient(var(--cc), var(--cc)) 0 0 / 1px var(--cl),
+    linear-gradient(var(--cc), var(--cc)) 100% 0 / var(--cl) 1px,
+    linear-gradient(var(--cc), var(--cc)) 100% 0 / 1px var(--cl),
+    linear-gradient(var(--cc), var(--cc)) 0 100% / var(--cl) 1px,
+    linear-gradient(var(--cc), var(--cc)) 0 100% / 1px var(--cl),
+    linear-gradient(var(--cc), var(--cc)) 100% 100% / var(--cl) 1px,
+    linear-gradient(var(--cc), var(--cc)) 100% 100% / 1px var(--cl);
+  background-repeat: no-repeat;
+  transition: inset 0.45s var(--ease-spring), opacity 0.3s;
+}
+:is(.hero > button.spot, .brief-facts li, .brief-sites a):hover::after { inset: 2px; --cc: var(--accent); }
+/* a scan line sweeps a tile when the pointer arrives */
+:is(.hero > button.spot, .brief-facts li, .brief-sites a) { overflow: hidden; }
+:is(.hero > button.spot, .brief-facts li, .brief-sites a)::before {
+  content: ""; position: absolute; left: 0; right: 0; top: -45%; height: 40%; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, rgb(var(--fern-rgb) / 0.08), transparent);
+}
+:is(.hero > button.spot, .brief-facts li, .brief-sites a):hover::before { animation: hud-scan 1.1s var(--ease-glide) forwards; }
+@keyframes hud-scan { to { top: 110%; } }
+
+.avoided { border-radius: 8px; }
+.avoided b { font-weight: 400; }
+.avoided::after { --cc: rgb(var(--fern-rgb) / 0.7); }
+
+/* ---------- route list and map labels ---------- */
+.stop.on .pin { box-shadow: 0 0 0 3px rgb(var(--fern-rgb) / 0.16); }
+.pin { transition: background-color var(--t-micro), box-shadow 0.45s var(--ease-spring), transform 0.45s var(--ease-spring); }
+.stop:hover .pin { transform: scale(1.08); }
+.poi-label { border-radius: 999px; background: rgba(14, 13, 12, 0.84); border-color: rgb(var(--steel-rgb) / 0.26); transition: border-color var(--t-micro), background-color var(--t-micro); }
+.poi-label.active { border-color: rgb(var(--fern-rgb) / 0.55); }
+.poi-label:hover { border-color: rgb(var(--fern-rgb) / 0.7); }
+#nav-hint { border-radius: 999px; border: 1px solid rgb(var(--steel-rgb) / 0.14); font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em; }
+#compass { border-color: rgb(var(--steel-rgb) / 0.2); }
+
+/* ---------- notices: they arrive with a blur and a rise ---------- */
+#toast { border-radius: 999px; border-color: rgb(var(--steel-rgb) / 0.22); }
+#toast:not([hidden]) { animation: notice-in 0.6s var(--ease-glide) both; }
+#alert:not([hidden]) { animation: notice-in 0.7s var(--ease-glide) both; }
+@keyframes notice-in { from { opacity: 0; filter: blur(8px); transform: translate(-50%, -14px) scale(0.98); } }
+#alert { border-radius: 18px; }
+#alert.safe { background: rgba(26, 36, 8, 0.92); border-color: rgb(var(--fern-rgb) / 0.45); }
+#alert.safe .ico { background: var(--accent); color: var(--accent-ink); }
+#card.arrived { border-color: rgb(var(--fern-rgb) / 0.45); }
+.demo-card { border-radius: 18px; border-color: rgb(var(--fern-rgb) / 0.35); animation: notice-up 0.6s var(--ease-glide) both; }
+.demo-card h3 { font: 700 19px/1.15 var(--display); text-transform: uppercase; letter-spacing: 0.01em; }
+@keyframes notice-up { from { opacity: 0; filter: blur(6px); transform: translateY(18px); } }
+
+/* the plan, the live EVA and the debrief slide in as one, section by section, when the phase changes */
+#right.phase-in .scroll > section, #right.phase-in .panel-foot { animation: m-in 0.7s var(--ease-glide) both; }
+#right.phase-in .scroll > section:nth-child(2) { animation-delay: 0.05s; }
+#right.phase-in .scroll > section:nth-child(3) { animation-delay: 0.1s; }
+#right.phase-in .scroll > section:nth-child(4) { animation-delay: 0.15s; }
+#right.phase-in .scroll > section:nth-child(n + 5) { animation-delay: 0.2s; }
+#right.phase-in .panel-foot { animation-delay: 0.12s; }
+@keyframes m-in { from { opacity: 0; transform: translateY(18px); filter: blur(4px); } }
+
+/* the console assembles itself when the planner opens (wide screens: on phones the panels are a drawer
+   and a sheet, which slide by themselves) */
+@media (min-width: 1181px) {
+  #app.boot #topbar > * { animation: m-down 0.8s var(--ease-glide) both; }
+  #app.boot #topbar > :nth-child(2) { animation-delay: 0.06s; }
+  #app.boot #topbar > :nth-child(3) { animation-delay: 0.12s; }
+  #app.boot #left { animation: m-left 0.9s var(--ease-glide) 0.1s both; }
+  #app.boot #right { animation: m-right 0.9s var(--ease-glide) 0.16s both; }
+  #app.boot #bottom { animation: m-in 0.9s var(--ease-glide) 0.22s both; }
+}
+@keyframes m-down { from { opacity: 0; transform: translateY(-16px); filter: blur(4px); } }
+@keyframes m-left { from { opacity: 0; transform: translateX(-24px); filter: blur(4px); } }
+@keyframes m-right { from { opacity: 0; transform: translateX(24px); filter: blur(4px); } }
+
+/* ---------- visor HUD: steel readouts with fern corners ---------- */
+#hud { color: #eef5e4; }
+.hud-item { background: rgba(8, 9, 8, 0.42); border: 0; border-radius: 3px; padding: 7px 11px; }
+.hud-side.right .hud-item { border: 0; border-radius: 3px; }
+.hud-item::after { inset: 0; --cl: 7px; --cc: rgb(var(--fern-rgb) / 0.75); }
+.hud-item.minor::after { --cc: rgb(var(--steel-rgb) / 0.55); }
+.hud-item span { font: 500 9px var(--mono); letter-spacing: 0.16em; }
+.hud-item b { font-weight: 400; }
+.hud-item.bad::after { --cc: var(--bad); }
+.hud-bottom { border-radius: 999px; border-color: rgb(var(--fern-rgb) / 0.4); padding: 9px 22px; }
+.hud-bottom span, .minimap span, .hud-hint { font-family: var(--mono); letter-spacing: 0.14em; }
+.hud-bottom b { font: 700 16px var(--display); text-transform: uppercase; letter-spacing: 0.02em; }
+.minimap svg { border-color: rgb(var(--fern-rgb) / 0.45); }
+#app[data-view="walk"] #hud .hud-side .hud-item { animation: m-in 0.6s var(--ease-glide) both; }
+#app[data-view="walk"] #hud .hud-side .hud-item:nth-child(2) { animation-delay: 0.04s; }
+#app[data-view="walk"] #hud .hud-side .hud-item:nth-child(3) { animation-delay: 0.08s; }
+#app[data-view="walk"] #hud .hud-side .hud-item:nth-child(4) { animation-delay: 0.12s; }
+#app[data-view="walk"] #hud .hud-side .hud-item:nth-child(5) { animation-delay: 0.16s; }
+#app[data-view="walk"] #hud .hud-side .hud-item:nth-child(n + 6) { animation-delay: 0.2s; }
+
+/* ---------- loading ---------- */
+#loading { background: radial-gradient(1100px 700px at 50% 35%, #1b1916, var(--bg) 70%); }
+/* no entrance animations here: this screen is up while the page is busiest (building the terrain), when
+   an animation may not get to start, and the name must be readable from the first frame */
+.load-box h1 { font: 700 46px/1 var(--display); letter-spacing: 0.2em; padding-left: 0.2em; margin: 18px 0 8px; }
+.load-box .tagline { font: 500 10.5px var(--mono); letter-spacing: 0.18em; text-transform: uppercase; color: var(--steel); }
+.bar { height: 2px; background: rgb(var(--steel-rgb) / 0.14); }
+.bar i { background: var(--accent); box-shadow: 0 0 12px rgb(var(--fern-rgb) / 0.7); transition: width 0.5s var(--ease-glide); }
+#load-label { font-size: 11px; letter-spacing: 0.06em; }
+@keyframes hero-rise { from { transform: translateY(112%) rotate(3deg); } }
+@keyframes hero-fade { from { opacity: 0; transform: translateY(14px); } }
+
+/* film grain over the loading screen and the briefing (a 180 px noise tile, stepped, so it costs nothing) */
+#loading::after, #briefing::after {
+  content: ""; position: fixed; inset: -50%; z-index: 0; pointer-events: none; opacity: 0.07; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  animation: grain 0.9s steps(6) infinite;
+}
+@keyframes grain { 0%, 100% { transform: translate(0); } 20% { transform: translate(-3%, 2%); } 40% { transform: translate(2%, -3%); } 60% { transform: translate(-2%, -1%); } 80% { transform: translate(3%, 3%); } }
+
+/* ---------- briefing (main menu) ---------- */
+#briefing { background: radial-gradient(1300px 900px at 12% 0%, #1d1a16, var(--bg) 62%); }
+.brief-brand h1 { font: 700 22px var(--display); letter-spacing: 0.2em; }
+.brief-brand p { font: 500 10px var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--steel); }
+.brief-text > .eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; max-width: none; margin: 0 0 14px; font: 500 10.5px/1.4 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--steel); }
+.eyebrow .rule { display: inline-flex; gap: 3px; }
+.eyebrow .rule i { width: 14px; height: 1px; background: rgb(var(--steel-rgb) / 0.35); }
+.eyebrow .rule i.on { background: var(--accent); }
+.eyebrow .code { color: rgb(var(--steel-rgb) / 0.75); }
+.brief-text h2 { font: 700 clamp(30px, 3.1vw, 50px)/0.98 var(--display); text-transform: uppercase; letter-spacing: -0.005em; margin-bottom: 26px; text-wrap: initial; }
+.brief-text h2 .line { display: block; overflow: hidden; padding-bottom: 0.06em; }
+.brief-text h2 .line > span { display: inline-block; animation: hero-rise 1.4s var(--ease-glide) both; }
+.brief-text h2 .line:nth-child(2) > span { animation-delay: 0.12s; }
+.brief-text h2 .line:nth-child(3) > span { animation-delay: 0.24s; }
+.brief-text h2 .s { color: var(--steel); }
+.brief-text > p { font-size: 15px; }
+.brief-facts { gap: 8px; background: none; border: 0; border-radius: 0; overflow: visible; }
+.brief-facts li { background: rgba(10, 10, 9, 0.55); border: 1px solid rgb(var(--steel-rgb) / 0.14); border-radius: 8px; padding: 16px 16px 14px; }
+.brief-facts b { font: 400 19px var(--mono); letter-spacing: -0.04em; }
+.brief-facts span { font-size: 11.5px; }
+.brief-sites a { border-radius: 10px; background: rgba(10, 10, 9, 0.45); border-color: rgb(var(--steel-rgb) / 0.14); transition: border-color var(--t-micro), transform 0.45s var(--ease-spring); }
+.brief-sites a:hover { transform: translateY(-2px); border-color: rgb(var(--steel-rgb) / 0.3); }
+.brief-sites a.on { border-color: rgb(var(--fern-rgb) / 0.5); background: rgb(var(--fern-rgb) / 0.06); }
+.brief-sites a.on::after { --cc: var(--accent); }
+.brief-sites b { font: 600 13px var(--sans); }
+.brief button.big { height: 48px; padding: 0 26px; font-size: 14.5px; }
+.brief-mc {
+  position: relative; overflow: hidden; border-radius: 18px; padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015) 60%), rgba(18, 17, 16, 0.6);
+  border: 1px solid rgb(var(--steel-rgb) / 0.18);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.12), 0 20px 40px -25px rgba(0, 0, 0, 0.8);
+  transition: transform 0.6s var(--ease-spring), border-color var(--t-micro), box-shadow 0.4s;
+}
+.brief-mc:hover { transform: translateY(-4px); border-color: rgb(var(--fern-rgb) / 0.5); background: linear-gradient(135deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015) 60%), rgba(18, 17, 16, 0.6); box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.12), 0 30px 50px -25px rgba(0, 0, 0, 0.9); }
+.brief-mc::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity 0.3s var(--ease-smooth);
+  background: radial-gradient(240px circle at var(--gx, 50%) var(--gy, 30%), rgba(255, 255, 255, 0.1), transparent 60%), radial-gradient(140px circle at var(--gx, 50%) var(--gy, 30%), rgb(var(--fern-rgb) / 0.12), transparent 70%); }
+.brief-mc:hover::after { opacity: 1; }
+.brief-mc b { font: 600 14px var(--sans); }
+.brief-mc b::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: var(--warn); vertical-align: 1px; }
+.brief-mc.ev2 b::before { background: var(--accent); animation: live-pulse 2.2s var(--ease-smooth) infinite; }
+.region { border-radius: 20px; border-color: rgb(var(--steel-rgb) / 0.2); }
+.region .trav { stroke: var(--accent); }
+.region .aoi { fill: rgb(var(--fern-rgb) / 0.08); stroke: var(--accent); }
+.region .aoi-label { fill: var(--accent); font: 700 17px var(--display); text-transform: uppercase; letter-spacing: 0.04em; }
+.region .place.cheyava circle, .region .place.apron circle { fill: var(--accent); }
+.globe { border-radius: 12px; }
+.globe span { font-size: 10px; letter-spacing: 0.06em; }
+.globe i { box-shadow: 0 0 0 4px rgb(var(--fern-rgb) / 0.3); animation: live-pulse 2.4s var(--ease-smooth) infinite; }
+
+/* briefing entrance: everything rises out of a blur, in reading order */
+.brief-text > * { animation: m-in 1s var(--ease-glide) both; }
+.brief-text > :nth-child(2) { animation-delay: 0.06s; }
+.brief-text > :nth-child(3) { animation-delay: 0.1s; }
+.brief-text > :nth-child(4) { animation-delay: 0.2s; }
+.brief-text > h2 { animation: none; }
+.brief-text > :nth-child(5) { animation-delay: 0.3s; }
+.brief-text > :nth-child(6) { animation-delay: 0.36s; }
+.brief-text > :nth-child(7) { animation-delay: 0.42s; }
+.brief-text > :nth-child(8) { animation-delay: 0.5s; }
+.brief-text > :nth-child(9) { animation-delay: 0.56s; }
+.brief-text > :nth-child(n + 10) { animation-delay: 0.62s; }
+.brief-facts li { animation: m-in 0.9s var(--ease-glide) both; }
+.brief-facts li:nth-child(1) { animation-delay: 0.45s; }
+.brief-facts li:nth-child(2) { animation-delay: 0.52s; }
+.brief-facts li:nth-child(3) { animation-delay: 0.59s; }
+.brief-facts li::after { animation: corner-in 0.9s var(--ease-spring) both; animation-delay: inherit; }
+@keyframes corner-in { from { inset: -4px; opacity: 0; } }
+.brief-map .region { animation: map-in 1.4s var(--ease-glide) 0.15s both; }
+.brief-map .region > img { animation: map-zoom 2.4s var(--ease-glide) 0.15s both; }
+.brief-map .region .trav { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 2.6s var(--ease-glide) 0.7s forwards; } /* pathLength="1" */
+.brief-map .region .drive { animation: fade-in 1s ease 1.6s both; }
+.brief-map .region .aoi, .brief-map .region .aoi-label { animation: fade-in 0.8s ease 1.2s both; }
+.brief-map .region .place { animation: fade-in 0.6s ease 1.5s both; }
+.brief-map .globe { animation: m-in 1s var(--ease-glide) 0.9s both; }
+.brief-map > .fine { animation: m-in 1s var(--ease-glide) 0.7s both; }
+@keyframes map-in { from { opacity: 0; clip-path: inset(0 0 100% 0 round 20px); } to { opacity: 1; clip-path: inset(0 0 0 0 round 20px); } }
+@keyframes map-zoom { from { transform: scale(1.08); } }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0.001s !important; }
+  #loading::after, #briefing::after { display: none; }
+}
+
+/* small labels over a value, in the same mono capitals as the tiles */
+.o2-head span { font: 500 9.5px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--steel); }
+.o2-head b { font-family: var(--mono); font-weight: 400; }
+
+/* menus drop open like bracken's: a short scale from 97 % with the smooth ease, from the side they hang on */
+:is(#about-menu, #site-menu, .menu):not([hidden]) { animation: menu-in 0.25s var(--ease-smooth) both; transform-origin: top right; }
+#site-menu:not([hidden]) { transform-origin: top left; }
+#view-menu:not([hidden]) { animation: menu-in 0.25s var(--ease-smooth) both; transform-origin: bottom right; }
+@keyframes menu-in { from { opacity: 0; transform: scale(0.97) translateY(-4px); } }
+:is(#about-menu, .menu.list) button { border-radius: 10px; }
+:is(#about-menu, .menu.list) button:hover:not(:disabled) .ic { color: var(--accent); }
+
+/* phones: the brand pill is just the logo (it opens the main menu, which switches sites) */
+@media (max-width: 600px) { #site-switch { display: none; } }
+.hud-bottom > div { min-width: 0; }
+.hud-bottom b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: min(46vw, 320px); }
+@media (max-width: 600px) { .hud-bottom { padding: 7px 16px; gap: 10px; } .hud-bottom b { font-size: 13.5px; } }

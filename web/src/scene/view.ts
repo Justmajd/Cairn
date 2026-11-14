@@ -37,7 +37,7 @@ export interface PoiMarkerState {
 }
 
 type Rgb = [number, number, number];
-const CYAN: Rgb = [0.27, 0.88, 0.81];
+const CYAN: Rgb = [0.776, 0.957, 0.196]; // the route: fern, the interface accent
 const AMBER: Rgb = [0.96, 0.71, 0.27];
 const RED: Rgb = [1.0, 0.22, 0.2];
 const WHITE: Rgb = [0.96, 0.96, 0.96];
@@ -1577,7 +1577,7 @@ export class SceneView {
       holder.userData.poi = p;
       holder.position.copy(this.ground(p.x, p.y));
 
-      const color = isShelter ? 0xffffff : st.active ? 0x3fe8ff : 0x9aa3ab;
+      const color = isShelter ? 0xffffff : st.active ? 0xc6f432 : 0x9aa3ab;
       const model = isShelter ? this.makeRover() : this.makeCairn(st.active ? 0xf4d9b0 : 0x9a8d80);
       model.userData.poiMarker = true;
       holder.add(model);

@@ -12,6 +12,7 @@ export const fmtDist = (m: number): string => (m >= 1000 ? `${(m / 1000).toFixed
 
 export function fmtDur(s: number): string {
   if (!Number.isFinite(s)) return "—";
+  if (s > 0 && s < 30) return "<1 min";
   const min = Math.round(s / 60);
   if (min < 60) return `${min} min`;
   return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")} min`;

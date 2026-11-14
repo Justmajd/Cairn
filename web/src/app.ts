@@ -24,6 +24,7 @@ import { DoseChartHandle, ProfileHandle, renderDoseChart, renderProfile } from "
 import { $, esc, fmtClock, fmtDist, fmtDose, fmtDur, fmtRate, setText } from "./ui/dom";
 import { ic } from "./ui/icons";
 import { hideAnimated, showAnimated } from "./ui/motion";
+import { playOnce } from "./ui/fx";
 import { prefetchSite } from "./data/prefetch";
 import { dissolve } from "./ui/dissolve";
 import { openModal, stopCardHtml } from "./ui/modals";
@@ -647,7 +648,7 @@ export class App {
     for (let t = 6; t <= 17.0001; t += 0.25) {
       ok.push(sunAt(this.lat, t, this.solar).elevation >= 8 && sunAt(this.lat, t + totalS / MARS_HOUR_S, this.solar).elevation >= 8);
     }
-    const good = "rgba(90, 212, 138, 0.6)";
+    const good = "rgba(198, 244, 50, 0.6)";
     const bad = "rgba(255, 255, 255, 0.12)";
     const stops: string[] = [];
     ok.forEach((v, i) => {
@@ -1286,9 +1287,15 @@ export class App {
   }
 
   // ================================================================ right panel
+  private shownPhase: string | null = null;
   private renderRight(): void {
     const host = $("#right");
     $("#app").dataset.phase = this.phase;
+    if (this.phase !== this.shownPhase) {
+      // a new phase (plan → live EVA → debrief): its sections rise in one after another
+      this.shownPhase = this.phase;
+      requestAnimationFrame(() => playOnce(host, "phase-in", 1200));
+    }
     if (this.phase === "eva") return this.renderLive(host);
     if (this.phase === "summary") return this.renderSummary(host);
     if (!this.plan) {
@@ -1424,7 +1431,7 @@ export class App {
           <div class="clock" id="lv-clock">00:00:00</div>
           <p class="phase"><span id="lv-label"></span> <b id="lv-next"></b></p>
           <dl class="kv">
-            <dt>Distance left</dt><dd id="lv-dist"></dd>
+            <dt id="lv-dist-k">Distance left</dt><dd id="lv-dist"></dd>
             <dt>Walked so far</dt><dd id="lv-walked"></dd>
             <dt>Radio</dt><dd id="lv-radio"></dd>
           </dl>
@@ -1470,7 +1477,7 @@ export class App {
           }
           <dl class="kv">
             <dt>Local time</dt><dd id="lv-lmst"></dd>
-          <dt>Sun</dt><dd id="lv-sun"></dd>
+            <dt>Sun</dt><dd id="lv-sun"></dd>
             <dt>Earth</dt><dd id="lv-earth"></dd>
             ${this.site.weather ? `<dt>Air · ground</dt><dd id="lv-temp"></dd><dt>Pressure</dt><dd id="lv-pres"></dd>` : ""}
           </dl>
@@ -2386,7 +2393,7 @@ export class App {
     return `<div class="dust-pick">
         <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="${esc(d.rover)}'s dust record, sols ${s0} to ${s1}; the highest is τ ${max.toFixed(1)}">
           <path d="${path}" fill="none" stroke="#f5b544" stroke-width="1.2"/>
-          ${day ? `<line x1="${X(day[0]).toFixed(1)}" x2="${X(day[0]).toFixed(1)}" y1="0" y2="${H}" stroke="#46e0cf" stroke-width="1.5"/>` : ""}
+          ${day ? `<line x1="${X(day[0]).toFixed(1)}" x2="${X(day[0]).toFixed(1)}" y1="0" y2="${H}" stroke="#c6f432" stroke-width="1.5"/>` : ""}
         </svg>
         <label><span class="vh">Sol</span><input type="range" id="dust-sol" min="${s0}" max="${s1}" step="1" value="${this.dustSol}"/></label>
         <small class="dust-axis"><span>sol ${s0}</span><span>τ up to ${max.toFixed(1)}</span><span>sol ${s1}</span></small>
@@ -3291,6 +3298,7 @@ export class App {
   }
 
   private phaseLabel(m: Mission): { label: string; name: string } {
+    if (m.phase === "complete") return { label: m.alertS !== null || m.emergency !== null ? "EVA ended early ·" : "EVA complete ·", name: "crew back in the rover" };
     if (m.phase === "holding") return { label: "Alert —", name: "finding the way to shelter" };
     if (m.phase === "to-shelter") return { label: "Returning to", name: "the rover (shelter)" };
     if (m.sheltered) return { label: "Sheltering in", name: "the rover" };
@@ -3310,7 +3318,8 @@ export class App {
     setText($("#lv-clock"), fmtClock(m.t));
     setText($("#lv-label"), ph.label);
     setText($("#lv-next"), ph.name);
-    setText($("#lv-dist"), n.distM > 0 ? `${fmtDist(n.distM)} · ${fmtDur(n.etaS)}` : m.sheltered ? "—" : `${fmtDur(n.etaS)} on site`);
+    setText($("#lv-dist-k"), n.distM > 0 || m.sheltered ? "Distance left" : "Science time left");
+    setText($("#lv-dist"), n.distM > 0 ? `${fmtDist(n.distM)} · ${fmtDur(n.etaS)}` : m.sheltered ? "—" : fmtDur(n.etaS));
     setText($("#lv-walked"), fmtDist(m.distanceM));
     const lr = document.getElementById("lv-radio");
     const relayOnly = !this.radioLost && this.relayUp && !inContact(this.radio, this.site.grid, m.pose().x, m.pose().y);
