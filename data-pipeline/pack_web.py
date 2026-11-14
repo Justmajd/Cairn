@@ -10,6 +10,10 @@ smaller of two encodings, both gzip-compressed:
 The relief normal map becomes a WebP (quality 90; it only lights the terrain).  `pack.json` maps each
 original name to its packed file and encoding; the web loader decodes them.  Originals are removed, so
 the deployed site carries only packed files.  `files.json` lists every file for "Use offline".
+
+The ground images (HiRISE 50 cm and 25 cm, the regional image, the briefing map) become WebP too, about
+40% smaller at ~41-43 dB PSNR against the JPEGs; site.json, region.json and context.json are updated to
+name the new files.
 """
 import gzip
 import json
@@ -85,6 +89,41 @@ def pack_grid(name: str, entries: dict) -> None:
     print(f"  {name:<14} {len(raw) / 1e6:6.2f} MB -> {len(data) / 1e6:5.2f} MB  ({enc})")
 
 
+# ground images: (file, WebP quality, [(json file, key path to the file name), ...])
+IMAGES = [
+    ("texture.jpg", 85, [("site.json", ("texture", "file"))]),
+    ("texture_8k.jpg", 88, [("site.json", ("texture", "hi", "file"))]),
+    ("region.jpg", 85, [("region.json", ("texture", "file"))]),
+    ("context.jpg", 85, [("context.json", ("image",))]),
+]
+
+
+def webp_images() -> None:
+    for name, quality, refs in IMAGES:
+        src = os.path.join(OUT, name)
+        if not os.path.exists(src):
+            continue
+        dst = name.rsplit(".", 1)[0] + ".webp"
+        im = Image.open(src)
+        im = im.convert("L" if im.mode in ("L", "P", "1") else "RGB")
+        im.save(os.path.join(OUT, dst), "WEBP", quality=quality, method=6 if im.width <= 4096 else 4)
+        before = os.path.getsize(src)
+        os.remove(src)
+        for doc_name, keys in refs:
+            path = os.path.join(OUT, doc_name)
+            if not os.path.exists(path):
+                continue
+            doc = json.load(open(path))
+            node = doc
+            for k in keys[:-1]:
+                node = node[k]
+            if node.get(keys[-1]) == name:
+                node[keys[-1]] = dst
+                with open(path, "w") as f:
+                    json.dump(doc, f, indent=1, ensure_ascii=False)
+        print(f"  {name:<14} {before / 1e6:6.2f} MB -> {os.path.getsize(os.path.join(OUT, dst)) / 1e6:5.2f} MB  (webp q{quality})")
+
+
 def main() -> None:
     pack_path = os.path.join(OUT, "pack.json")
     entries = json.load(open(pack_path))["files"] if os.path.exists(pack_path) else {}
@@ -111,6 +150,7 @@ def main() -> None:
 
     with open(pack_path, "w") as f:
         json.dump({"version": 1, "files": entries}, f, indent=1)
+    webp_images()
 
     files = []
     for root, _, names in os.walk(OUT):

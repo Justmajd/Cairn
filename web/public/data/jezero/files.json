@@ -1,12 +1,12 @@
 {
 "files": [
 {
-"path": "context.jpg",
-"bytes": 1024611
+"path": "context.json",
+"bytes": 19371
 },
 {
-"path": "context.json",
-"bytes": 19370
+"path": "context.webp",
+"bytes": 815018
 },
 {
 "path": "effort.u8.pk",
@@ -109,16 +109,16 @@
 "bytes": 9755
 },
 {
-"path": "region.jpg",
-"bytes": 1374022
-},
-{
 "path": "region.json",
-"bytes": 389
+"bytes": 390
 },
 {
 "path": "region.u16.pk",
 "bytes": 653458
+},
+{
+"path": "region.webp",
+"bytes": 824354
 },
 {
 "path": "relief.webp",
@@ -146,19 +146,19 @@
 },
 {
 "path": "site.json",
-"bytes": 3172
+"bytes": 3174
 },
 {
 "path": "slope.u8.pk",
 "bytes": 402599
 },
 {
-"path": "texture.jpg",
-"bytes": 4019062
+"path": "texture.webp",
+"bytes": 2347292
 },
 {
-"path": "texture_8k.jpg",
-"bytes": 14317847
+"path": "texture_8k.webp",
+"bytes": 8121150
 },
 {
 "path": "thermal.u8.pk",
@@ -169,5 +169,5 @@
 "bytes": 2929
 }
 ],
-"totalBytes": 27376935
+"totalBytes": 18749211
 }

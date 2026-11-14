@@ -89,7 +89,7 @@ data-pipeline/  (Python)                     web/  (TypeScript + Three.js, fully
         │
   pack_web.py    compress grids for the web
         │
-        └──► web/public/data/<site>/   (Jezero 26 MB, Gale 35 MB with photos and panoramas; committed)
+        └──► web/public/data/<site>/   (Jezero 18 MB, Gale 27 MB with photos and panoramas; committed)
 ```
 
 - **Sharp at every distance.** The 25 cm HiRISE image is sampled with Catmull-Rom filtering, lighting uses the full 1 m elevation gradient per pixel, and map layers are coloured on the GPU from the raw data grids, so they stay smooth instead of pixelated.
@@ -102,7 +102,7 @@ data-pipeline/  (Python)                     web/  (TypeScript + Three.js, fully
 - **The way home.** One Dijkstra pass from the rover stores the best route home from every grid point. The emergency re-route is then a lookup, and the same data draws the *Minutes to shelter* layer and the walk-back margin.
 - **One measuring function.** `measurePath()` produces every number shown about a route, so the router, the budget, the chart and the simulation cannot disagree.
 - **Radio line of sight.** Rays from the rover's mast antenna (3 m) to every edge of the grid keep the steepest terrain angle seen so far, with the curvature of Mars; each point stores how far a suit antenna (1.8 m) would have to rise to see the rover. The relay search tries every ~8 m of the route where a 2.5 m mast still sees the rover and counts the blackout time it covers *after* the crew gets there.
-- **Fast first load.** Grids are row-delta coded and gzipped (Gale: 6.3 → 3.2 MB), the relief map is WebP, and all files load in parallel with the return-to-shelter calculation. The planner opens on the 50 cm image; the 25 cm one streams in afterwards.
+- **Fast first load.** Grids are row-delta coded and gzipped (Gale: 6.3 → 3.2 MB), the HiRISE images and relief map are WebP (the 25 cm image: 14.5 → 8 MB), and all files load in parallel with the return-to-shelter calculation. The planner opens on the 50 cm image; the 25 cm one streams in afterwards.
 - **Offline.** A service worker keeps the app and every file of a site; its data cache is versioned by the data, so app updates do not throw away a saved site.
 
 ## Rebuilding the data

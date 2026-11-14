@@ -23,11 +23,11 @@
   "zMax": -1985.0
  },
  "texture": {
-  "file": "texture.jpg",
+  "file": "texture.webp",
   "px": 4096,
   "mPerPx": 0.5,
   "hi": {
-   "file": "texture_8k.jpg",
+   "file": "texture_8k.webp",
    "px": 8192,
    "mPerPx": 0.25
   }

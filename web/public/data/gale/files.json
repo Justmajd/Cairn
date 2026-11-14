@@ -1,12 +1,12 @@
 {
 "files": [
 {
-"path": "context.jpg",
-"bytes": 949775
+"path": "context.json",
+"bytes": 35180
 },
 {
-"path": "context.json",
-"bytes": 35179
+"path": "context.webp",
+"bytes": 719618
 },
 {
 "path": "effort.u8.pk",
@@ -125,16 +125,16 @@
 "bytes": 7171
 },
 {
-"path": "region.jpg",
-"bytes": 1813184
-},
-{
 "path": "region.json",
-"bytes": 401
+"bytes": 402
 },
 {
 "path": "region.u16.pk",
 "bytes": 111596
+},
+{
+"path": "region.webp",
+"bytes": 1286702
 },
 {
 "path": "relief.webp",
@@ -162,24 +162,24 @@
 },
 {
 "path": "site.json",
-"bytes": 2098
+"bytes": 2100
 },
 {
 "path": "slope.u8.pk",
 "bytes": 577624
 },
 {
-"path": "texture.jpg",
-"bytes": 3882052
+"path": "texture.webp",
+"bytes": 2264324
 },
 {
-"path": "texture_8k.jpg",
-"bytes": 14555448
+"path": "texture_8k.webp",
+"bytes": 8025988
 },
 {
 "path": "weather.json",
 "bytes": 2832
 }
 ],
-"totalBytes": 36297619
+"totalBytes": 27393796
 }
