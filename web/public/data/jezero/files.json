@@ -114,11 +114,11 @@
 },
 {
 "path": "panoramas.json",
-"bytes": 757
+"bytes": 839
 },
 {
 "path": "panoramas/brightangel.jpg",
-"bytes": 1235276
+"bytes": 1016185
 },
 {
 "path": "pois.json",
@@ -189,5 +189,5 @@
 "bytes": 2929
 }
 ],
-"totalBytes": 20371446
+"totalBytes": 20152437
 }

@@ -4,12 +4,15 @@
  "panoramas": {
   "brightangel": {
    "file": "panoramas/brightangel.jpg",
+   "fileHi": "panoramas/brightangel_8k.jpg",
    "azMin": 0,
    "azMax": 360,
-   "elMin": -55.0,
-   "elMax": 35.0,
+   "elMin": -90.0,
+   "elMax": 90.0,
+   "width": 8192,
+   "height": 4096,
    "frames": 0,
-   "coverage": 0.742,
+   "coverage": 0.386,
    "horizonCoverage": 1.0,
    "sols": [
     1178

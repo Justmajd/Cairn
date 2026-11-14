@@ -94,27 +94,27 @@
 },
 {
 "path": "panoramas.json",
-"bytes": 7943
+"bytes": 8344
 },
 {
 "path": "panoramas/midbox.jpg",
-"bytes": 914653
+"bytes": 830358
 },
 {
 "path": "panoramas/ridge.jpg",
-"bytes": 906767
+"bytes": 813918
 },
 {
 "path": "panoramas/ridgetop.jpg",
-"bytes": 799794
+"bytes": 718709
 },
 {
 "path": "panoramas/rover.jpg",
-"bytes": 842743
+"bytes": 765864
 },
 {
 "path": "panoramas/sajama.jpg",
-"bytes": 1123959
+"bytes": 958177
 },
 {
 "path": "pois.json",
@@ -185,5 +185,5 @@
 "bytes": 2832
 }
 ],
-"totalBytes": 27633957
+"totalBytes": 27133468
 }

@@ -157,6 +157,8 @@ def main() -> None:
         for n in sorted(names):
             if n in ("files.json",) or n.startswith("."):
                 continue
+            if n.endswith("_8k.jpg"):          # 8K VR panoramas stream online; offline uses the 4K copies
+                continue
             p = os.path.join(root, n)
             files.append({"path": os.path.relpath(p, OUT).replace(os.sep, "/"), "bytes": os.path.getsize(p)})
     files.sort(key=lambda f: f["path"])

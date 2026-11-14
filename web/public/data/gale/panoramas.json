@@ -1,13 +1,16 @@
 {
  "source": "Stitched by CAIRN from Curiosity Navcam raw images using their CAHVOR(E) camera models",
- "pxPerDeg": 12,
+ "pxPerDeg": 22.755555555555556,
  "panoramas": {
   "rover": {
    "file": "panoramas/rover.jpg",
+   "fileHi": "panoramas/rover_8k.jpg",
    "azMin": 0,
    "azMax": 360,
-   "elMin": -55.0,
-   "elMax": 35.0,
+   "elMin": -90.0,
+   "elMax": 90.0,
+   "width": 8192,
+   "height": 4096,
    "frames": 19,
    "coverage": 0.614,
    "sols": [
@@ -114,10 +117,13 @@
   },
   "ridge": {
    "file": "panoramas/ridge.jpg",
+   "fileHi": "panoramas/ridge_8k.jpg",
    "azMin": 0,
    "azMax": 360,
-   "elMin": -55.0,
-   "elMax": 35.0,
+   "elMin": -90.0,
+   "elMax": 90.0,
+   "width": 8192,
+   "height": 4096,
    "frames": 19,
    "coverage": 0.617,
    "sols": [
@@ -224,12 +230,15 @@
   },
   "sajama": {
    "file": "panoramas/sajama.jpg",
+   "fileHi": "panoramas/sajama_8k.jpg",
    "azMin": 0,
    "azMax": 360,
-   "elMin": -55.0,
-   "elMax": 35.0,
+   "elMin": -90.0,
+   "elMax": 90.0,
+   "width": 8192,
+   "height": 4096,
    "frames": 0,
-   "coverage": 0.531,
+   "coverage": 0.27,
    "horizonCoverage": 1.0,
    "sols": [
     4714,
@@ -248,10 +257,13 @@
   },
   "ridgetop": {
    "file": "panoramas/ridgetop.jpg",
+   "fileHi": "panoramas/ridgetop_8k.jpg",
    "azMin": 0,
    "azMax": 360,
-   "elMin": -55.0,
-   "elMax": 35.0,
+   "elMin": -90.0,
+   "elMax": 90.0,
+   "width": 8192,
+   "height": 4096,
    "frames": 19,
    "coverage": 0.611,
    "sols": [
@@ -358,12 +370,15 @@
   },
   "midbox": {
    "file": "panoramas/midbox.jpg",
+   "fileHi": "panoramas/midbox_8k.jpg",
    "azMin": 0,
    "azMax": 360,
-   "elMin": -55.0,
-   "elMax": 35.0,
+   "elMin": -90.0,
+   "elMax": 90.0,
+   "width": 8192,
+   "height": 4096,
    "frames": 19,
-   "coverage": 0.61,
+   "coverage": 0.611,
    "sols": [
     4647
    ],

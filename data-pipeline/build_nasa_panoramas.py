@@ -25,11 +25,12 @@ from rasterio.warp import Resampling, reproject
 from scipy import ndimage as ndi
 
 from common import CFG, HERE, OUT, RAW, SITE, SIZE, X0, Y0, lonlat_to_local
+import pano_common
 
 Image.MAX_IMAGE_PIXELS = None
 SRC = os.path.join(HERE, "raw", "nasa_pano")
-EL_MIN, EL_MAX = -55.0, 35.0
-PX_PER_DEG = 12
+EL_MIN, EL_MAX = -90.0, 90.0                 # full sphere, ready for VR (see pano_common.py)
+PX_PER_DEG = pano_common.PX_PER_DEG
 MAST_M = 2.0
 DEBUG = os.environ.get("CAIRN_PANO_DEBUG")
 
@@ -169,11 +170,11 @@ def resample(path, full_size, fitp, Wsmall):
     im = Image.open(path).convert("RGB")
     W0, H0 = full_size
     k = Wsmall / W0                                              # small-image px per full-image px
-    W = 360 * PX_PER_DEG
-    Hh = int((EL_MAX - EL_MIN) * PX_PER_DEG)
+    W = pano_common.W
+    Hh = pano_common.H
     # work at a resolution a little above the output's
     deg_per_full_px = fitp["degPerPx"] * k
-    work_scale = min(1.0, 1.0 / (deg_per_full_px * PX_PER_DEG * 1.5))   # full px -> work px
+    work_scale = min(1.0, deg_per_full_px * PX_PER_DEG * 1.5)          # full px -> work px: 1.5x the output's sampling
     Ww, Hw = max(1, round(W0 * work_scale)), max(1, round(H0 * work_scale))
     work = np.asarray(im.resize((Ww, Hw), Image.LANCZOS)).astype(np.float32) / 255.0
     to_work = work_scale / k                                     # small px -> work px
@@ -194,74 +195,6 @@ def resample(path, full_size, fitp, Wsmall):
     covered = inside & (pano.max(axis=2) > 0.035)
     covered = ndi.binary_erosion(covered, iterations=5)              # drop the dark fringe along the mosaic's edge
     return pano, covered
-
-
-def fill(pano, covered):
-    """Fill what the mosaic does not cover: a gap in azimuth with mirrored, cross-faded texture from both
-    edges; the sky above with each column's own top sky colour, slightly darker toward the zenith; the
-    ground below with blurred neighbours."""
-    Hh, W, _ = pano.shape
-    pano = pano.copy()
-    covered = covered.copy()
-    # 1. azimuth gap (columns that are almost empty)
-    colcov = covered.mean(axis=0)
-    empty = colcov < 0.02
-    if empty.any() and not empty.all():
-        start = int(np.argmax(~empty))
-        order = np.roll(np.arange(W), -start)             # walk the circle starting on a covered column
-        e = empty[order]
-        i = 0
-        while i < W:
-            if e[i]:
-                j = i
-                while j < W and e[j]:
-                    j += 1
-                L, R = order[i - 1], order[j % W]          # last covered column before, first after
-                g = j - i
-                for k in range(g):
-                    t = (k + 1) / (g + 1)
-                    a = order[(i - 1 - k) % W]             # mirror of the left side
-                    b = order[(j + (g - 1 - k)) % W]       # mirror of the right side
-                    col = order[i + k]
-                    ca, cb = covered[:, a], covered[:, b]
-                    mix = pano[:, a] * (1 - t) + pano[:, b] * t
-                    pano[:, col] = np.where((ca & cb)[:, None], mix, np.where(ca[:, None], pano[:, a], pano[:, b]))
-                    covered[:, col] = ca | cb
-                i = j
-            else:
-                i += 1
-    # 2. sky above the mosaic: each column's top sky colour, darkening a little toward the zenith
-    top = np.where(covered.any(axis=0), np.argmax(covered, axis=0), Hh)
-    tops = np.clip(top + 3, 0, Hh - 1)
-    sky = np.stack([pano[np.clip(tops + d, 0, Hh - 1), np.arange(W)] for d in range(6)]).mean(axis=0)
-    sky = ndi.uniform_filter1d(sky, 61, axis=0, mode="wrap")
-    rows = np.arange(Hh)[:, None]
-    above = rows < top[None, :]
-    k = np.clip((top[None, :] - rows) / (EL_MAX * PX_PER_DEG + 1), 0, 1)
-    sky_fill = sky[None, :, :] * (1 - 0.18 * k[..., None])
-    pano = np.where(above[..., None], sky_fill, pano)
-    covered = covered | above
-    out = pano.copy()
-    out[~covered] = 0
-    # iterative push-pull fill (smooth, no streaks)
-    filled = out.copy()
-    w = covered.astype(np.float32)
-    levels = []
-    cur, cw = filled * w[..., None], w
-    while min(cur.shape[:2]) > 4:
-        levels.append((cur, cw))
-        hh, ww = cur.shape[0] // 2 * 2, cur.shape[1] // 2 * 2
-        cur = cur[:hh, :ww].reshape(hh // 2, 2, ww // 2, 2, 3).sum(axis=(1, 3))
-        cw = cw[:hh, :ww].reshape(hh // 2, 2, ww // 2, 2).sum(axis=(1, 3))
-    est = cur / np.maximum(cw, 1e-6)[..., None]
-    for cur, cw in reversed(levels):
-        up = np.asarray(Image.fromarray(np.clip(est * 255, 0, 255).astype(np.uint8)).resize((cur.shape[1], cur.shape[0]), Image.BILINEAR)).astype(np.float32) / 255
-        mine = cur / np.maximum(cw, 1e-6)[..., None]
-        a = np.clip(cw, 0, 1)[..., None]
-        est = mine * a + up * (1 - a)
-    est = ndi.gaussian_filter(est, (6, 6, 0))
-    soft = ndi.gaussian_filter(covered.astype(np.float32), 2.0)[..., None]
-    return np.clip(pano * soft + est * (1 - soft), 0, 1)
 
 
 def main():
@@ -292,13 +225,10 @@ def main():
                 if 0 <= r < dbg.shape[0]:
                     dbg[max(0, r - 1):r + 2, i] = (255, 40, 200)
             Image.fromarray(dbg).save(os.path.join(DEBUG, f"{p['stop']}_fit.jpg"), quality=85)
-        out = fill(pano, covered)
-        Image.fromarray((out * 255).astype(np.uint8)).save(os.path.join(OUT, "panoramas", f"{p['stop']}.jpg"), quality=86, optimize=True)
-        for stale in (f"{p['stop']}.webp",):
-            if os.path.exists(os.path.join(OUT, "panoramas", stale)):
-                os.remove(os.path.join(OUT, "panoramas", stale))
+        out = pano_common.fill_sphere(pano, covered)
+        files = pano_common.save_vr(out, os.path.join(OUT, "panoramas"), p["stop"])
         data["panoramas"][p["stop"]] = {
-            "file": f"panoramas/{p['stop']}.jpg", "azMin": 0, "azMax": 360, "elMin": EL_MIN, "elMax": EL_MAX,
+            **files,
             "frames": 0, "coverage": round(float(covered.mean()), 3), "horizonCoverage": 1.0,
             "sols": p["sols"], "camera": p["camera"], "rmc": p["rmc"],
             "nasa": {"pia": p["pia"], "title": p["title"], "link": p["link"], "note": p["note"],

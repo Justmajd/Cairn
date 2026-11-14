@@ -23,8 +23,15 @@ from scipy import ndimage as ndi
 
 from common import CFG, HERE, OUT, RAW, SITE, write_json
 
-PX_PER_DEG = 12
-EL_MIN, EL_MAX = -55.0, 35.0
+import pano_common
+
+# Stitch at the Navcam's native resolution (1024 px over 45 deg ~ 22.8 px/deg) in the band the frames
+# cover, aligned to whole rows of the full-sphere VR image it is then placed in (see pano_common.py).
+PX_PER_DEG = pano_common.PX_PER_DEG
+BAND_TOP_ROW = round(55 * PX_PER_DEG)                # sphere row where the band starts (~35 deg up)
+BAND_ROWS = round(90 * PX_PER_DEG)                   # ~90 deg of elevation
+EL_MAX = 90.0 - BAND_TOP_ROW / PX_PER_DEG
+EL_MIN = EL_MAX - BAND_ROWS / PX_PER_DEG
 UA = {"User-Agent": "cairn-data-pipeline"}
 CACHE = os.path.join(RAW, "pano_frames")
 
@@ -140,8 +147,8 @@ MIN_HORIZON = 0.85                             # publish a panorama only if Navc
 
 
 def stitch(frames, conj):
-    W = 360 * PX_PER_DEG
-    Hh = int((EL_MAX - EL_MIN) * PX_PER_DEG)
+    W = pano_common.W
+    Hh = BAND_ROWS
     az = (np.arange(W) + 0.5) / PX_PER_DEG
     el = EL_MAX - (np.arange(Hh) + 0.5) / PX_PER_DEG
     AZ, EL = np.meshgrid(az, el)
@@ -196,10 +203,13 @@ def stitch(frames, conj):
 
     lo, hi = np.percentile(pano[covered], [0.5, 99.6])
     pano = np.clip((pano - lo) / (hi - lo), 0, 1)
+    stitch.raw = (pano.astype(np.float32), covered.copy())      # imaged pixels only, for the VR sphere
     pano = fill_gaps(pano, covered)
-    az_cov = covered.any(axis=0).reshape(72, -1).mean(axis=1)
+    col_any = covered.any(axis=0)
+    bins = np.arange(col_any.size) * 72 // col_any.size                # 5-degree azimuth bins
+    az_cov = np.bincount(bins, weights=col_any, minlength=72) / np.bincount(bins, minlength=72)
     horizon_row = int(EL_MAX * PX_PER_DEG)
-    band = covered[max(0, horizon_row - 3 * PX_PER_DEG):horizon_row + 3 * PX_PER_DEG]
+    band = covered[max(0, horizon_row - int(3 * PX_PER_DEG)):horizon_row + int(3 * PX_PER_DEG)]
     stitch.horizon = float(band.any(axis=0).mean())
     return pano, covered.mean(), len(samples), [round(float(v), 2) for v in az_cov]
 
@@ -214,8 +224,8 @@ def fill_gaps(pano, covered):
     top = np.where(any_cov, covered.argmax(axis=0), horizon)
     bot = np.where(any_cov, Hh - 1 - covered[::-1].argmax(axis=0), horizon)
     # one smooth fill line per edge (removes the staircase of individual frame edges)
-    top = ndi.gaussian_filter1d(ndi.maximum_filter1d(top, 240, mode="wrap").astype(float), 40, mode="wrap").astype(int) + 4
-    bot = ndi.gaussian_filter1d(ndi.minimum_filter1d(bot, 240, mode="wrap").astype(float), 40, mode="wrap").astype(int) - 4
+    top = ndi.gaussian_filter1d(ndi.maximum_filter1d(top, int(20 * PX_PER_DEG), mode="wrap").astype(float), 3.3 * PX_PER_DEG, mode="wrap").astype(int) + 4
+    bot = ndi.gaussian_filter1d(ndi.minimum_filter1d(bot, int(20 * PX_PER_DEG), mode="wrap").astype(float), 3.3 * PX_PER_DEG, mode="wrap").astype(int) - 4
     # sky colour: mean of the 8 covered rows below each column's top edge, smoothed around the horizon
     raw_top = np.where(any_cov, covered.argmax(axis=0), 0)
     raw_bot = np.where(any_cov, Hh - 1 - covered[::-1].argmax(axis=0), Hh - 1)
@@ -227,8 +237,8 @@ def fill_gaps(pano, covered):
         for arr in (sky, ground):
             for k in range(3):
                 arr[:, k] = np.interp(cols, known, arr[known, k], period=W)
-    sky = np.stack([ndi.gaussian_filter1d(sky[:, k], 60, mode="wrap") for k in range(3)], axis=-1)
-    ground = np.stack([ndi.gaussian_filter1d(ground[:, k], 40, mode="wrap") for k in range(3)], axis=-1)
+    sky = np.stack([ndi.gaussian_filter1d(sky[:, k], 5 * PX_PER_DEG, mode="wrap") for k in range(3)], axis=-1)
+    ground = np.stack([ndi.gaussian_filter1d(ground[:, k], 3.3 * PX_PER_DEG, mode="wrap") for k in range(3)], axis=-1)
     up = np.clip((top[None, :] - rows) / max(1, Hh * 0.45), 0, 1)[..., None]       # 0 at the edge -> 1 high up
     sky_fill = sky[None, :, :] * (1 - 0.35 * up)                                    # darker toward the zenith
     down = np.clip((rows - bot[None, :]) / max(1, Hh * 0.2), 0, 1)[..., None]
@@ -295,15 +305,21 @@ def main():
         pano, cover, used, az_cov = stitch(frames, conj)
         if stitch.horizon < MIN_HORIZON:
             print(f"{sid:10s} skipped: Navcam frames cover only {stitch.horizon * 100:.0f}% of the horizon")
-            stale = os.path.join(OUT, "panoramas", f"{sid}.jpg")
-            if os.path.exists(stale):
-                os.remove(stale)
+            for stale in (f"{sid}.jpg", f"{sid}_8k.jpg"):
+                if os.path.exists(os.path.join(OUT, "panoramas", stale)):
+                    os.remove(os.path.join(OUT, "panoramas", stale))
             continue
-        out = Image.fromarray((pano * 255).astype(np.uint8))
-        out.save(os.path.join(OUT, "panoramas", f"{sid}.jpg"), quality=86, optimize=True)
+        # place the band in the full sphere and fill above / below it (VR-ready, see pano_common.py)
+        raw, cov = stitch.raw
+        sphere = np.zeros((pano_common.H, pano_common.W, 3), np.float32)
+        sphere[BAND_TOP_ROW:BAND_TOP_ROW + BAND_ROWS] = raw
+        band = np.zeros((pano_common.H, pano_common.W), bool)
+        band[BAND_TOP_ROW:BAND_TOP_ROW + BAND_ROWS] = ndi.binary_erosion(cov, iterations=2)
+        filled = pano_common.fill_sphere(sphere, band, uniform_sky=True)
+        files = pano_common.save_vr(filled, os.path.join(OUT, "panoramas"), sid)
         sols = sorted({f["sol"] for f in frames})
         cams = sorted({"Mastcam-Z (left)" if f.get("cam") == "mcz" else "Navcam (left)" for f in frames})
-        result[sid] = {"file": f"panoramas/{sid}.jpg", "azMin": 0, "azMax": 360, "elMin": EL_MIN, "elMax": EL_MAX,
+        result[sid] = {**files,
                        "frames": used, "coverage": round(float(cover), 3), "sols": sols, "camera": " + ".join(cams),
                        "rmc": s["rmc"], "horizonCoverage": round(stitch.horizon, 3), "azCoverage5deg": az_cov, "frameIds": [f["id"] for f in frames]}
         print(f"{sid:10s} {used:2d} frames, {cover * 100:.0f}% covered, sols {sols[0]}-{sols[-1]}, {time.time() - t0:.0f}s")

@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { Poi } from "../types";
 import { $, esc } from "./dom";
 import { ic } from "./icons";
+import { loadTexture } from "../data/texture";
 
 export interface PanoramaInfo {
   file: string;
@@ -15,6 +16,8 @@ export interface PanoramaInfo {
   sols: number[];
   camera: string;
   rmc: string;
+  /** Full-resolution (8192 x 4096) VR-ready copy, streamed in after `file` where the GPU can hold it. */
+  fileHi?: string;
   /** A NASA/JPL Photojournal panorama (aligned by CAIRN) rather than one CAIRN stitched from raw frames. */
   nasa?: { pia: string; title: string; link: string; note: string; credit: string; alignErrDeg: number };
 }
@@ -98,10 +101,29 @@ export function openPanorama(
   const thetaLen = THREE.MathUtils.degToRad(info.elMax - info.elMin);
   // phiStart = -90°: texture column u (azimuth from north, clockwise) lands at bearing u x 360°
   const geometry = new THREE.SphereGeometry(10, 192, 64, -Math.PI / 2, Math.PI * 2, theta0, thetaLen);
-  const texture = new THREE.TextureLoader().load(base + info.file);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  const sphere = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide }));
+  const material = new THREE.MeshBasicMaterial({ color: 0x0f0d0c, side: THREE.DoubleSide });
+  let texture: THREE.Texture | null = null;
+  let closed = false;
+  const show = (t: THREE.Texture) => {
+    if (closed) return void t.dispose();
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    texture?.dispose();
+    texture = t;
+    material.map = t;
+    material.color.set(0xffffff);
+    material.needsUpdate = true;
+  };
+  // the 4K copy first (decoded off the main thread), then the 8K one where the GPU and memory allow
+  const hiOk = !!info.fileHi && renderer.capabilities.maxTextureSize >= 8192 && ((navigator as { deviceMemory?: number }).deviceMemory ?? 8) >= 4
+    && new URLSearchParams(location.search).get("q") !== "low";
+  loadTexture(base + info.file)
+    .then((t) => {
+      show(t);
+      if (hiOk && !closed) return loadTexture(base + info.fileHi!).then(show);
+    })
+    .catch(() => {}); // offline without the 8K copy: the 4K one stays
+  const sphere = new THREE.Mesh(geometry, material);
   sphere.scale.x = -1;
   scene.add(sphere);
 
@@ -132,7 +154,7 @@ export function openPanorama(
     last = now;
     idle += dt;
     if (opts.autoRotate || idle > 6) yaw += dt * 6;
-    pitch = Math.max(info.elMin + fov / 3, Math.min(info.elMax - 4, pitch));
+    pitch = Math.max(Math.max(-85, info.elMin + fov / 3), Math.min(Math.min(85, info.elMax - 4), pitch));
     camera.fov = fov;
     camera.updateProjectionMatrix();
     const y = THREE.MathUtils.degToRad(yaw);
@@ -169,7 +191,7 @@ export function openPanorama(
     "wheel",
     (ev) => {
       ev.preventDefault();
-      fov = Math.max(25, Math.min(95, fov * (ev.deltaY > 0 ? 1.08 : 1 / 1.08)));
+      fov = Math.max(12, Math.min(95, fov * (ev.deltaY > 0 ? 1.08 : 1 / 1.08)));
       idle = 0;
     },
     { passive: false, signal: ac.signal },
@@ -183,7 +205,8 @@ export function openPanorama(
     renderer.domElement.remove(); // the renderer is kept for the next panorama
     geometry.dispose();
     (sphere.material as THREE.Material).dispose();
-    texture.dispose();
+    closed = true;
+    texture?.dispose();
     host.hidden = true;
     host.innerHTML = "";
     opts.onClose?.();
