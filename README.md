@@ -9,6 +9,7 @@ Built for the **2026 NASA Space Apps Challenge** — *Interplanetary Survival Gu
 - [Introduction](docs/introduction.md) — the idea, the story and the vision
 - [Project plan](docs/plan.md) — technical design and schedule
 - [Data sources](docs/data-sources.md) — every dataset, with links and credits
+- [Submission draft](docs/submission.md) — text for the Space Apps project page
 
 ---
 
