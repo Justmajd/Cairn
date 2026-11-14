@@ -34,6 +34,9 @@ function maxTextureSize(): number {
 }
 
 async function boot(): Promise<void> {
+  if (!("DecompressionStream" in window)) {
+    throw new Error("this browser cannot unpack CAIRN's compressed map data. Use Chrome or Edge 80+, Firefox 113+ or Safari 16.4+.");
+  }
   const maxTex = maxTextureSize(); // one throwaway context, not two
   if (!maxTex) {
     throw new Error("this browser has no WebGL 2, which the 3D terrain needs. Try a current Chrome, Edge, Firefox or Safari, and check that hardware acceleration is on.");
