@@ -12,10 +12,15 @@ import { spawn } from "node:child_process";
 import { createConnection } from "node:net";
 import { networkInterfaces } from "node:os";
 import { fileURLToPath } from "node:url";
+import { ensureCert } from "./cert.mjs";
 
 const WEB = fileURLToPath(new URL("..", import.meta.url));
 const HAB_PORT = Number(process.env.PORT ?? 8787);
 const VITE_PORT = 5173;
+// --https: serve the app over https:// with a local certificate (phones need it for the microphone)
+const HTTPS = process.argv.includes("--https");
+if (HTTPS) ensureCert();
+const scheme = HTTPS ? "https" : "http";
 const colour = { hab: "\x1b[33m", web: "\x1b[36m", off: "\x1b[0m", dim: "\x1b[2m", bold: "\x1b[1m" };
 
 const portInUse = (port) =>
@@ -67,16 +72,18 @@ if (await portInUse(VITE_PORT)) {
   console.error(`${colour.web}[web]${colour.off} port ${VITE_PORT} is busy (another dev server?). Stop it first: lsof -ti:${VITE_PORT} | xargs kill`);
   stop(1);
 } else {
-  children.push(run("web", npx, ["vite", "--port", String(VITE_PORT), "--strictPort", "--host"]));
+  children.push(run("web", npx, ["vite", "--port", String(VITE_PORT), "--strictPort", "--host"], HTTPS ? { CAIRN_HTTPS: "1" } : {}));
   const lan = Object.values(networkInterfaces()).flat().find((i) => i && i.family === "IPv4" && !i.internal)?.address;
   setTimeout(() => {
     if (stopping) return;
     const b = colour.bold, o = colour.off, d = colour.dim;
     console.log(`
 ${b}CAIRN is running${o}
-  Planner           http://localhost:${VITE_PORT}/?site=jezero
-  Mission Control   http://localhost:${VITE_PORT}/?view=mission&site=jezero${lan ? `
-  Other devices     http://${lan}:${VITE_PORT}  ${d}(same Wi-Fi)${o}` : ""}
+  Planner           ${scheme}://localhost:${VITE_PORT}/?site=jezero
+  Mission Control   ${scheme}://localhost:${VITE_PORT}/?view=mission&site=jezero${lan ? `
+  Other devices     ${scheme}://${lan}:${VITE_PORT}  ${d}(same Wi-Fi)${o}` : ""}${HTTPS ? `
+  ${d}Self-signed certificate: each device asks once to trust it (Advanced → Proceed). Then the mic works.${o}` : lan ? `
+  ${d}Recording voice notes on another device needs https: use npm run dev:https${o}` : ""}
   ${d}Backend (hab) on port ${HAB_PORT}. Ctrl+C stops both.${o}
 `);
   }, 1500);

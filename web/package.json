@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "dev:all": "node scripts/dev-all.mjs",
+    "dev:https": "node scripts/dev-all.mjs --https",
+    "start:https": "npm run build && node scripts/cert.mjs && HTTPS=1 node server/index.ts",
     "fetch-speech": "node scripts/fetch-speech.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",

@@ -8,3 +8,4 @@ __pycache__/
 web/hab-data/
 web/public/models/
 web/public/ort/
+web/.cert/

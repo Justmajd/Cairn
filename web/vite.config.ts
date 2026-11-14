@@ -38,6 +38,13 @@ function serviceWorker(): Plugin {
   };
 }
 
+/** HTTPS with the local certificate (scripts/cert.mjs), when CAIRN_HTTPS=1: phones need it for the mic. */
+function httpsOptions(): { key: Buffer; cert: Buffer } | undefined {
+  if (process.env.CAIRN_HTTPS !== "1") return undefined;
+  const dir = new URL("./.cert/", import.meta.url);
+  return { key: readFileSync(new URL("key.pem", dir)), cert: readFileSync(new URL("cert.pem", dir)) };
+}
+
 // `base: "./"` keeps asset URLs relative, so the build works on GitHub Pages (/cairn-demo/),
 // from `vite preview`, and from any static host without changes.
 export default defineConfig({
@@ -59,6 +66,7 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: false,
+    https: httpsOptions(),
     proxy: {
       "/api": { target: "http://localhost:8787", changeOrigin: false },
       "/hab": { target: "ws://localhost:8787", ws: true },

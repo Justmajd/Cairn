@@ -70,6 +70,8 @@ Open the address Vite prints (normally http://localhost:5173).
 | `npm run preview` | Serve the built app |
 | `npm start` | Build, then serve the app with the hab server (Mission Control, shared notebook) |
 | `npm run hab` | The hab server alone, for development next to `npm run dev` |
+| `npm run dev:https` | Same as `dev:all`, over https:// (phones and tablets need it to record voice notes) |
+| `npm run start:https` | Same as `npm start`, over https:// |
 | `npm run fetch-speech` | Once: put the speech-to-text model on the hab (about 45 MB, not committed) |
 
 URL options: `?site=gale` opens Gale Crater (default `jezero`), `?skip=1` skips the briefing, `?demo=1` plays the guided demo straight away (for a booth screen or recording the video), `?q=low` uses a lighter mesh and the 50 cm texture for slow GPUs, `?tex=4k` stays on the 50 cm texture. The part after `#` is the plan, e.g. `#stops=cheyava,serpentine&t=9.5&relay=1`; links with a plan open straight on it.
@@ -96,6 +98,8 @@ The server prints its network address too (e.g. `http://192.168.1.10:8787`), so 
 - **Replay.** Every EVA recorded on the hab can be replayed in Mission Control: a timeline of Earth's clock, with what happened on Mars and when Earth found out.
 - **Voice notes to text, on the device.** Run `npm run fetch-speech` once to put the speech model (Whisper tiny, ~45 MB) on the hab; then *Turn into text* in a note transcribes in a few seconds without the recording leaving the device.
 - Without the hab, nothing changes: the planner shows a grey dot on *Mission Control* and keeps notes on the device.
+
+**Phones and tablets need https:// to use the microphone** (browsers allow it only on https or localhost). `npm run dev:https` (or `npm run start:https`) makes a certificate for this computer's network address (`web/.cert/`, not committed) and serves over https. The certificate is self-signed, so each device warns once: choose *Advanced → Proceed* (Chrome) or *Show Details → visit this website* (Safari), and recording works from then on. If the computer's Wi-Fi address changes, a new certificate is made automatically.
 
 For development, `npm run dev:all` starts both in one terminal (open http://localhost:5173; Ctrl+C stops both), or run `npm run hab` (restarts on changes) next to `npm run dev`; Vite forwards `/api` and `/hab` to it. Environment: `PORT` (8787), `HOST` (`0.0.0.0`), `CAIRN_DATA` (`web/hab-data`), `CAIRN_DIST` (`web/dist`).
 

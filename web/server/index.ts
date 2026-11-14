@@ -8,10 +8,13 @@
  *   npm start            build the app, then serve it with the hab on http://localhost:8787
  *   npm run hab          the hab alone (with `npm run dev`, Vite forwards /api and /hab to it)
  *
- * Environment: PORT (8787), HOST (0.0.0.0: reachable from other devices on the network),
+ * Environment: PORT (8787), HOST (0.0.0.0: reachable from other devices on the network), HTTPS=1 (serve
+ * https:// with the local certificate from scripts/cert.mjs: phones need it to use the microphone),
  * CAIRN_DATA (where notebooks are kept, web/hab-data), CAIRN_DIST (the built app, web/dist).
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
+import { readFileSync } from "node:fs";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { networkInterfaces } from "node:os";
@@ -312,7 +315,9 @@ async function serveStatic(req: IncomingMessage, res: ServerResponse, pathname: 
 }
 
 // ================================================================ server
-const server = createServer((req, res) => {
+const HTTPS = process.env.HTTPS === "1";
+const tls = HTTPS ? { key: readFileSync(join(HERE, "..", ".cert", "key.pem")), cert: readFileSync(join(HERE, "..", ".cert", "cert.pem")) } : null;
+const handler = (req: IncomingMessage, res: ServerResponse) => {
   const url = new URL(req.url ?? "/", "http://hab");
   const parts = url.pathname.split("/").filter(Boolean);
   const at = parts.indexOf("api"); // also under a sub-path (e.g. /cairn/api/…)
@@ -321,7 +326,8 @@ const server = createServer((req, res) => {
     if (!res.headersSent) json(res, e.message === "too large" ? 413 : 500, { error: e.message });
     else res.destroy();
   });
-});
+};
+const server = tls ? createHttpsServer(tls, handler) : createServer(handler);
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: 512 * 1024 });
 server.on("upgrade", (req, socket, head) => {
@@ -366,8 +372,9 @@ server.listen(PORT, HOST, () => {
   const lan = Object.values(networkInterfaces())
     .flat()
     .filter((i) => i && i.family === "IPv4" && !i.internal)
-    .map((i) => `http://${i!.address}:${PORT}`);
-  console.log(`CAIRN hab on http://localhost:${PORT}${lan.length ? `  (other devices: ${lan.join(", ")})` : ""}`);
+    .map((i) => `${HTTPS ? "https" : "http"}://${i!.address}:${PORT}`);
+  console.log(`CAIRN hab on ${HTTPS ? "https" : "http"}://localhost:${PORT}${lan.length ? `  (other devices: ${lan.join(", ")})` : ""}`);
+  if (HTTPS) console.log("  self-signed certificate: each device asks once to trust it (Advanced → Proceed)");
   console.log(`  app: ${DIST}`);
   console.log(`  notebooks: ${store.root}`);
 });
