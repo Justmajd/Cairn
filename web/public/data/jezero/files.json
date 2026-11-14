@@ -101,6 +101,34 @@
 "bytes": 1012
 },
 {
+"path": "panoramas.json",
+"bytes": 5679
+},
+{
+"path": "panoramas/channel.jpg",
+"bytes": 467550
+},
+{
+"path": "panoramas/channel_mask.png",
+"bytes": 26795
+},
+{
+"path": "panoramas/cheyava.jpg",
+"bytes": 301657
+},
+{
+"path": "panoramas/cheyava_mask.png",
+"bytes": 28227
+},
+{
+"path": "panoramas/serpentine.jpg",
+"bytes": 343154
+},
+{
+"path": "panoramas/serpentine_mask.png",
+"bytes": 30880
+},
+{
 "path": "pois.json",
 "bytes": 11312
 },
@@ -169,5 +197,5 @@
 "bytes": 2929
 }
 ],
-"totalBytes": 18749211
+"totalBytes": 19953153
 }

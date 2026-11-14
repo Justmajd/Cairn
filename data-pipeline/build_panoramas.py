@@ -136,7 +136,11 @@ def load_image(f):
 
 
 CONE_DEG = 58 if SITE == "jezero" else 60
-MIN_HORIZON = 0.85                             # publish a panorama only if Navcam imaged this share of the horizon      # Perseverance's wide Navcam: use the low-distortion centre only
+# Publish a stop only if Navcam imaged this share of the horizon.  Jezero's public frames cover less, so
+# its panoramas are published as imaged pixels only (with a mask) and the app renders the rest from HiRISE.
+MIN_HORIZON = float(os.environ.get("CAIRN_PANO_MIN", "0.3" if SITE == "jezero" else "0.85"))
+# Stops whose public frames are mostly the rover deck, calibration targets or sky: the app renders these instead.
+SKIP = {"jezero": {"rover", "washburn"}}.get(SITE, set())
 
 
 def stitch(frames, conj):
@@ -201,7 +205,23 @@ def stitch(frames, conj):
     horizon_row = int(EL_MAX * PX_PER_DEG)
     band = covered[max(0, horizon_row - 3 * PX_PER_DEG):horizon_row + 3 * PX_PER_DEG]
     stitch.horizon = float(band.any(axis=0).mean())
+    # for the app's overlay: well inside a frame (no vignetted corners) and above the rover deck
+    solid = (wsum > 0.25).reshape(Hh, W)
+    solid[el < -32] = False
+    stitch.covered = solid
     return pano, covered.mean(), len(samples), [round(float(v), 2) for v in az_cov]
+
+
+def save_mask(covered, path):
+    """Where the rover imaged (white) and where it did not (transparent), feathered over ~2–3°:
+    the app lays the photos over a view rendered from the terrain model through this mask."""
+    m = ndi.binary_opening(covered, iterations=4)
+    m = ndi.binary_erosion(m, iterations=int(2.5 * PX_PER_DEG), border_value=0)  # the fade stays inside the photos
+    m = ndi.gaussian_filter(m.astype(np.float32), PX_PER_DEG)
+    small = (np.clip(m, 0, 1) * 255).astype(np.uint8)[::2, ::2]
+    a = Image.fromarray(small, "L")
+    rgba = Image.merge("RGBA", (a, a, a, a))
+    rgba.save(path, optimize=True)
 
 
 def fill_gaps(pano, covered):
@@ -264,6 +284,12 @@ def main():
     result = {}
     conj = None
     for sid, s in stops.items():
+        if sid in SKIP:
+            print(f"{sid:10s} skipped: frames show the rover deck and sky, not the view")
+            for stale in (f"{sid}.jpg", f"{sid}_mask.png"):
+                if os.path.exists(os.path.join(OUT, "panoramas", stale)):
+                    os.remove(os.path.join(OUT, "panoramas", stale))
+            continue
         site, drive = (int(v) for v in s["rmc"].split("_"))
         if SITE == "jezero":
             lo, hi = (int(v) for v in s["sols"].replace("–", "-").split("-")) if "-" in s["sols"].replace("–", "-") else (int(s["sols"]),) * 2
@@ -301,10 +327,12 @@ def main():
             continue
         out = Image.fromarray((pano * 255).astype(np.uint8))
         out.save(os.path.join(OUT, "panoramas", f"{sid}.jpg"), quality=86, optimize=True)
+        save_mask(stitch.covered, os.path.join(OUT, "panoramas", f"{sid}_mask.png"))
         sols = sorted({f["sol"] for f in frames})
         cams = sorted({"Mastcam-Z (left)" if f.get("cam") == "mcz" else "Navcam (left)" for f in frames})
         result[sid] = {"file": f"panoramas/{sid}.jpg", "azMin": 0, "azMax": 360, "elMin": EL_MIN, "elMax": EL_MAX,
                        "frames": used, "coverage": round(float(cover), 3), "sols": sols, "camera": " + ".join(cams),
+                       "mask": f"panoramas/{sid}_mask.png",
                        "rmc": s["rmc"], "horizonCoverage": round(stitch.horizon, 3), "azCoverage5deg": az_cov, "frameIds": [f["id"] for f in frames]}
         print(f"{sid:10s} {used:2d} frames, {cover * 100:.0f}% covered, sols {sols[0]}-{sols[-1]}, {time.time() - t0:.0f}s")
     write_json("panoramas.json", {"source": f"Stitched by CAIRN from {CFG['rover']['name']} Navcam raw images using their CAHVOR(E) camera models",

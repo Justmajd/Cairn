@@ -18,7 +18,7 @@ import { DoseChartHandle, ProfileHandle, renderDoseChart, renderProfile } from "
 import { $, esc, fmtClock, fmtDist, fmtDose, fmtDur, fmtRate, setText } from "./ui/dom";
 import { ic } from "./ui/icons";
 import { openModal, showAssumptions, showSources, stopCardHtml } from "./ui/modals";
-import { openPanorama } from "./ui/panorama";
+import { openPanorama, type PanoramaInfo } from "./ui/panorama";
 import { DemoRunner, DemoStep } from "./ui/demo";
 import { CueRow, showCueCard } from "./ui/cuecard";
 import { ExportPlan, routeGeoJson, routeKml, saveFile } from "./ui/export";
@@ -1492,7 +1492,7 @@ export class App {
     const card = $("#card");
     const tex = this.site.meta.texture;
     const orbital = tex.hi ? { url: this.site.base + tex.hi.file, sizeM: this.site.meta.sizeM, mPerPx: tex.hi.mPerPx } : { url: this.site.base + tex.file, sizeM: this.site.meta.sizeM, mPerPx: tex.mPerPx };
-    card.innerHTML = stopCardHtml(poi, this.site.base, this.unitAt(poi.x, poi.y), arrived, this.roverName, !!this.site.panoramas?.panoramas[poi.id], orbital);
+    card.innerHTML = stopCardHtml(poi, this.site.base, this.unitAt(poi.x, poi.y), arrived, this.roverName, this.panoKind(poi.id), orbital);
     card.hidden = false;
     card.classList.toggle("arrived", arrived);
     this.cardPoi = id;
@@ -1868,18 +1868,73 @@ export class App {
     this.renderLeft();
   }
 
-  /** Open the stitched 360° panorama for a stop; other stops appear as bearings on the compass. */
+  /**
+   * What the 360° view of a stop is made of: the rover's stitched photos when they cover most of the
+   * horizon, the photos laid over a terrain render when they cover less, else the terrain render alone.
+   */
+  panoKind(id: string): "photo" | "composite" | "rendered" {
+    const info = this.site.panoramas?.panoramas[id];
+    if (!info) return "rendered";
+    return info.mask && (info.horizonCoverage ?? 1) < 0.9 ? "composite" : "photo";
+  }
+
+  /** Open the 360° view of a stop (see panoKind); other stops appear as bearings on the compass. */
   openPano(id: string, autoRotate = false): (() => void) | null {
     const poi = this.poi(id);
-    const info = this.site.panoramas?.panoramas[id];
-    if (!poi || !info) return null;
+    if (!poi) return null;
     const wasPaused = this.paused;
     this.paused = true;
     const targets = this.pois
       .filter((p) => p.id !== id && (p.kind === "shelter" || this.selected.includes(p.id)))
       .map((p) => ({ name: p.short, bearing: (((Math.atan2(p.x - poi.x, p.y - poi.y) * 180) / Math.PI) + 360) % 360, distM: Math.hypot(p.x - poi.x, p.y - poi.y) }))
       .sort((a, b) => a.distM - b.distM);
-    return openPanorama(this.site.base, poi, info, this.roverName, targets, { autoRotate, onClose: () => (this.paused = wasPaused) });
+    const kind = this.panoKind(id);
+    const real = this.site.panoramas?.panoramas[id];
+    const onClose = () => (this.paused = wasPaused);
+    if (kind === "photo" && real) return openPanorama(this.site.base, poi, real, this.roverName, targets, { autoRotate, onClose });
+
+    // rendered (or composited) in the browser: show a holding screen while the GPU works
+    const host = $("#pano");
+    host.innerHTML = `<div class="pano-wait">${ic.visor}<span>Rendering the view at ${esc(poi.short)} from the terrain model…</span></div>`;
+    host.hidden = false;
+    let close: (() => void) | null = null;
+    let cancelled = false;
+    let url = "";
+    // light the view for when the crew gets there on this plan (leaving time if the stop is not on it)
+    const arriveS = this.stopTimes().find((s) => s.poi.id === id)?.arriveS ?? 0;
+    const lmst = fmtLmst(this.lmstAt(arriveS));
+    (async () => {
+      await new Promise((r) => setTimeout(r, 30)); // let the holding screen paint
+      const sun = this.sunAtEva(arriveS);
+      this.view.setSun(sun.elevation, sun.azimuth);
+      this.lastSun = ""; // the next tick puts the map's Sun back
+      url = await this.view.renderPanorama(poi, kind === "composite" && real?.mask ? { photo: this.site.base + real.file, mask: this.site.base + real.mask } : undefined);
+      if (cancelled) return URL.revokeObjectURL(url);
+      const info: PanoramaInfo =
+        kind === "composite" && real
+          ? { ...real, file: url, composite: true }
+          : { file: url, azMin: 0, azMax: 360, elMin: -55, elMax: 35, frames: 0, coverage: 1, sols: [], camera: "", rmc: "", rendered: { lmst } };
+      close = openPanorama("", poi, info, this.roverName, targets, {
+        autoRotate,
+        onClose: () => {
+          URL.revokeObjectURL(url);
+          onClose();
+        },
+      });
+    })().catch((e) => {
+      console.error(e);
+      host.hidden = true;
+      onClose();
+      this.toast("Could not render the 360° view on this device.");
+    });
+    return () => {
+      cancelled = true;
+      if (close) close();
+      else {
+        host.hidden = true;
+        onClose();
+      }
+    };
   }
 
   private closeCard(): void {

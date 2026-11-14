@@ -15,6 +15,12 @@ export interface PanoramaInfo {
   sols: number[];
   camera: string;
   rmc: string;
+  /** Rendered by CAIRN from the terrain model rather than stitched from rover photos. */
+  rendered?: { lmst: string };
+  /** Imaging mask (alpha = imaged): the stitched photos are laid over a rendered view through it. */
+  mask?: string;
+  /** Photos composited over the rendered terrain view. */
+  composite?: boolean;
 }
 
 export interface PanoramaSet {
@@ -71,12 +77,19 @@ export function openPanorama(
       <b class="pano-head">000°</b>
     </div>
     <header class="pano-bar">
-      <div><span class="kicker">360° · ${esc(rover)} Navcam</span><h3>${esc(poi.name)}</h3></div>
+      <div><span class="kicker">${info.composite ? `360° · ${esc(rover)} Navcam + HiRISE terrain` : info.rendered ? "360° · rendered from HiRISE terrain" : `360° · ${esc(rover)} Navcam`}</span><h3>${esc(poi.name)}</h3></div>
       <button class="close icon" aria-label="Close panorama">${ic.close}</button>
     </header>
     <footer class="pano-foot">
-      <span>${ic.info}Stitched by CAIRN from ${info.frames} ${esc(rover)} ${esc(info.camera)} frames, ${sols}, using each frame's camera model.
-      ${Math.round(info.coverage * 100)}% of the view was imaged; the high sky and the ground under the rover are filled.</span>
+      <span>${ic.info}${
+        info.composite
+          ? `Stitched by CAIRN from ${info.frames} ${esc(rover)} ${esc(info.camera)} frames, ${sols}, using each frame's camera model.
+      The rover imaged ${Math.round(info.coverage * 100)}% of the view; the rest is rendered from the HiRISE elevation model and image (no rocks under a metre).`
+          : info.rendered
+          ? `Not a photograph: rendered by CAIRN at eye height (1.7 m) from the HiRISE elevation model (1 m) and image (25 cm), with the Sun and shadows for ${esc(info.rendered.lmst)} LMST. Rocks smaller than about a metre are not in the model.`
+          : `Stitched by CAIRN from ${info.frames} ${esc(rover)} ${esc(info.camera)} frames, ${sols}, using each frame's camera model.
+      ${Math.round(info.coverage * 100)}% of the view was imaged; the high sky and the ground under the rover are filled.`
+      }</span>
       <span class="hint-k"><b>Drag</b> look around · <b>Scroll</b> zoom · <b>Esc</b> close</span>
     </footer>`;
   host.hidden = false;

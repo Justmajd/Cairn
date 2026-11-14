@@ -481,6 +481,9 @@ table.sources .note { margin-top: 6px; color: #f7cf86; font-size: 12px; }
 
 /* ---------- 360° panorama ---------- */
 #pano { position: fixed; inset: 0; z-index: 70; background: var(--bg); }
+.pano-wait { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; color: var(--muted, #b9aea4); font-size: 14px; background: #0f0d0c; }
+.pano-wait svg { width: 28px; height: 28px; animation: pano-pulse 1.2s ease-in-out infinite alternate; }
+@keyframes pano-pulse { from { opacity: .35; } to { opacity: 1; } }
 .pano-stage { position: absolute; inset: 0; cursor: grab; }
 .pano-stage:active { cursor: grabbing; }
 .pano-stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
