@@ -1034,7 +1034,7 @@ export class App {
             ? `<div class="key">
                  <span><i style="background:#56b4e9"></i>&lt; 10°</span><span><i style="background:#f0e442"></i>10–18°</span>
                  <span><i style="background:#e69f00"></i>18–25°</span><span><i style="background:${HATCH}"></i>too steep</span>
-                 <span><i class="sand"></i>sand</span>${straight ? `<span><i class="dash"></i>straight line</span>` : ""}
+                 <span><i class="sand"></i>sand</span>${this.plan && this.plan.radio.lostS > 0 ? `<span><i class="noradio"></i>no radio</span>` : ""}${straight ? `<span><i class="dash"></i>straight line</span>` : ""}
                </div>`
             : summary
         }
@@ -1055,7 +1055,10 @@ export class App {
       this.profile = null;
       return;
     }
-    this.profile = renderProfile(host, this.plan.legs, this.plan.order, this.showStraight && this.phase === "planning" ? this.plan.straight : null);
+    this.profile = renderProfile(
+      host, this.plan.legs, this.plan.order, this.showStraight && this.phase === "planning" ? this.plan.straight : null,
+      this.plan.radio.lostS > 0 ? (x, y, leg, i) => this.lostOnPlan(x, y, leg, i) : null,
+    );
   }
 
   // ================================================================ stop card
@@ -1343,11 +1346,7 @@ export class App {
       doseUGy: this.rad.baseline * b.exposureH,
       radio: {
         coverage: this.plan.radio,
-        lostAt: (x, y, leg, i) => {
-          const r = this.useRelay ? this.plan?.relay : null;
-          const up = !!r && (leg > r.leg || (leg === r.leg && i > r.sample));
-          return !inContact(this.radio, this.site.grid, x, y, up ? r!.shadow : null);
-        },
+        lostAt: (x, y, leg, i) => this.lostOnPlan(x, y, leg, i),
         relay: this.useRelay && this.plan.relay ? { at: this.plan.relay.at, alongM: this.plan.relay.alongM, mastM: RELAY_MAST_M, toward: this.relayLeg(this.plan.relay) } : null,
       },
     });
@@ -1634,6 +1633,13 @@ export class App {
     const rover = inContact(this.radio, grid, x, y);
     const relay = !rover && !!r && inContact(r.shadow, grid, x, y);
     return `<dt>Radio</dt><dd class="${rover || relay ? "" : "warnc"}">${rover ? "rover in sight" : relay ? "relay in sight" : "no signal"}</dd>`;
+  }
+
+  /** Out of radio contact at a sample of the planned route (counting the relay once it is up). */
+  private lostOnPlan(x: number, y: number, leg: number, i: number): boolean {
+    const r = this.useRelay ? this.plan?.relay : null;
+    const up = !!r && (leg > r.leg || (leg === r.leg && i > r.sample));
+    return !inContact(this.radio, this.site.grid, x, y, up ? r!.shadow : null);
   }
 
   /** Name of the stop the crew is walking to when it reaches the relay spot. */

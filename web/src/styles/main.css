@@ -238,6 +238,8 @@ svg .axis { fill: var(--text-3); font: 10px var(--mono); }
 svg .area { fill: rgba(70, 224, 207, 0.06); }
 svg .trace line { stroke-width: 2.2; stroke-linecap: round; }
 svg .sand rect { fill: #ffc24d; }
+svg .noradio rect { fill: rgba(185, 166, 255, 0.13); }
+.key i.noradio { height: 9px; width: 10px; background: rgba(185, 166, 255, 0.35); border-radius: 1px; }
 svg .ghost { fill: none; stroke: #cfc7bf; stroke-width: 1.2; stroke-dasharray: 4 3; opacity: 0.55; }
 svg .stop { stroke: var(--line-2); stroke-dasharray: 3 3; }
 svg .stop-label { fill: var(--text-2); font: 500 10.5px var(--sans); }

@@ -15,7 +15,13 @@ export interface ProfileHandle {
  * Elevation profile of the whole EVA: height against distance walked, coloured by terrain slope,
  * with a sand strip underneath and a marker at every stop.
  */
-export function renderProfile(host: HTMLElement, legs: MeasuredPath[], stops: Poi[], ghost: MeasuredPath[] | null): ProfileHandle {
+export function renderProfile(
+  host: HTMLElement,
+  legs: MeasuredPath[],
+  stops: Poi[],
+  ghost: MeasuredPath[] | null,
+  noRadio: ((x: number, y: number, leg: number, sample: number) => boolean) | null = null,
+): ProfileHandle {
   const W = Math.max(320, host.clientWidth);
   const H = Math.max(90, host.clientHeight);
   const pad = { l: 46, r: 12, t: 16, b: 20 };
@@ -46,6 +52,26 @@ export function renderProfile(host: HTMLElement, legs: MeasuredPath[], stops: Po
       off += leg.distance;
     }
     svg += `<path class="ghost" d="${path}"/>`;
+  }
+
+  // stretches with no radio contact: shaded columns behind the trace
+  if (noRadio) {
+    let off = 0;
+    let bands = "";
+    legs.forEach((leg, li) => {
+      let start: number | null = null;
+      leg.samples.forEach((smp, i) => {
+        const lost = noRadio(smp.x, smp.y, li, i);
+        if (lost && start === null) start = off + smp.dist;
+        if ((!lost || i === leg.samples.length - 1) && start !== null) {
+          const x1 = X(start);
+          bands += `<rect x="${x1.toFixed(1)}" y="${pad.t}" width="${Math.max(1.5, X(off + smp.dist) - x1).toFixed(1)}" height="${H - pad.t - pad.b}"/>`;
+          start = null;
+        }
+      });
+      off += leg.distance;
+    });
+    svg += `<g class="noradio">${bands}</g>`;
   }
 
   let offset = 0;
