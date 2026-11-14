@@ -85,7 +85,10 @@ button.link:hover:not(:disabled) { color: var(--accent); background: transparent
 #scene, #scene canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 .label-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 
-.panel, .pill { background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); }
+/* Large panels are near-opaque without a backdrop blur: blurring a live 3D canvas every frame costs more GPU time than the terrain itself. */
+.panel, .pill { background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.panel { background: rgba(22, 19, 17, 0.95); }
+.pill { backdrop-filter: blur(10px) saturate(140%); -webkit-backdrop-filter: blur(10px) saturate(140%); }
 .panel { position: absolute; z-index: 5; border-radius: var(--r-lg); }
 .pill { border-radius: 12px; }
 
@@ -248,7 +251,7 @@ svg .shelter-band { fill: rgba(90, 212, 138, 0.12); }
 .chart-key .k-inside { border-top: 2px dotted var(--good); }
 
 /* ---------- map overlays ---------- */
-.poi-label { pointer-events: auto; display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px 0 4px; border-radius: 13px; font: 500 12px var(--sans); background: rgba(18, 15, 13, 0.86); border: 1px solid var(--line-2); color: var(--text-2); white-space: nowrap; transform: translateY(-6px); backdrop-filter: blur(6px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); }
+.poi-label { pointer-events: auto; display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px 0 4px; border-radius: 13px; font: 500 12px var(--sans); background: rgba(18, 15, 13, 0.86); border: 1px solid var(--line-2); color: var(--text-2); white-space: nowrap; transform: translateY(-6px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); }
 .poi-label b { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font: 600 11px var(--mono); background: var(--line-2); color: var(--text); }
 .poi-label b .ic { width: 11px; height: 11px; }
 .poi-label:not(:has(b)) { padding-left: 10px; }
@@ -274,12 +277,12 @@ svg .shelter-band { fill: rgba(90, 212, 138, 0.12); }
 #nav button:hover { background: var(--raise-2); color: var(--accent); }
 #nav i { height: 1px; margin: 3px 4px; background: var(--line); }
 #nav.flat .only3d { display: none; }
-#nav-hint { position: absolute; z-index: 4; bottom: calc(var(--gap) * 3 + var(--bottom-h)); left: calc(var(--gap) * 2 + var(--left-w)); right: calc(var(--gap) * 2 + var(--right-w)); margin: 0 auto; width: fit-content; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 16px; background: rgba(15, 13, 12, 0.7); color: var(--text-3); font-size: 11.5px; pointer-events: none; backdrop-filter: blur(8px); }
+#nav-hint { position: absolute; z-index: 4; bottom: calc(var(--gap) * 3 + var(--bottom-h)); left: calc(var(--gap) * 2 + var(--left-w)); right: calc(var(--gap) * 2 + var(--right-w)); margin: 0 auto; width: fit-content; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 16px; background: rgba(15, 13, 12, 0.82); color: var(--text-3); font-size: 11.5px; pointer-events: none; }
 #nav-hint b { color: var(--text-2); font-weight: 500; }
 #nav-hint i { width: 3px; height: 3px; border-radius: 50%; background: var(--text-3); }
 #app[data-view="walk"] #nav-hint, #app[data-view="walk"] #mapwidgets { display: none; }
 
-#probe { position: absolute; z-index: 5; width: 240px; padding: 10px 12px; background: rgba(18, 15, 13, 0.92); border: 1px solid var(--line-2); border-radius: var(--r-md); pointer-events: none; font-size: 12px; box-shadow: var(--shadow); backdrop-filter: blur(12px); }
+#probe { position: absolute; z-index: 5; width: 240px; padding: 10px 12px; background: rgba(18, 15, 13, 0.92); border: 1px solid var(--line-2); border-radius: var(--r-md); pointer-events: none; font-size: 12px; box-shadow: var(--shadow); }
 #probe > b { font: 500 13px var(--mono); }
 #probe dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin-top: 7px; }
 #probe dt { color: var(--text-3); white-space: nowrap; }

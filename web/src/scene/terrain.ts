@@ -24,9 +24,14 @@ const COMMON = /* glsl */ `
     vec2 u = f * f * (3.0 - 2.0 * f);
     return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
   }
+  // node-registered grids (n x n, row 0 = north) sampled from mesh uv (v = 1 at the north edge)
+  vec2 nodeUv(vec2 uv, float n) { return vec2((uv.x * (n - 1.0) + 0.5) / n, ((1.0 - uv.y) * (n - 1.0) + 0.5) / n); }
 `;
 
-/** Cast shadows: march from each pixel toward the Sun across the walk-area and regional elevation grids. */
+/**
+ * Cast shadows: march toward the Sun across the walk-area and regional elevation grids.
+ * Runs in the bake pass (once per Sun position), not per pixel per frame.
+ */
 const SHADOW = /* glsl */ `
   uniform sampler2D uAoiHeight;
   uniform float uAoiN;
@@ -61,7 +66,7 @@ const SHADOW = /* glsl */ `
     vec3 o = p + n * 0.6;
     float vis = 1.0;
     float t = 1.2;
-    for (int i = 0; i < 64; i++) {
+    for (int i = 0; i < 96; i++) { // reaches ~9 km: crater rims cast shadows at low sun
       vec3 q = o + uSunDir * t;
       float h = groundAt(q.xz);
       float gap = q.y - h;
@@ -72,7 +77,11 @@ const SHADOW = /* glsl */ `
     }
     return clamp(vis, 0.0, 1.0);
   }
+`;
 
+/** Sun light for the terrain shaders; the visibility comes from the baked shadow texture. */
+const LIGHT = /* glsl */ `
+  uniform vec3 uSunDir;
   // daylight: dim towards twilight, warm low sun
   vec3 sunLight(float nl, float vis) {
     float day = smoothstep(-2.0, 12.0, degrees(asin(clamp(uSunDir.y, -1.0, 1.0))));
@@ -102,6 +111,25 @@ const VERT = /* glsl */ `
   }
 `;
 
+/** Walk-area vertices carry only a position: the image uv follows from it (and the normal comes from the relief texture). */
+const AOI_VERT = /* glsl */ `
+  #include <common>
+  #include <fog_pars_vertex>
+  uniform float uExag;
+  uniform float uAoiHalf;
+  varying vec2 vUv;
+  varying vec3 vWorld;
+  void main() {
+    vec3 p = position;
+    vUv = vec2((p.x + uAoiHalf) / (2.0 * uAoiHalf), 1.0 - (p.z + uAoiHalf) / (2.0 * uAoiHalf));
+    p.y *= uExag;
+    vWorld = p;
+    vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    #include <fog_vertex>
+  }
+`;
+
 /** Walk-area terrain: 25 cm HiRISE image (Catmull-Rom filtered), 1 m relief lighting, GPU map layers. */
 const AOI_FRAG = /* glsl */ `
   #include <common>
@@ -113,7 +141,9 @@ const AOI_FRAG = /* glsl */ `
   uniform sampler2D uRelief;
   uniform float uReliefRange;
   uniform float uExag;
-  ${SHADOW}
+  ${LIGHT}
+  uniform sampler2D uShadowAoi;
+  uniform float uShadowAoiN;
   uniform int uLayer;
   uniform float uLayerMix;
   uniform float uGridN;
@@ -128,10 +158,10 @@ const AOI_FRAG = /* glsl */ `
   uniform sampler2D uGeo;
   uniform sampler2D uGeoLut;
   varying vec2 vUv;
-  varying vec3 vNormal;
   varying vec3 vWorld;
 
   // Catmull-Rom bicubic sampling in 9 bilinear taps: sharp, smooth magnification instead of blocky texels.
+  // Only called while the image is magnified, so it reads mip level 0 explicitly (no derivatives in a branch).
   float sampleCatmullRom(sampler2D tex, vec2 uv, vec2 size) {
     vec2 p = uv * size;
     vec2 t1 = floor(p - 0.5) + 0.5;
@@ -145,20 +175,20 @@ const AOI_FRAG = /* glsl */ `
     vec2 t3 = (t1 + 2.0) / size;
     vec2 t12 = (t1 + w2 / w12) / size;
     float r = 0.0;
-    r += texture2D(tex, vec2(t0.x, t0.y)).r * w0.x * w0.y;
-    r += texture2D(tex, vec2(t12.x, t0.y)).r * w12.x * w0.y;
-    r += texture2D(tex, vec2(t3.x, t0.y)).r * w3.x * w0.y;
-    r += texture2D(tex, vec2(t0.x, t12.y)).r * w0.x * w12.y;
-    r += texture2D(tex, vec2(t12.x, t12.y)).r * w12.x * w12.y;
-    r += texture2D(tex, vec2(t3.x, t12.y)).r * w3.x * w12.y;
-    r += texture2D(tex, vec2(t0.x, t3.y)).r * w0.x * w3.y;
-    r += texture2D(tex, vec2(t12.x, t3.y)).r * w12.x * w3.y;
-    r += texture2D(tex, vec2(t3.x, t3.y)).r * w3.x * w3.y;
+    r += textureLod(tex, vec2(t0.x, t0.y), 0.0).r * w0.x * w0.y;
+    r += textureLod(tex, vec2(t12.x, t0.y), 0.0).r * w12.x * w0.y;
+    r += textureLod(tex, vec2(t3.x, t0.y), 0.0).r * w3.x * w0.y;
+    r += textureLod(tex, vec2(t0.x, t12.y), 0.0).r * w0.x * w12.y;
+    r += textureLod(tex, vec2(t12.x, t12.y), 0.0).r * w12.x * w12.y;
+    r += textureLod(tex, vec2(t3.x, t12.y), 0.0).r * w3.x * w12.y;
+    r += textureLod(tex, vec2(t0.x, t3.y), 0.0).r * w0.x * w3.y;
+    r += textureLod(tex, vec2(t12.x, t3.y), 0.0).r * w12.x * w3.y;
+    r += textureLod(tex, vec2(t3.x, t3.y), 0.0).r * w3.x * w3.y;
     return r;
   }
 
   // data grids are node-registered (n x n), row 0 = north
-  vec2 gridUv(vec2 uv) { return vec2((uv.x * (uGridN - 1.0) + 0.5) / uGridN, ((1.0 - uv.y) * (uGridN - 1.0) + 0.5) / uGridN); }
+  vec2 gridUv(vec2 uv) { return nodeUv(uv, uGridN); }
 
   vec4 ramp(float x, float s0, float s1, float s2, float s3, float s4, vec4 c0, vec4 c1, vec4 c2, vec4 c3, vec4 c4) {
     if (x <= s0) return c0;
@@ -244,21 +274,22 @@ const AOI_FRAG = /* glsl */ `
     // texel footprint: Catmull-Rom only while the image is magnified (close up)
     vec2 tp = vUv * uMapSize;
     float footprint = max(length(dFdx(tp)), length(dFdy(tp)));
-    float base = texture2D(uMap, vUv).r;
-    float sharp = sampleCatmullRom(uMap, vUv, uMapSize);
-    float g = clamp(mix(base, sharp, smoothstep(1.6, 0.7, footprint)), 0.0, 1.0);
-    vec3 c = marsTint(g);
+    float g = texture2D(uMap, vUv).r;
+    if (footprint < 1.6) g = mix(g, sampleCatmullRom(uMap, vUv, uMapSize), smoothstep(1.6, 0.7, footprint));
+    vec3 c = marsTint(clamp(g, 0.0, 1.0));
 
     // per-pixel lighting from the 1 m HiRISE elevation gradient
     vec2 grad = (texture2D(uRelief, vUv).rg * 2.0 - 1.0) * uReliefRange * uExag;
     vec3 n = normalize(vec3(-grad.x, 1.0, grad.y));
     float nl = dot(n, uSunDir);
-    c *= sunLight(nl, sunVisibility(vWorld, n));
+    c *= sunLight(nl, texture2D(uShadowAoi, nodeUv(vUv, uShadowAoiN)).r);
 
     // fine grain right at the camera so the ground does not look smeared at eye height (rendering detail only)
     float d = distance(cameraPosition, vWorld);
-    float grain = (noise(vWorld.xz * 4.0) - 0.5) * 0.14 + (noise(vWorld.xz * 13.0) - 0.5) * 0.1 + (noise(vWorld.xz * 37.0) - 0.5) * 0.07;
-    c *= 1.0 + grain * smoothstep(35.0, 1.5, d);
+    if (d < 35.0) {
+      float grain = (noise(vWorld.xz * 4.0) - 0.5) * 0.14 + (noise(vWorld.xz * 13.0) - 0.5) * 0.1 + (noise(vWorld.xz * 37.0) - 0.5) * 0.07;
+      c *= 1.0 + grain * smoothstep(35.0, 1.5, d);
+    }
 
     if (uLayer > 0) {
       vec4 o = layerColor(gridUv(vUv));
@@ -277,7 +308,9 @@ const REGION_FRAG = /* glsl */ `
   ${COMMON}
   uniform sampler2D uMap;
   uniform float uExag;
-  ${SHADOW}
+  ${LIGHT}
+  uniform sampler2D uShadowReg;
+  uniform float uShadowRegN;
   uniform vec3 uEdgeColor;
   uniform float uHalf;
   uniform float uFade;
@@ -288,7 +321,7 @@ const REGION_FRAG = /* glsl */ `
     #include <logdepthbuf_fragment>
     vec3 c = marsTint(texture2D(uMap, vUv).r);
     vec3 n = normalize(vNormal);
-    c *= sunLight(dot(n, uSunDir), sunVisibility(vWorld, n));
+    c *= sunLight(dot(n, uSunDir), texture2D(uShadowReg, nodeUv(vUv, uShadowRegN)).r);
     c *= 0.86; // slightly darker than the HiRISE walk area, which stays the focus
     vec2 e = uHalf - abs(vWorld.xz);
     c = mix(uEdgeColor, c, smoothstep(0.0, uFade, min(e.x, e.y)));
@@ -343,6 +376,11 @@ export function rgbaTexture(rgba: Uint8Array | null, n: number): THREE.DataTextu
 export interface Terrain {
   mesh: THREE.Mesh;
   uniforms: Record<string, THREE.IUniform>;
+  /**
+   * Choose each tile's mesh detail from the on-screen size of one grid cell (pixels; below
+   * thresholds[0] every 2nd node, below thresholds[1] every 4th) and skip tiles outside the view.
+   */
+  updateLod?: (camera: THREE.PerspectiveCamera, viewPx: number, thresholds: [number, number]) => void;
 }
 
 /** Uniforms shared by both terrain materials (one object, so a change applies to both). */
@@ -359,6 +397,10 @@ export interface ShadowUniforms {
   uSunDir: THREE.IUniform<THREE.Vector3>;
   uShadows: THREE.IUniform<number>;
   uExag: THREE.IUniform<number>;
+  uShadowAoi: THREE.IUniform<THREE.Texture | null>;
+  uShadowAoiN: THREE.IUniform<number>;
+  uShadowReg: THREE.IUniform<THREE.Texture | null>;
+  uShadowRegN: THREE.IUniform<number>;
 }
 
 /** Heights (metres above `zRef`) as a half-float texture: hardware-filtered and precise to ~0.25 m. */
@@ -388,13 +430,92 @@ export function makeShadowUniforms(): ShadowUniforms {
     uSunDir: { value: SUN_DIR.clone() },
     uShadows: { value: 1 },
     uExag: { value: 1 },
+    uShadowAoi: { value: null },
+    uShadowAoiN: { value: 2 },
+    uShadowReg: { value: null },
+    uShadowRegN: { value: 2 },
   };
 }
 
-function material(frag: string, extra: Record<string, THREE.IUniform>, shared: ShadowUniforms): THREE.ShaderMaterial {
+/** Shadow-map resolution relative to the elevation grids (2 = twice as many nodes per side). */
+const SHADOW_UPSAMPLE = 2;
+
+/**
+ * Sun visibility baked into two textures (walk area and region) by a full-screen pass that ray-marches
+ * the elevation grids.  The terrain shaders only sample it, so a frame costs one texture read instead of
+ * a 64-step march per pixel.  Re-baked when the Sun moves, the exaggeration changes or shadows toggle.
+ */
+export class ShadowBaker {
+  private readonly scene = new THREE.Scene();
+  private readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  private readonly material: THREE.ShaderMaterial;
+  private readonly aoiTarget: THREE.WebGLRenderTarget;
+  private readonly regTarget: THREE.WebGLRenderTarget | null;
+
+  constructor(private readonly shared: ShadowUniforms) {
+    const target = (n: number) => new THREE.WebGLRenderTarget(n, n, {
+      format: THREE.RedFormat, type: THREE.UnsignedByteType, depthBuffer: false, generateMipmaps: false,
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+    });
+    const aoiN = (shared.uAoiN.value - 1) * SHADOW_UPSAMPLE + 1;
+    this.aoiTarget = target(aoiN);
+    shared.uShadowAoi.value = this.aoiTarget.texture;
+    shared.uShadowAoiN.value = aoiN;
+    if (shared.uHasRegion.value > 0.5) {
+      const regN = (shared.uRegN.value - 1) * SHADOW_UPSAMPLE + 1;
+      this.regTarget = target(regN);
+      shared.uShadowReg.value = this.regTarget.texture;
+      shared.uShadowRegN.value = regN;
+    } else this.regTarget = null;
+
+    this.material = new THREE.ShaderMaterial({
+      uniforms: { ...shared, uOrigin: { value: new THREE.Vector2() }, uStep: { value: 1 } },
+      vertexShader: /* glsl */ `void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+      fragmentShader: /* glsl */ `
+        uniform float uExag;
+        ${SHADOW}
+        uniform vec2 uOrigin; // world X, Z of texel (0, 0)
+        uniform float uStep;  // metres per texel
+        float gnd(vec2 q, float h0) { float h = groundAt(q); return h < -1e5 ? h0 : h; }
+        void main() {
+          vec2 xz = uOrigin + (gl_FragCoord.xy - 0.5) * uStep;
+          float h0 = groundAt(xz);
+          float hx = gnd(xz + vec2(1.0, 0.0), h0) - gnd(xz - vec2(1.0, 0.0), h0);
+          float hz = gnd(xz + vec2(0.0, 1.0), h0) - gnd(xz - vec2(0.0, 1.0), h0);
+          vec3 n = normalize(vec3(-hx * 0.5, 1.0, -hz * 0.5));
+          gl_FragColor = vec4(sunVisibility(vec3(xz.x, h0, xz.y), n), 0.0, 0.0, 1.0);
+        }`,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.material);
+    quad.frustumCulled = false;
+    this.scene.add(quad);
+  }
+
+  bake(renderer: THREE.WebGLRenderer): void {
+    const sh = this.shared;
+    const u = this.material.uniforms;
+    const prev = renderer.getRenderTarget();
+    const half = sh.uAoiHalf.value;
+    u.uOrigin.value.set(-half, -half);
+    u.uStep.value = sh.uAoiCell.value / SHADOW_UPSAMPLE;
+    renderer.setRenderTarget(this.aoiTarget);
+    renderer.render(this.scene, this.camera);
+    if (this.regTarget) {
+      u.uOrigin.value.copy(sh.uRegOrigin.value);
+      u.uStep.value = sh.uRegCell.value / SHADOW_UPSAMPLE;
+      renderer.setRenderTarget(this.regTarget);
+      renderer.render(this.scene, this.camera);
+    }
+    renderer.setRenderTarget(prev);
+  }
+}
+
+function material(frag: string, extra: Record<string, THREE.IUniform>, shared: ShadowUniforms, vert = VERT): THREE.ShaderMaterial {
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog]);
   Object.assign(uniforms, shared, extra); // shared + texture uniforms are assigned after merge so they are not cloned
-  return new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: frag, fog: true, side: THREE.DoubleSide });
+  return new THREE.ShaderMaterial({ uniforms, vertexShader: vert, fragmentShader: frag, fog: true, side: THREE.DoubleSide });
 }
 
 /**
@@ -419,8 +540,6 @@ export function buildTerrain(
   const border = 4 * (m - 1);
   const total = m * m + border;
   const pos = new Float32Array(total * 3);
-  const nor = new Float32Array(total * 3);
-  const uv = new Float32Array(total * 2);
 
   for (let j = 0; j < m; j++) {
     for (let i = 0; i < m; i++) {
@@ -430,9 +549,6 @@ export function buildTerrain(
       pos[k * 3] = c * grid.cell - half;
       pos[k * 3 + 1] = h[r * n + c] - zRef;
       pos[k * 3 + 2] = r * grid.cell - half;
-      nor[k * 3 + 1] = 1;
-      uv[k * 2] = c / (n - 1);
-      uv[k * 2 + 1] = 1 - r / (n - 1);
     }
   }
   // skirt: a copy of every border vertex, 30 m lower, walking the edge clockwise
@@ -446,37 +562,93 @@ export function buildTerrain(
     pos[k * 3] = pos[src * 3];
     pos[k * 3 + 1] = pos[src * 3 + 1] - 30;
     pos[k * 3 + 2] = pos[src * 3 + 2];
-    nor[k * 3 + 1] = 1;
-    uv[k * 2] = uv[src * 2];
-    uv[k * 2 + 1] = uv[src * 2 + 1];
   });
 
-  const index = new Uint32Array((m - 1) * (m - 1) * 6 + border * 6);
+  // Level of detail per tile: 8 x 8 tiles, each drawn with every node, every 2nd or every 4th node.
+  // A coarse tile keeps every node along its own edges and zips them to its coarse interior, so tiles
+  // at different levels always share the same edge vertices: no cracks between them.
+  const TILES = 8;
+  const T = (m - 1) / TILES;
+  const ks = [1, 2, 4].filter((k) => Number.isInteger(T / k) && (k === 1 || T / k >= 4));
+  let buf = new Uint32Array(1 << 22);
   let q = 0;
-  for (let j = 0; j < m - 1; j++) {
-    for (let i = 0; i < m - 1; i++) {
-      const a = j * m + i;
-      const b = a + 1;
-      const d = a + m;
-      const e = d + 1;
-      index[q++] = a; index[q++] = d; index[q++] = b;
-      index[q++] = b; index[q++] = d; index[q++] = e;
+  const tri = (a: number, b: number, c: number) => {
+    if (q + 3 > buf.length) {
+      const grown = new Uint32Array(buf.length * 2);
+      grown.set(buf);
+      buf = grown;
     }
-  }
+    buf[q++] = a; buf[q++] = b; buf[q++] = c;
+  };
+  const ranges: { start: number; count: number }[][] = ks.map(() => []); // [level][tile]
+  const tileH: { lo: number; hi: number }[] = [];
+  ks.forEach((k, level) => {
+    for (let ty = 0; ty < TILES; ty++) {
+      for (let tx = 0; tx < TILES; tx++) {
+        const v = (c: number, r: number) => (ty * T + r) * m + tx * T + c;
+        const begin = q;
+        const lo = k === 1 ? 0 : k;
+        for (let r = lo; r < T - lo; r += k) {
+          for (let c = lo; c < T - lo; c += k) {
+            const a = v(c, r), b = v(c + k, r), d = v(c, r + k), e = v(c + k, r + k);
+            tri(a, d, b);
+            tri(b, d, e);
+          }
+        }
+        if (k > 1) {
+          // zip the fine outer edge (T + 1 nodes) to the coarse inner row (from k to T - k)
+          const zip = (outer: (i: number) => number, inner: (i: number) => number) => {
+            const nIn = T / k - 1;
+            let i = 0;
+            let j = 0;
+            while (i < T || j < nIn - 1) {
+              const nextOuter = i < T ? (i + 1) / T : Infinity;
+              const nextInner = j < nIn - 1 ? (k + (j + 1) * k) / T : Infinity;
+              if (nextOuter <= nextInner) {
+                tri(outer(i), outer(i + 1), inner(k + j * k));
+                i++;
+              } else {
+                tri(outer(i), inner(k + (j + 1) * k), inner(k + j * k));
+                j++;
+              }
+            }
+          };
+          zip((i) => v(i, 0), (c) => v(c, k));
+          zip((i) => v(i, T), (c) => v(c, T - k));
+          zip((i) => v(0, i), (r) => v(k, r));
+          zip((i) => v(T, i), (r) => v(T - k, r));
+        }
+        ranges[level].push({ start: begin, count: q - begin });
+        if (level === 0) {
+          let hLo = Infinity;
+          let hHi = -Infinity;
+          for (let r = 0; r <= T; r++) {
+            for (let c = 0; c <= T; c++) {
+              const y = pos[v(c, r) * 3 + 1];
+              if (y < hLo) hLo = y;
+              if (y > hHi) hHi = y;
+            }
+          }
+          tileH.push({ lo: hLo, hi: hHi });
+        }
+      }
+    }
+  });
+  // skirt around the whole walk area: always drawn
+  const skirtStart = q;
   for (let s = 0; s < border; s++) {
     const a = ring[s];
     const b = ring[(s + 1) % border];
     const a2 = m * m + s;
     const b2 = m * m + ((s + 1) % border);
-    index[q++] = a; index[q++] = b; index[q++] = a2;
-    index[q++] = b; index[q++] = b2; index[q++] = a2;
+    tri(a, b, a2);
+    tri(b, b2, a2);
   }
+  const skirtCount = q - skirtStart;
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  geometry.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
-  geometry.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
-  geometry.setIndex(new THREE.BufferAttribute(index, 1));
+  geometry.setIndex(new THREE.BufferAttribute(buf.slice(0, q), 1));
   geometry.computeBoundingSphere();
 
   const img = map.image as { width: number; height: number };
@@ -498,11 +670,58 @@ export function buildTerrain(
     uGeoLut: { value: layers.geoLut },
     uShield: { value: layers.shield },
     uMinerals: { value: layers.minerals },
-  }, shared);
-  const mesh = new THREE.Mesh(geometry, mat);
+  }, shared, AOI_VERT);
+  const mesh = new THREE.Mesh(geometry, [mat]); // material array: draw only the groups chosen below
   mesh.frustumCulled = false;
   mesh.matrixAutoUpdate = false;
-  return { mesh, uniforms: mat.uniforms };
+
+  const frustum = new THREE.Frustum();
+  const box = new THREE.Box3();
+  const pv = new THREE.Matrix4();
+  const tileSize = T * step * grid.cell;
+  let signature = "";
+  const updateLod = (camera: THREE.PerspectiveCamera, viewPx: number, thresholds: [number, number]) => {
+    camera.updateMatrixWorld();
+    frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    const exag = shared.uExag.value;
+    const pxPerM = viewPx / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+    const cellM = step * grid.cell;
+    const choice: number[] = [];
+    for (let t = 0; t < TILES * TILES; t++) {
+      const tx = t % TILES;
+      const ty = Math.floor(t / TILES);
+      box.min.set(tx * tileSize - half, tileH[t].lo * exag - 1, ty * tileSize - half);
+      box.max.set((tx + 1) * tileSize - half, tileH[t].hi * exag + 1, (ty + 1) * tileSize - half);
+      if (!frustum.intersectsBox(box)) {
+        choice.push(-1);
+        continue;
+      }
+      const cellPx = (cellM * pxPerM) / Math.max(1, box.distanceToPoint(camera.position));
+      choice.push(Math.min(ks.length - 1, cellPx < thresholds[1] ? 2 : cellPx < thresholds[0] ? 1 : 0));
+    }
+    const sig = choice.join(",");
+    if (sig === signature) return;
+    signature = sig;
+    // consecutive tiles at the same level are contiguous in the index buffer: one draw call per run
+    geometry.clearGroups();
+    let start = 0;
+    let count = 0;
+    for (let t = 0; t <= choice.length; t++) {
+      const level = t < choice.length ? choice[t] : -1;
+      if (count > 0 && level >= 0 && ranges[level][t].start === start + count) {
+        count += ranges[level][t].count; // same level as the previous tile: extend the run
+        continue;
+      }
+      if (count > 0) geometry.addGroup(start, count, 0);
+      start = level >= 0 ? ranges[level][t].start : 0;
+      count = level >= 0 ? ranges[level][t].count : 0;
+    }
+    geometry.addGroup(skirtStart, skirtCount, 0);
+  };
+  // until the first update: every tile at full detail, plus the skirt
+  geometry.addGroup(0, ranges[0][ranges[0].length - 1].start + ranges[0][ranges[0].length - 1].count, 0);
+  geometry.addGroup(skirtStart, skirtCount, 0);
+  return { mesh, uniforms: mat.uniforms, updateLod };
 }
 
 /** Regional CTX terrain with a hole where the HiRISE walk area sits. */

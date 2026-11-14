@@ -7,7 +7,7 @@ import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRe
 import type { SiteData } from "../data/loaders";
 import type { MeasuredPath, PathSample, Poi, RegionMeta, XY } from "../types";
 import { ic } from "../ui/icons";
-import { buildRegion, buildSky, buildTerrain, byteTexture, geologyLut, heightTexture, rgbaTexture, LAYER_IDS, LayerId, makeShadowUniforms, ShadowUniforms, SKY_HORIZON, Terrain } from "./terrain";
+import { buildRegion, buildSky, buildTerrain, byteTexture, geologyLut, heightTexture, rgbaTexture, LAYER_IDS, LayerId, makeShadowUniforms, ShadowBaker, ShadowUniforms, SKY_HORIZON, Terrain } from "./terrain";
 
 export interface SceneTextures {
   map: THREE.Texture; // HiRISE image of the walk area
@@ -73,6 +73,19 @@ export class SceneView {
   private readonly half: number;
   private readonly zRef: number;
   private exag = 1;
+  private readonly baker: ShadowBaker;
+  private readonly regionHeights: { n: number; cell: number; heights: Float32Array } | null;
+
+  // ---- render on demand: draw only when the camera, the scene or the light changed
+  private dirty = true;
+  private shadowDirty = true;
+  private lastBake = -1e9;
+  private readonly bakedSun = new THREE.Vector3(0, -1, 0);
+  private readonly lastCam = new Float64Array(32);
+  // ---- adaptive resolution: lower the pixel ratio while frames are slow
+  private dpr = 1;
+  private dprMax = 1;
+  private readonly perf = { lastT: 0, sum: 0, n: 0, good: 0, raisedAt: -1e9, rendered: false };
 
   private readonly routeGroup = new THREE.Group();
   private readonly trackGroup = new THREE.Group();
@@ -107,8 +120,12 @@ export class SceneView {
     this.half = grid.size / 2;
     this.zRef = site.meta.height.zMin;
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true, powerPreference: "high-performance" });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality === "low" ? 1 : 2));
+    // standard depth buffer (a logarithmic one writes depth per pixel and disables early depth rejection);
+    // the near plane follows the camera's height instead, see updateClip()
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    this.dprMax = Math.min(window.devicePixelRatio || 1, quality === "low" ? 1 : 2);
+    this.dpr = this.dprMax;
+    this.renderer.setPixelRatio(this.dpr);
     this.renderer.setClearColor(0x0b0d10, 1);
     host.appendChild(this.renderer.domElement);
 
@@ -150,6 +167,8 @@ export class SceneView {
       sh.uRegOrigin.value.set(r.originLocal.x - this.half, this.half - (r.originLocal.y + r.sizeM));
       sh.uHasRegion.value = 1;
     }
+    this.regionHeights = tex.region ? { n: tex.region.meta.n, cell: tex.region.meta.cellM, heights: tex.region.heights } : null;
+    this.baker = new ShadowBaker(sh);
     const reliefRange = site.meta.relief?.range ?? 1.5;
     this.terrain = buildTerrain(grid, this.zRef, tex.map, tex.relief, reliefRange, layers, quality === "low" ? 2 : 1, sh);
     this.scene.add(this.terrain.mesh);
@@ -217,11 +236,138 @@ export class SceneView {
       this.last = now;
       this.frame?.(dt);
       this.update(dt);
-      this.renderer.render(this.scene, this.camera);
-      this.labels.render(this.scene, this.camera);
+      const drew = this.renderIfNeeded(now);
+      this.adaptResolution(now, drew);
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
+  }
+
+  /** Ask for a new frame (something in the scene changed). */
+  invalidate(): void {
+    this.dirty = true;
+  }
+
+  /** Bake shadows if the light changed, then draw the frame if anything visible changed. */
+  renderIfNeeded(now = performance.now()): boolean {
+    // re-bake at most ~10 times a second while the Sun is moving; the last position is always baked
+    if (this.shadowDirty && now - this.lastBake > 90) {
+      this.baker.bake(this.renderer);
+      this.bakedSun.copy(this.shared.uSunDir.value);
+      this.lastBake = now;
+      this.shadowDirty = false;
+      this.dirty = true;
+    }
+    this.camera.updateMatrixWorld();
+    const moved = this.cameraMoved();
+    const fading = Math.abs(this.fogTarget - this.fog.density) > 1e-7;
+    if (!moved && !fading && !this.dirty) return false;
+    this.dirty = false;
+    this.renderer.render(this.scene, this.camera);
+    this.labels.render(this.scene, this.camera);
+    return true;
+  }
+
+  private cameraMoved(): boolean {
+    const w = this.camera.matrixWorld.elements;
+    const p = this.camera.projectionMatrix.elements;
+    const s = this.lastCam;
+    let moved = false;
+    for (let i = 0; i < 16; i++) {
+      // translation in metres, rotation and projection terms are unitless
+      if (Math.abs(w[i] - s[i]) > (i >= 12 ? 1e-3 : 1e-6) || Math.abs(p[i] - s[16 + i]) > 1e-7 * Math.max(1, Math.abs(p[i]))) {
+        moved = true;
+        break;
+      }
+    }
+    if (moved) {
+      for (let i = 0; i < 16; i++) {
+        s[i] = w[i];
+        s[16 + i] = p[i];
+      }
+    }
+    return moved;
+  }
+
+  /**
+   * While the view is moving, watch the frame interval: if frames are slow, render fewer pixels
+   * (pixel ratio steps down to 1); once they are fast again for a while, step back up.
+   */
+  private adaptResolution(now: number, drew: boolean): void {
+    const p = this.perf;
+    const gap = now - p.lastT;
+    const continuous = drew && p.rendered && gap < 70 && !document.hidden;
+    p.rendered = drew;
+    p.lastT = now;
+    if (!continuous) return;
+    p.sum += gap;
+    if (++p.n < 30) return;
+    const avg = p.sum / p.n;
+    p.sum = 0;
+    p.n = 0;
+    if (avg > 21 && this.dpr > 1) {
+      if (now - p.raisedAt < 3000) {
+        this.dprMax = this.dpr - 0.25; // the last step up was too much: stay below it
+        p.raisedAt = -1e9;
+      }
+      this.setPixelRatio(Math.max(1, this.dpr - 0.25));
+      p.good = 0;
+    } else if (avg < 18 && this.dpr < this.dprMax) {
+      if (++p.good >= 5) {
+        this.setPixelRatio(Math.min(this.dprMax, this.dpr + 0.25));
+        p.raisedAt = now;
+        p.good = 0;
+      }
+    } else p.good = 0;
+  }
+
+  private setPixelRatio(v: number): void {
+    this.dpr = v;
+    this.renderer.setPixelRatio(v);
+    this.resize();
+  }
+
+  /** Current pixel ratio and its upper limit (for diagnostics). */
+  pixelRatio(): { now: number; max: number } {
+    return { now: this.dpr, max: this.dprMax };
+  }
+
+  /** Height of the ground below a world point (world units), for the near clipping plane. */
+  private groundYBelow(x: number, z: number): number {
+    const gx = x + this.half;
+    const gy = this.half - z;
+    const grid = this.site.grid;
+    if (grid.inside(gx, gy)) return (grid.heightAt(gx, gy) - this.zRef) * this.exag;
+    const r = this.regionHeights;
+    if (r) {
+      const o = this.shared.uRegOrigin.value;
+      const c = Math.round((x - o.x) / r.cell);
+      const row = Math.round((z - o.y) / r.cell);
+      if (c >= 0 && row >= 0 && c < r.n && row < r.n) return (r.heights[row * r.n + c] - this.zRef) * this.exag;
+    }
+    return 0;
+  }
+
+  /**
+   * Mesh detail for the walk area, tile by tile, from the on-screen size of a 2 m cell.  The image,
+   * relief shading and shadows come from textures, so a coarser mesh only changes the outline of the
+   * ground: invisible in the top-down map, and only far away in the 3D views.
+   */
+  private updateDetail(): void {
+    const thresholds: [number, number] = this.mode === "plan" ? [8, 4] : this.mode === "walk" ? [10, 4] : [6, 2.5];
+    this.terrain.updateLod?.(this.camera, Math.max(1, this.host.clientHeight) * this.dpr, thresholds);
+  }
+
+  /** Near plane at a fraction of the camera's height above the ground: depth precision where it is needed. */
+  private updateClip(): void {
+    const cam = this.camera;
+    const near = this.mode === "walk" ? 0.15 : THREE.MathUtils.clamp((cam.position.y - this.groundYBelow(cam.position.x, cam.position.z)) * 0.35, 0.3, 4000);
+    const far = Math.max(42000, cam.position.length() + this.regionHalf * 1.5);
+    if (Math.abs(near - cam.near) > cam.near * 0.1 || Math.abs(far - cam.far) > cam.far * 0.1) {
+      cam.near = near;
+      cam.far = far;
+      cam.updateProjectionMatrix();
+    }
   }
 
   private update(dt: number): void {
@@ -254,7 +400,10 @@ export class SceneView {
       this.controls.update();
     }
 
+    this.updateClip();
+    this.updateDetail();
     this.fog.density += (this.fogTarget - this.fog.density) * Math.min(1, dt * 3);
+    if (Math.abs(this.fogTarget - this.fog.density) < 1e-7) this.fog.density = this.fogTarget;
     this.sky.mesh.position.copy(this.camera.position);
 
     const perPixel = (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2))) / Math.max(1, this.host.clientHeight);
@@ -292,6 +441,7 @@ export class SceneView {
     this.camera.aspect = w / h;
     this.applyViewOffset();
     for (const m of this.lineMaterials) m.resolution.set(w, h);
+    this.dirty = true;
   }
 
   // ---------------------------------------------------------------- camera modes
@@ -302,6 +452,7 @@ export class SceneView {
   setInsets(insets: { top: number; right: number; bottom: number; left: number }): void {
     this.insets = insets;
     this.applyViewOffset();
+    this.dirty = true;
   }
 
   private applyViewOffset(): void {
@@ -340,6 +491,7 @@ export class SceneView {
   /** Map view: dark flat backdrop, no haze, wide zoom range.  3D views: sky, haze, region fades into the horizon. */
   private styleFor(mode: ViewMode): void {
     const map = mode === "plan";
+    this.dirty = true;
     this.sky.setMapMode(map ? 1 : 0);
     this.controls.maxDistance = map ? 52000 : 14000;
     if (this.region) {
@@ -560,9 +712,9 @@ export class SceneView {
     this.fogTarget = 0.00032;
     this.styleFor("walk");
     this.camera.fov = 68;
-    this.camera.near = 0.2;
     this.camera.updateProjectionMatrix();
     this.walk = { x, y, heading: headingRad, smoothHeading: headingRad, yaw: 0, pitch: -0.06, init: true, bob: 0 };
+    this.dirty = true;
     this.astronaut.visible = false;
     if (this.routes) this.setRoutes(this.routes);
   }
@@ -570,8 +722,6 @@ export class SceneView {
   private leaveWalk(): void {
     this.mode = "orbit";
     if (this.routes) this.setRoutes(this.routes);
-    this.camera.near = 0.3;
-    this.camera.updateProjectionMatrix();
     const at = this.ground(this.walk.x, this.walk.y);
     this.controls.target.copy(at);
     this.camera.position.set(at.x - 60, at.y + 160, at.z + 220);
@@ -630,13 +780,17 @@ export class SceneView {
   /** Place the astronaut (and the camera, in walk mode).  `null` hides the marker. */
   setAstronaut(pose: { x: number; y: number; headingRad: number; moving: boolean } | null, dt = 0): void {
     if (!pose) {
+      if (this.astronaut.visible) this.dirty = true;
       this.astronaut.visible = false;
       this.walk.init = false;
       return;
     }
-    this.astronaut.position.copy(this.ground(pose.x, pose.y));
+    const at = this.ground(pose.x, pose.y);
+    const visible = this.mode !== "walk";
+    if (!at.equals(this.astronaut.position) || this.astronaut.rotation.y !== -pose.headingRad || this.astronaut.visible !== visible) this.dirty = true;
+    this.astronaut.position.copy(at);
     this.astronaut.rotation.y = -pose.headingRad;
-    this.astronaut.visible = this.mode !== "walk";
+    this.astronaut.visible = visible;
     this.walk.x = pose.x;
     this.walk.y = pose.y;
     this.walk.heading = pose.headingRad;
@@ -645,8 +799,11 @@ export class SceneView {
   }
 
   setBuddy(pose: XY | null): void {
-    this.buddy.visible = !!pose && this.mode !== "walk";
-    if (pose) this.buddy.position.copy(this.ground(pose.x, pose.y));
+    const visible = !!pose && this.mode !== "walk";
+    const at = pose ? this.ground(pose.x, pose.y) : this.buddy.position;
+    if (visible !== this.buddy.visible || !at.equals(this.buddy.position)) this.dirty = true;
+    this.buddy.visible = visible;
+    this.buddy.position.copy(at);
   }
 
   /** Keep the astronaut in view while following an EVA in the map views. */
@@ -662,6 +819,8 @@ export class SceneView {
   setExaggeration(value: number): void {
     this.exag = value;
     this.shared.uExag.value = value;
+    this.shadowDirty = true;
+    this.dirty = true;
     if (this.routes) this.setRoutes(this.routes);
     this.rebuildTrack();
     this.addAreaOutline();
@@ -675,12 +834,17 @@ export class SceneView {
   setSun(elevationDeg: number, azimuthDeg: number): void {
     const el = THREE.MathUtils.degToRad(elevationDeg);
     const az = THREE.MathUtils.degToRad(azimuthDeg);
-    this.shared.uSunDir.value.set(Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
+    const dir = this.shared.uSunDir.value.set(Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
     this.sky.setSunElevation(elevationDeg);
+    this.dirty = true;
+    // shadows move with the Sun: re-bake once it has moved by more than ~0.1 degrees
+    if (dir.dot(this.bakedSun) < Math.cos(THREE.MathUtils.degToRad(0.1)) || Math.sign(dir.y) !== Math.sign(this.bakedSun.y)) this.shadowDirty = true;
   }
 
   setShadows(on: boolean): void {
+    if (this.shared.uShadows.value === (on ? 1 : 0)) return;
     this.shared.uShadows.value = on ? 1 : 0;
+    this.shadowDirty = true;
   }
 
   /** Colour the walk area with a data layer (computed on the GPU from the data grids). */
@@ -689,10 +853,12 @@ export class SceneView {
     if (id === "shelter" && this.shelterTex) u.uShelter.value = this.shelterTex;
     u.uLayer.value = LAYER_IDS[id];
     u.uLayerMix.value = opacity;
+    this.dirty = true;
   }
 
   setLayerOpacity(opacity: number): void {
     this.terrain.uniforms.uLayerMix.value = opacity;
+    this.dirty = true;
   }
 
   /** Minutes of walking back to the shelter per node, from the return-cost field (255 = cut off). */
@@ -738,6 +904,7 @@ export class SceneView {
     group.add(tag);
     this.outline = group;
     this.scene.add(group);
+    this.dirty = true;
   }
 
   // ---------------------------------------------------------------- lines
@@ -785,6 +952,7 @@ export class SceneView {
 
   setRoutes(set: RouteSet): void {
     this.routes = set;
+    this.dirty = true;
     this.clearGroup(this.routeGroup);
     if (set.showStraight) {
       for (const path of set.straight) {
@@ -814,6 +982,7 @@ export class SceneView {
   }
 
   private rebuildTrack(): void {
+    this.dirty = true;
     this.clearGroup(this.trackGroup);
     if (!this.trackVisible) return;
     let run: THREE.Vector3[] = [];
@@ -871,6 +1040,7 @@ export class SceneView {
   }
 
   setPois(states: PoiMarkerState[]): void {
+    this.dirty = true;
     for (const child of [...this.poiGroup.children]) {
       this.poiGroup.remove(child);
       child.traverse((o) => {
@@ -962,7 +1132,9 @@ export class SceneView {
   }
 
   setHoverMarker(p: XY | null): void {
-    this.hoverRing.visible = !!p && this.mode !== "walk";
+    const visible = !!p && this.mode !== "walk";
+    if (visible !== this.hoverRing.visible || visible) this.dirty = true;
+    this.hoverRing.visible = visible;
     if (p) this.hoverRing.position.copy(this.ground(p.x, p.y, 0.6));
   }
 
