@@ -12,6 +12,14 @@ Built for the **2026 NASA Space Apps Challenge** — *Interplanetary Survival Gu
 
 ---
 
+## Try it in 60 seconds
+
+1. **Open the EVA planner** from the briefing. The safe route to the objectives is already planned; the white line is the straight one, which crosses ground too steep to walk.
+2. Read the **radio line** in the plan panel: hills cut the link, and one stop has no contact at all. Press **Plan with relay** — CAIRN has already found where the crew should stand up a relay mast.
+3. Click the **Rover** row's *park closer* (or click the map → *Park rover*): the way home from every point is recomputed in under a second. **Ctrl/⌘ Z** undoes it.
+4. Press **Start EVA**, then **Suit leak** or **Twisted ankle**: CAIRN finds the quickest safe way home and checks the oxygen. Or let the walk run into the real **20 May 2024 solar storm**.
+5. Open the **Cue card**, or **Export** the route to Google Earth (Mars mode). Or just press **Demo**.
+
 ## What it does
 
 Pick a site, pick the stops, and CAIRN plans the walk from the pressurised rover and back.
