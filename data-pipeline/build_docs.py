@@ -53,7 +53,7 @@ def site_section(sid):
     if pano:
         L += ["", "### 360° panoramas", "", pano["source"] + ".", ""]
         if any(v.get("mask") for v in pano["panoramas"].values()):
-            L += ["Where the frames cover less than 90% of the horizon only the imaged part is shown (feathered mask), over a view the app renders from the HiRISE terrain. Stops not listed get a rendered view.", ""]
+            L += ["Where the frames cover less than 90% of the horizon only the imaged part is shown (feathered mask), over a view the app renders from the HiRISE terrain. Stops not listed have no 360° view.", ""]
         L += ["| Stop | Frames | Sols | Imaged | Horizon |", "|---|---|---|---|---|"]
         for k, v in pano["panoramas"].items():
             L.append(f"| {k} | {v['frames']} | {v['sols'][0]}–{v['sols'][-1]} | {round(v['coverage'] * 100)}% | {round(v.get('horizonCoverage', 1) * 100)}% |")

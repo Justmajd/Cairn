@@ -74,7 +74,7 @@ Rover: **Perseverance** (Mars 2020). EVA date: sol 1215 (Sol Perseverance cored 
 
 Stitched by CAIRN from Perseverance Navcam raw images using their CAHVOR(E) camera models.
 
-Where the frames cover less than 90% of the horizon only the imaged part is shown (feathered mask), over a view the app renders from the HiRISE terrain. Stops not listed get a rendered view.
+Where the frames cover less than 90% of the horizon only the imaged part is shown (feathered mask), over a view the app renders from the HiRISE terrain. Stops not listed have no 360° view.
 
 | Stop | Frames | Sols | Imaged | Horizon |
 |---|---|---|---|---|
