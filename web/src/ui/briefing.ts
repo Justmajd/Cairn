@@ -1,6 +1,7 @@
 import type { SiteData, SiteEntry } from "../data/loaders";
 import { $, esc, LOGO_SVG } from "./dom";
 import { dissolve } from "./dissolve";
+import { prefetchSite } from "../data/prefetch";
 
 /**
  * Mission briefing: the site's story, a regional orbital map with the rover's real traverse and the
@@ -78,6 +79,11 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
       </section>
     </div>`;
   host.hidden = false;
+  // pointing at another site warms the cache with its data, so the switch is quick
+  host.querySelectorAll<HTMLAnchorElement>(".brief-sites a").forEach((a) => {
+    const id = new URLSearchParams(a.search).get("site");
+    if (id && id !== site.id) for (const ev of ["pointerenter", "focus", "touchstart"]) a.addEventListener(ev, () => prefetchSite(id), { once: true, passive: true });
+  });
   // into the planner: the headline becomes the site name in the top bar, the logo flies there too
   const close = () => void dissolve(() => {
     host.hidden = true;

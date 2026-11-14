@@ -42,8 +42,10 @@ function offerLiteIfSlow(): void {
   }, 12000);
 }
 
+let arrival: (() => void) | null = null;
+
 async function boot(): Promise<void> {
-  resumeDissolve(); // arrived from another site: pull the dust curtain away
+  arrival = resumeDissolve(); // switched from another site: the curtain stays closed until this one is ready
   if (!("DecompressionStream" in window)) {
     throw new Error("this browser cannot unpack CAIRN's compressed map data. Use Chrome or Edge 80+, Firefox 113+ or Safari 16.4+.");
   }
@@ -131,9 +133,12 @@ async function boot(): Promise<void> {
   // a shared plan link opens straight on the plan; ?demo=1 plays the guided demo (for a booth screen or recording)
   const sharedPlan = /(^#|&)(stops|add)=/.test(location.hash);
   const briefing = query.get("demo") !== "1" && query.get("skip") !== "1" && !sharedPlan;
-  // the loading screen fades onto the briefing (or straight onto the planner)
   if (briefing) showBriefing(site, () => {}, sites);
-  hideAnimated($("#loading"), 350);
+  if (arrival) {
+    // came through the dust sweep: no loading screen, the curtain opens straight onto the site
+    $("#loading").hidden = true;
+    arrival();
+  } else hideAnimated($("#loading"), 350); // first visit: the loading screen fades out
   if (query.get("demo") === "1") void app.startDemo();
   markSiteLinks();
 
@@ -183,6 +188,7 @@ window.addEventListener("wheel", (ev) => ev.ctrlKey && ev.preventDefault(), { pa
 for (const type of ["gesturestart", "gesturechange"]) window.addEventListener(type, (ev) => ev.preventDefault());
 
 boot().catch((err: unknown) => {
+  arrival?.(); // show the error, not the curtain
   console.error(err);
   const box = $("#loading");
   box.hidden = false;

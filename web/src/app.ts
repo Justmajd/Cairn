@@ -18,6 +18,7 @@ import { DoseChartHandle, ProfileHandle, renderDoseChart, renderProfile } from "
 import { $, esc, fmtClock, fmtDist, fmtDose, fmtDur, fmtRate, setText } from "./ui/dom";
 import { ic } from "./ui/icons";
 import { hideAnimated, showAnimated } from "./ui/motion";
+import { prefetchSite } from "./data/prefetch";
 import { openModal, showAssumptions, showSources, stopCardHtml } from "./ui/modals";
 import { openPanorama } from "./ui/panorama";
 import { DemoRunner, DemoStep } from "./ui/demo";
@@ -282,11 +283,13 @@ export class App {
     window.addEventListener("cairn:demo", () => void this.startDemo());
     const menu = $("#site-menu");
     menu.innerHTML = this.sites
-      .map((s) => `<a role="menuitem" href="?site=${s.id}" class="${s.id === this.site.id ? "on" : ""}"><b>${esc(s.name)}</b><span>${esc(s.place)}${s.rover ? ` · ${esc(s.rover)}` : ""}</span><em>${esc(s.tagline)}</em></a>`)
+      .map((s) => `<a role="menuitem" href="?site=${s.id}&skip=1" class="${s.id === this.site.id ? "on" : ""}"><b>${esc(s.name)}</b><span>${esc(s.place)}${s.rover ? ` · ${esc(s.rover)}` : ""}</span><em>${esc(s.tagline)}</em></a>`)
       .join("");
     $("#site-switch").addEventListener("click", (ev) => {
       ev.stopPropagation();
       menu.hidden = !menu.hidden;
+      // the user may switch: warm the cache with the other sites' data so the switch is quick
+      if (!menu.hidden) for (const s of this.sites) if (s.id !== this.site.id) prefetchSite(s.id);
     });
     document.addEventListener("click", () => {
       menu.hidden = true;

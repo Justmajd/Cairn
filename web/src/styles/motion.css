@@ -1,5 +1,5 @@
 /* ---------- motion: space-style transitions (lightweight) ----------
-   Only transform, opacity and (for the visor iris) clip-path are animated, for under a second, on a few
+   Only transform and opacity are animated, for under a second, on a few
    layers the browser composites on the GPU.  The starfield is two tiny SVG tiles drifting slowly.
    Everything stops with "reduce motion" (see main.css). */
 :root {
@@ -20,8 +20,20 @@
 @keyframes stars-drift { to { transform: translate3d(-256px, -256px, 0); } }
 @keyframes twinkle { 0%, 100% { opacity: 0.6; } 50% { opacity: 0.4; } }
 
-/* ---------- page transitions: the dust sweep (ui/dissolve.ts draws it on this canvas) ---------- */
-.dust-sweep { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 200; pointer-events: auto; }
+/* ---------- page transitions: the dust sweep (ui/dissolve.ts) ----------
+   Two layers, transform + opacity only: the compositor animates them even while the page is busy. */
+.sweep { position: fixed; inset: 0; z-index: 200; overflow: hidden; pointer-events: auto; contain: strict; }
+.sweep-curtain { position: absolute; top: 0; bottom: 0; left: 0; width: calc(100% + 90px); will-change: transform;
+  background: linear-gradient(to right, #0f0d0c calc(100% - 90px), rgba(15, 13, 12, 0)); }
+.sweep-dust { position: absolute; inset: 0; background: var(--dust); transform-origin: 0 50%; will-change: transform, opacity; }
+.sweep-in .sweep-curtain { animation: sweep-curtain-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.sweep-in .sweep-dust { animation: sweep-dust-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.sweep-out .sweep-curtain { animation: sweep-curtain-out 0.75s cubic-bezier(0.7, 0, 0.84, 0) both; }
+.sweep-out .sweep-dust { animation: sweep-dust-out 0.75s cubic-bezier(0.7, 0, 0.84, 0) both; }
+@keyframes sweep-curtain-in { from { transform: translateX(-100%); } }
+@keyframes sweep-dust-in { from { transform: scaleX(0); } }              /* the dust rides in with the edge */
+@keyframes sweep-curtain-out { to { transform: translateX(100%); } }
+@keyframes sweep-dust-out { to { transform: translateX(55%) scaleX(1.8); opacity: 0; } } /* streams off */
 /* loading screen: a quick fade onto the briefing or the planner */
 #loading.motion-out { animation: fade-out 0.35s ease-in forwards; }
 
@@ -33,11 +45,11 @@
 @keyframes pop-in { from { opacity: 0; transform: translateY(10px) scale(0.97); } }
 @keyframes pop-out { to { opacity: 0; transform: translateY(6px) scale(0.98); } }
 
-/* 360-degree viewer: opens and closes like a visor iris */
-#pano.motion-in { animation: iris-open 0.55s var(--ease-arrive) both; }
-#pano.motion-out { animation: iris-close 0.32s ease-in forwards; }
-@keyframes iris-open { from { clip-path: circle(0% at 50% 50%); } to { clip-path: circle(75% at 50% 50%); } }
-@keyframes iris-close { from { clip-path: circle(75% at 50% 50%); } to { clip-path: circle(0% at 50% 50%); } }
+/* 360-degree viewer: the visor opens onto the view (scale + fade: compositor only) */
+#pano.motion-in { animation: visor-open 0.45s var(--ease-arrive) both; }
+#pano.motion-out { animation: visor-close 0.25s ease-in forwards; }
+@keyframes visor-open { from { opacity: 0; transform: scale(1.08); } }
+@keyframes visor-close { to { opacity: 0; transform: scale(0.96); } }
 
 /* stop card: slides in from the plan */
 #card.motion-in { animation: slide-in 0.24s var(--ease-arrive) both; }

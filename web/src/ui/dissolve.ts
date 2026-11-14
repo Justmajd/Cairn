@@ -1,166 +1,98 @@
 /**
- * "Dust sweep" page transition: a dark curtain with a soft edge sweeps across the screen carrying Martian
- * dust and starlight with it, holds while the next screen gets ready, then pulls away to the right as the
- * dust streams off and fades.  One 2D canvas, ~1.4 s, a few thousand small rectangles per frame drawn in one
- * pass per colour; skipped entirely with "reduce motion".
+ * "Dust sweep" page transition (after bracken.sh's Overpass transition): a dark curtain with a soft edge
+ * sweeps across carrying Martian dust and starlight, holds while the next screen gets ready, then pulls
+ * away to the right as the dust streams off and fades.
  *
- * Across a page load (switching sites) the curtain is closed on the old page, a flag goes into
- * sessionStorage, and the new page opens it again as soon as it starts (resumeDissolve()).
+ * Built from two layers animated with CSS transforms and opacity only (styles/motion.css), so the GPU
+ * compositor runs it on its own thread: it stays smooth even while the page is busy loading a site.
+ * Phases are sequenced with timers (not animation frames), so it always ends, even in a background tab.
+ * Nothing plays with "reduce motion".
+ *
+ * Switching sites: the old page closes the curtain and leaves a flag in sessionStorage; an inline script
+ * in index.html shows the closed curtain on the new page before anything else, and resumeDissolve()
+ * keeps it closed until the site is ready, so no loading screen is seen.
  */
-const BG = "#0f0d0c";
-const EDGE = 90; // px of soft edge on the curtain
-const IN_S = 0.6;
-const OUT_S = 0.75;
+const IN_MS = 600;
+const OUT_MS = 750;
+const MAX_HOLD_MS = 12000;
 const FLAG = "cairn:dissolve";
-// Mars dust, dust highlights, starlight, a little blue-grey, a trace of CAIRN's accent
-const PALETTE: [string, number][] = [["#e8a15c", 0.32], ["#f0b878", 0.22], ["#dddddd", 0.3], ["#9fb4c6", 0.13], ["#46e0cf", 0.03]];
-
-interface Mote { x: number; y: number; size: number; speed: number }
-
-/** Next animation frame; in a background tab (no frames) a timer keeps the sweep going so it always ends. */
-function tick(cb: (now: number) => void): void {
-  let fired = false;
-  const id = requestAnimationFrame((t) => {
-    fired = true;
-    cb(t);
-  });
-  window.setTimeout(() => {
-    if (fired) return;
-    cancelAnimationFrame(id);
-    cb(performance.now());
-  }, 120);
-}
 
 const reduce = (): boolean => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-const easeOut = (t: number) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t));
-const easeIn = (t: number) => (t <= 0 ? 0 : Math.pow(2, 10 * (t - 1)));
+const wait = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
 
-function makeCanvas(): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; w: number; h: number; motes: Mote[][] } | null {
-  const canvas = document.createElement("canvas");
-  canvas.className = "dust-sweep";
-  canvas.setAttribute("aria-hidden", "true");
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  const dpr = Math.min(1.5, window.devicePixelRatio || 1);
-  canvas.width = Math.round(w * dpr);
-  canvas.height = Math.round(h * dpr);
-  ctx.scale(dpr, dpr);
-  document.body.appendChild(canvas);
-  // grouped by colour: one fillStyle change per colour per frame
-  const n = w < 760 ? 700 : 1600;
-  const motes: Mote[][] = PALETTE.map(() => []);
-  for (let i = 0; i < n; i++) {
-    let r = Math.random();
-    let k = 0;
-    while (k < PALETTE.length - 1 && r >= PALETTE[k][1]) r -= PALETTE[k++][1];
-    motes[k].push({ x: Math.random() * w, y: Math.random() * h, size: 1 + Math.random() * 2.2, speed: Math.random() });
-  }
-  return { canvas, ctx, w, h, motes };
+function sweepElement(state: "in" | "hold"): HTMLElement {
+  const el = document.createElement("div");
+  el.className = `sweep sweep-${state}`;
+  el.setAttribute("aria-hidden", "true");
+  el.innerHTML = '<div class="sweep-curtain"></div><div class="sweep-dust"></div>';
+  document.body.appendChild(el);
+  return el;
 }
 
-function drawMotes(ctx: CanvasRenderingContext2D, motes: Mote[][], xOf: (m: Mote) => number, alpha: number): void {
-  ctx.globalAlpha = alpha;
-  motes.forEach((group, k) => {
-    ctx.fillStyle = PALETTE[k][0];
-    for (const m of group) ctx.fillRect(xOf(m), m.y, m.size, m.size);
-  });
-  ctx.globalAlpha = 1;
+async function sweepOut(el: HTMLElement): Promise<void> {
+  if (!el.isConnected) return;
+  el.classList.remove("sweep-in", "sweep-hold");
+  void el.offsetWidth; // restart from the held state
+  el.classList.add("sweep-out");
+  await wait(OUT_MS);
+  el.remove();
 }
 
 /** Curtain in, then `between()` (e.g. hide the old screen; may return a promise to wait for), then out. */
-export function dissolve(between: () => void | Promise<unknown>): Promise<void> {
-  if (reduce()) return Promise.resolve(between()).then(() => undefined);
-  const s = makeCanvas();
-  if (!s) return Promise.resolve(between()).then(() => undefined);
-  return new Promise((resolve) => {
-    sweepIn(s, () => {
-      const ready = Promise.race([Promise.resolve(between()), new Promise((r) => window.setTimeout(r, 1500))]);
-      holdThenOut(s, ready, resolve);
-    });
-  });
+export async function dissolve(between: () => void | Promise<unknown>): Promise<void> {
+  if (reduce()) {
+    await between();
+    return;
+  }
+  const el = sweepElement("in");
+  await wait(IN_MS);
+  el.classList.replace("sweep-in", "sweep-hold");
+  await Promise.race([Promise.resolve(between()), wait(1500)]);
+  await sweepOut(el);
 }
 
-/** Curtain in, then load `url` (the next page finishes the transition: see resumeDissolve). */
+/** Curtain in, then load `url`; the next page keeps it closed until it is ready (resumeDissolve). */
 export function dissolveTo(url: string): void {
-  const s = reduce() ? null : makeCanvas();
-  if (!s) {
+  if (reduce()) {
     location.href = url;
     return;
   }
-  sweepIn(s, () => {
+  sweepElement("in");
+  window.setTimeout(() => {
     try {
       sessionStorage.setItem(FLAG, String(Date.now()));
     } catch {
-      // private mode: the new page just appears
+      // private mode: the new page starts with its loading screen
     }
     location.href = url;
-  });
+  }, IN_MS);
 }
 
-/** On a page that was reached through dissolveTo(): start closed, then pull the curtain away. */
-export function resumeDissolve(): void {
+/**
+ * On a page reached through dissolveTo(): keep the curtain closed (no loading screen) and return a
+ * function that pulls it away once the site is ready.  Null on an ordinary page load.
+ */
+export function resumeDissolve(): (() => void) | null {
+  const root = document.documentElement;
   let t = 0;
   try {
     t = Number(sessionStorage.getItem(FLAG) || 0);
     sessionStorage.removeItem(FLAG);
   } catch {
-    return;
+    // no storage
   }
-  if (!t || Date.now() - t > 8000 || reduce()) return;
-  const s = makeCanvas();
-  if (!s) return;
-  holdThenOut(s, new Promise((r) => tick(() => r(undefined))), () => {});
-}
-
-type Sweep = NonNullable<ReturnType<typeof makeCanvas>>;
-
-function sweepIn({ ctx, w, h, motes }: Sweep, done: () => void): void {
-  const t0 = performance.now();
-  const frame = (now: number) => {
-    const t = (now - t0) / 1000;
-    const edge = easeOut(Math.min(1, t / IN_S)) * (w + EDGE);
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = BG;
-    ctx.fillRect(0, 0, Math.max(0, edge - EDGE), h);
-    const g = ctx.createLinearGradient(edge - EDGE, 0, edge, 0);
-    g.addColorStop(0, BG);
-    g.addColorStop(1, "rgba(15, 13, 12, 0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(edge - EDGE, 0, EDGE, h);
-    drawMotes(ctx, motes, (m) => (m.x / w) * edge, 1); // the dust rides in with the curtain
-    if (t >= IN_S) return done();
-    tick(frame);
+  if (!t || Date.now() - t > 10000 || reduce()) {
+    root.classList.remove("sweep-boot");
+    return null;
+  }
+  const el = sweepElement("hold");
+  root.classList.remove("sweep-boot"); // the real curtain has taken over from the inline one
+  let opened = false;
+  const open = () => {
+    if (opened) return;
+    opened = true;
+    void sweepOut(el);
   };
-  tick(frame);
-}
-
-function holdThenOut(s: Sweep, ready: Promise<unknown>, done: () => void): void {
-  const { canvas, ctx, w, h, motes } = s;
-  let phase: "hold" | "out" = "hold";
-  let t0 = performance.now();
-  void ready.then(() => {
-    phase = "out";
-    t0 = performance.now();
-  });
-  const frame = (now: number) => {
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = BG;
-    if (phase === "hold") {
-      ctx.fillRect(0, 0, w, h);
-      drawMotes(ctx, motes, (m) => m.x, 1);
-    } else {
-      const t = (now - t0) / 1000;
-      const e = easeIn(Math.min(1, t / OUT_S));
-      ctx.fillRect(e * (w + EDGE), 0, w, h); // the curtain pulls away to the right
-      drawMotes(ctx, motes, (m) => m.x + e * w * (0.5 + m.speed), 1 - e); // the dust streams off
-      if (t >= OUT_S) {
-        canvas.remove();
-        return done();
-      }
-    }
-    tick(frame);
-  };
-  tick(frame);
+  window.setTimeout(open, MAX_HOLD_MS); // never leave the page covered (e.g. if loading failed)
+  return open;
 }
