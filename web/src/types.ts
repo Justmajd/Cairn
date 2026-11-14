@@ -17,8 +17,8 @@ export interface SiteMeta {
   texture: { file: string; px: number; mPerPx: number; hi?: { file: string; px: number; mPerPx: number } };
   relief?: { file: string; range: number };
   shielding?: { file: string; exponent: number; azimuths: number; radiusM: number };
-  eva?: { sol: number; utc: string; note: string; startLmst: number };
-  rover?: { name: string; mission: string };
+  eva?: { sol?: number; utc: string; note: string; startLmst: number; label?: string }; // label: a planning date where no rover counts sols
+  rover?: { name: string; mission: string } | null; // null at a candidate landing site no rover has visited
   story?: { headline: string; paragraphs: string[] };
   minerals?: { source: string; product: string; mPerPx: number; coveragePct?: number; bands: { key: string; name: string; parameter: string; color: [number, number, number] }[] };
   centerLonLat?: { lon: number; lat: number };
@@ -138,8 +138,8 @@ export interface ContextData {
   widthKm: number;
   heightKm: number;
   aoi: { uv0: [number, number]; uv1: [number, number] };
-  traverse: { source: string; points: [number, number, number][]; totalKm: number; lastSol: number };
-  places: { id: string; name: string; sol: number; uv: [number, number]; note: string; lon: number; lat: number }[];
+  traverse: { source: string; points: [number, number, number][]; totalKm: number; lastSol: number } | null; // null: no rover here
+  places: { id: string; name: string; sol?: number; uv: [number, number]; note: string; lon: number; lat: number }[];
   facts: { value: string; label: string }[];
   links: { from: string; to: string }[];
   global: { image: string; source: string; siteUv: [number, number]; lon: number; lat: number };

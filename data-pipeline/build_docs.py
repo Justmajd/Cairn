@@ -7,13 +7,26 @@ DATA = os.path.normpath(os.path.join(HERE, "..", "web", "public", "data"))
 OUT = os.path.normpath(os.path.join(HERE, "..", "docs", "data-sources.md"))
 
 
+# literature behind the stop descriptions of sites chosen without a rover
+SITE_REFERENCES = {
+    "deuteronilus": [
+        "Plaut, J. J., et al. (2009), Radar evidence for ice in lobate debris aprons in the mid-northern latitudes of Mars, *Geophys. Res. Lett.* 36, L02203.",
+        "Kress, A. M., and J. W. Head (2008), Ring-mold craters in lineated valley fill and lobate debris aprons on Mars: Evidence for subsurface glacial ice, *Geophys. Res. Lett.* 35, L23206.",
+        "Brown University (Oct 2015), Brown geologists propose Deuteronilus Mensae at NASA's First Landing Site/Exploration Zone Workshop for Human Missions to the Surface of Mars: <https://news.brown.edu/articles/2015/10/mars>",
+        "NASA/JPL (2019), Where should future astronauts land on Mars? Follow the water (Subsurface Water Ice Mapping): <https://www.jpl.nasa.gov/news/where-should-future-astronauts-land-on-mars-follow-the-water/>",
+    ],
+}
+
+
 def site_section(sid):
     d = lambda name: json.load(open(os.path.join(DATA, sid, name)))
     site, prov, pois, rep = d("site.json"), d("provenance.json")["entries"], d("pois.json")["pois"], d("replay.json")
     pano = d("panoramas.json") if os.path.exists(os.path.join(DATA, sid, "panoramas.json")) else None
     b = site["boundsLonLat"]
-    L = [f"## {site['name']}", "",
-         f"Rover: **{site['rover']['name']}** ({site['rover']['mission']}). EVA date: sol {site['eva']['sol']} ({site['eva']['note']}).", "",
+    rover_line = (f"Rover: **{site['rover']['name']}** ({site['rover']['mission']}). EVA date: sol {site['eva']['sol']} ({site['eva']['note']})."
+                  if site.get("rover") else
+                  f"No rover has visited this site. EVA date: {site['eva'].get('label', site['eva']['utc'])} ({site['eva']['note']}).")
+    L = [f"## {site['name']}", "", rover_line, "",
          f"- **Walk area:** {b['south']:.4f}° to {b['north']:.4f}° N, {b['west']:.4f}° to {b['east']:.4f}° E ({site['sizeM'] / 1000:.3f} km square), {site['grid']['n']} × {site['grid']['n']} grid at {site['grid']['cellM']} m",
          f"- **Relief:** {site['stats']['reliefM']:.0f} m; median slope {site['stats']['slopeMedianDeg']}°; {site['stats']['blockedPct']}% steeper than {site['model']['slopeLimitDeg']:.0f}°",
          f"- **Projection:** {site['crs']}", "",
@@ -23,14 +36,20 @@ def site_section(sid):
     notes = [e for e in prov if e.get("note")]
     if notes:
         L += ["", "**Notes**", ""] + [f"- *{e['layer']}:* {e['note']}" for e in notes]
-    L += ["", "### Stops", "", "| Stop | Rover position (RMC) | Sols | Lon °E | Lat °N | Photos | 360° |", "|---|---|---|---|---|---|---|"]
+    L += ["", "### Stops", "", "| Stop | Rover position (RMC) | Sols | Lon °E | Lat °N | Photos | 360° |", "|---|---|---|---|---|---|---|"] if site.get("rover") else ["", "### Stops", "", "| Stop | Lon °E | Lat °N |", "|---|---|---|"]
     for p in pois:
         has = "yes" if pano and p["id"] in pano["panoramas"] else "—"
-        L.append(f"| {p['name']} | {p['rmc']} | {p['sols']} | {p['lon']} | {p['lat']} | {len(p['images'])} | {has} |")
-    L += ["", "### Photos", "", "| Stop | Camera | Sol | Image |", "|---|---|---|---|"]
-    for p in pois:
-        for im in p["images"]:
-            L.append(f"| {p['short']} | {im['cameraName']} | {im['sol']} | [{im['id']}]({im['link']}) |")
+        L.append(f"| {p['name']} | {p['rmc']} | {p['sols']} | {p['lon']} | {p['lat']} | {len(p['images'])} | {has} |" if site.get("rover")
+                 else f"| {p['name']} | {p['lon']} | {p['lat']} |")
+    if any(p["images"] for p in pois):
+        L += ["", "### Photos", "", "| Stop | Camera | Sol | Image |", "|---|---|---|---|"]
+        for p in pois:
+            for im in p["images"]:
+                L.append(f"| {p['short']} | {im['cameraName']} | {im['sol']} | [{im['id']}]({im['link']}) |")
+    for ref in SITE_REFERENCES.get(sid, []):
+        if ref is SITE_REFERENCES[sid][0]:
+            L += ["", "### Science references for this site", ""]
+        L.append(f"- {ref}")
     if pano:
         L += ["", "### 360° panoramas", "", pano["source"] + ".", "", "| Stop | Frames | Sols | Imaged | Horizon |", "|---|---|---|---|---|"]
         for k, v in pano["panoramas"].items():
@@ -46,13 +65,13 @@ def main():
          "provenance records that feed the *Data sources* panel in the app.", ""]
     for s in sites:
         L += site_section(s["id"]) + [""]
-    L += ["## The 20 May 2024 storm replay (both sites)", "",
+    L += ["## The 20 May 2024 storm replay (all sites)", "",
           f"- **Eruption:** DONKI `{rep['donki']['cme']['activityID']}` — {rep['donki']['cme']['type']}-type CME, {rep['donki']['cme']['speedKmS']:.0f} km/s. <{rep['donki']['cme']['link']}>",
           f"- **Notification:** `{rep['donki']['alert']['messageID']}`, {rep['donki']['alert']['delayAfterCmeStartH']:.1f} h after the eruption. <{rep['donki']['alert']['url']}>",
           f"- **Measured:** {len(rep['rad']['measured'])} Curiosity RAD dose-rate observations, 18–24 May 2024 ({rep['rad']['source']}). Background {rep['rad']['baselineUGyH']} µGy/h.",
           f"- **Reported by NASA:** {rep['event']['nasaStatement']}",
           f"- **Model (not a measurement):** {rep['model']['description']} Peak {rep['model']['peakUGyH']:.0f} µGy/h.",
-          "", "## Reproducing the data", "", "```bash", "cd data-pipeline", "make setup && make fetch && make build   # Jezero", "make gale                                 # Gale (after downloading its HiRISE files)", "python build_docs.py", "```", ""]
+          "", "## Reproducing the data", "", "```bash", "cd data-pipeline", "make setup && make fetch && make build   # Jezero", "make gale                                 # Gale (after downloading its HiRISE files)", "make deuteronilus                         # Deuteronilus Mensae (likewise)", "python build_docs.py", "```", ""]
     open(OUT, "w").write("\n".join(L))
     print("wrote", OUT, len(L), "lines")
 

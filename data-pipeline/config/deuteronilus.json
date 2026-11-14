@@ -1,0 +1,80 @@
+{
+ "id": "deuteronilus",
+ "name": "Deuteronilus Mensae — buried glacier",
+ "mars_radius_m": 3387887.658234,
+ "proj": {
+  "lon0": 18.51,
+  "lat_ts": 40.0
+ },
+ "raw": "raw/deuteronilus",
+ "aoi": {
+  "x0": -2600,
+  "y0": 2492000,
+  "size_m": 2048
+ },
+ "cell_m": 2,
+ "texture_px": 4096,
+ "sources": {
+  "hirise_dtm": "DTEEC_033653_2225_033363_2225_A01.IMG",
+  "hirise_ortho": "ESP_033653_2225_RED_A_01_ORTHO.JP2",
+  "hirise_ortho_1m": "ESP_033653_2225_RED_C_01_ORTHO.JP2",
+  "pds_dir": "https://hirise-pds.lpl.arizona.edu/PDS/DTM/ESP/ORB_033600_033699/ESP_033653_2225_ESP_033363_2225/"
+ },
+ "region": {
+  "dtm": "DTEEC_033653_2225_033363_2225_A01.IMG",
+  "ortho": "ESP_033653_2225_RED_C_01_ORTHO.JP2",
+  "margin_cells": 85,
+  "source": "The Deuteronilus HiRISE DTM (DTEEC_033653_2225_033363_2225) resampled to 20 m, and orthoimage ESP_033653_2225_RED_C (1 m/px)"
+ },
+ "layers": {
+  "themis": false,
+  "geology": false,
+  "sand": false
+ },
+ "rover": null,
+ "eva": {
+  "utc": "2035-01-01T12:00:00Z",
+  "label": "1 Jan 2035, northern summer (Ls 121)",
+  "note": "A planning date in northern summer, when the Sun stands highest at 42°N",
+  "startLmst": 10.0
+ },
+ "context": {
+  "ortho": "ESP_033653_2225_RED_C_01_ORTHO.JP2",
+  "halfKm": 2.6,
+  "source": "HiRISE orthoimage ESP_033653_2225 (1 m/px), the image under the Deuteronilus Mensae DTM",
+  "places": [
+   {
+    "id": "crater",
+    "name": "Fresh 700 m crater",
+    "note": "A young impact into the plain; its bright rim is thrown-out subsurface material.",
+    "lon": 18.46518,
+    "lat": 42.16977
+   },
+   {
+    "id": "apron",
+    "name": "Debris apron · buried glacier",
+    "note": "The apron rises south toward the mesa it flowed from.",
+    "lon": 18.47688,
+    "lat": 42.12259
+   }
+  ],
+  "facts": [
+   {
+    "value": "66 m",
+    "label": "the apron's rise across the walk area: ice under a cover of rock, flowing onto the plain"
+   },
+   {
+    "value": "42° N",
+    "label": "the mid-latitudes, where NASA's ice mapping finds water ice close to the surface"
+   }
+  ]
+ },
+ "story": {
+  "headline": "The glacier under the rubble. The water the first crews will need.",
+  "paragraphs": [
+   "In Deuteronilus Mensae, on the edge between Mars' old southern highlands and the northern plains, flat-topped mesas stand above smooth aprons of rock debris. Radar on NASA's Mars Reconnaissance Orbiter showed what the aprons are made of: <b>glacier ice</b> buried under a cover of rock.",
+   "In 2015 Brown University geologists proposed this region at NASA's first workshop on <b>landing sites for human explorers</b>: ice for water, oxygen and rocket fuel, ancient crust in the mesa walls, and a record of recent climate. No rover has been here.",
+   "<b>Your mission:</b> park the pressurised rover on the plain, walk onto the debris apron to where the ice sits closest to the surface, and get back. CAIRN finds the safest route on HiRISE terrain; radiation is replayed from Curiosity's record of the May 2024 storm."
+  ]
+ }
+}

@@ -23,6 +23,15 @@ export function openModal(title: string, bodyHtml: string, wide = true): void {
   host.addEventListener("click", (ev) => ev.target === host && close(), { once: true });
 }
 
+/** Great-circle distance from Curiosity's storm position in Gale crater (4.73°S, 137.39°E) to the walk area. */
+function galeDistanceKm(site: SiteData): number {
+  const c = site.meta.centerLonLat ?? { lon: 0, lat: 0 };
+  const r = Math.PI / 180;
+  const [la1, lo1, la2, lo2] = [-4.73 * r, 137.39 * r, c.lat * r, c.lon * r];
+  const cos = Math.sin(la1) * Math.sin(la2) + Math.cos(la1) * Math.cos(la2) * Math.cos(lo2 - lo1);
+  return Math.round((Math.acos(Math.min(1, Math.max(-1, cos))) * 3389.5) / 100) * 100;
+}
+
 /** Provenance table: where every layer and reading comes from. */
 export function showSources(site: SiteData, focusId?: string): void {
   const rows = site.provenance
@@ -64,7 +73,7 @@ export function showAssumptions(site: SiteData, p: EvaParams): void {
      </ul>
      <h3>Radiation and the storm replay</h3>
      <ul>
-       <li><b>Measured:</b> Curiosity RAD dose rates from the PDS archive. Background before the storm: ${r.rad.baselineUGyH} µGy/h. ${site.id === "gale" ? "Curiosity measured them about 2.3 km from this walk area." : "Curiosity is in Gale crater, about 3,700 km from Jezero."}</li>
+       <li><b>Measured:</b> Curiosity RAD dose rates from the PDS archive. Background before the storm: ${r.rad.baselineUGyH} µGy/h. ${site.id === "gale" ? "Curiosity measured them about 2.3 km from this walk area." : `Curiosity is in Gale crater, about ${galeDistanceKm(site).toLocaleString()} km from this walk area.`}</li>
        <li><b>Gap:</b> the archive holds 2–4 hours of dosimetry per sol, so the first ~13 hours of the 20 May 2024 storm are not recorded there.</li>
        <li><b>Model:</b> ${esc(r.model.description)} Modelled peak: ${Math.round(r.model.peakUGyH).toLocaleString()} µGy/h. Assumed onset at Mars: ${esc(r.event.assumedOnsetUtc.replace("T", " ").replace(":00Z", " UTC"))}.</li>
        <li><b>Alert:</b> CAIRN raises the alarm when the outdoor dose rate exceeds ${ALERT_FACTOR}× background. The real DONKI notification (${esc(r.donki.alert.messageID)}) was issued ${r.donki.alert.delayAfterCmeStartH.toFixed(1)} hours after the eruption and did not list Mars — a crew needs on-site detection.</li>
@@ -79,7 +88,7 @@ export function showAssumptions(site: SiteData, p: EvaParams): void {
      </ul>
      <h3>Sun, shadows and terrain shielding</h3>
      <ul>
-       <li><b>Sun:</b> Mars24 algorithm (Allison & McEwen 2000, NASA GISS) for sol ${site.meta.eva?.sol ?? "—"}. Checked against rover clocks: local solar time within a minute.</li>
+       <li><b>Sun:</b> Mars24 algorithm (Allison & McEwen 2000, NASA GISS) for ${site.meta.eva?.sol !== undefined ? `sol ${site.meta.eva.sol}` : esc(site.meta.eva?.label ?? "the planning date")}. Checked against rover clocks: local solar time within a minute.</li>
        <li><b>Shadows:</b> cast from the real elevation grids (walk area and surroundings) by marching each pixel toward the Sun. A stop or the walker counts as <i>in shade</i> when the terrain hides the Sun from a point 1.2 m above the ground (chest height, assumption).</li>
        <li><b>Low sun:</b> below 8° of elevation long shadows hide rocks and holes, so the plan warns and the EVA alerts (threshold is an assumption). The dust-storm season is taken as solar longitude 180–360°.</li>
        <li><b>Rover parking:</b> the rover may be parked on ground of up to 10° slope (assumption); its drive there is not modelled. Moving it recomputes the way home from every point and its radio shadow.</li>
@@ -151,5 +160,5 @@ export function stopCardHtml(poi: Poi, base: string, unitName: string | null, ar
     <p>${esc(poi.description)}</p>
     ${poi.science ? `<p class="sci"><b>Science</b>${esc(poi.science)}</p>` : ""}
     ${poi.whyHumans ? `<p class="why"><b>Why send a human</b>${esc(poi.whyHumans)}</p>` : ""}
-    <p class="meta">${poi.rmc ? `${esc(rover)} stood here on sols ${esc(poi.sols)} (rover position ${esc(poi.rmc)}).` : "Custom stop added on the map."}${unitName ? ` USGS map unit: ${esc(unitName)}.` : ""}</p>`;
+    <p class="meta">${poi.rmc ? `${esc(rover)} stood here on sols ${esc(poi.sols)} (rover position ${esc(poi.rmc)}).` : poi.id.startsWith("custom-") ? "Custom stop added on the map." : "No rover has been here: the stop is chosen on the HiRISE terrain and imagery."}${unitName ? ` USGS map unit: ${esc(unitName)}.` : ""}</p>`;
 }

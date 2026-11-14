@@ -11,10 +11,10 @@ import type { MeasuredPath, Poi, SiteMeta } from "../types";
 import { measurePath, TerrainGrid } from "./grid";
 import { undelta16, undelta8 } from "./pack";
 
-/** Integration test against the real site data produced by the pipeline (both sites). */
+/** Integration test against the real site data produced by the pipeline (every site). */
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../public/data");
 
-describe.each(["jezero", "gale"])("%s site data", (siteId) => {
+describe.each(["jezero", "gale", "deuteronilus"])("%s site data", (siteId) => {
 const DIR = resolve(ROOT, siteId);
 const json = <T,>(name: string) => JSON.parse(readFileSync(resolve(DIR, name), "utf8")) as T;
 /** A grid as the app sees it: raw, or packed by the pipeline (see data/pack.ts). */
@@ -77,7 +77,7 @@ describe("checks", () => {
     for (const p of Object.values(pois)) {
       expect(grid.inside(p.x, p.y)).toBe(true);
       expect(grid.isBlocked(grid.nodeAt(p.x, p.y))).toBe(false);
-      expect(p.images.length).toBeGreaterThan(0);
+      if (json<SiteMeta>("site.json").rover) expect(p.images.length).toBeGreaterThan(0); // rover sites have photos
     }
   });
 

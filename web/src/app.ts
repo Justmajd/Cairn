@@ -166,7 +166,7 @@ export class App {
   ) {
     this.field = field;
     this.rad = new RadiationModel(site.replay);
-    this.roverName = site.meta.rover?.name ?? "Perseverance";
+    this.roverName = site.meta.rover?.name ?? "";
     this.selected = site.pois.filter((p) => p.kind === "objective").map((p) => p.id);
     this.startLmst = site.meta.eva?.startLmst ?? 10;
     this.solar = solarGeometry(Date.parse(site.meta.eva?.utc ?? "2024-07-21T02:10:26Z"));
@@ -281,7 +281,7 @@ export class App {
     window.addEventListener("cairn:demo", () => void this.startDemo());
     const menu = $("#site-menu");
     menu.innerHTML = this.sites
-      .map((s) => `<a role="menuitem" href="?site=${s.id}" class="${s.id === this.site.id ? "on" : ""}"><b>${esc(s.name)}</b><span>${esc(s.place)} · ${esc(s.rover)}</span><em>${esc(s.tagline)}</em></a>`)
+      .map((s) => `<a role="menuitem" href="?site=${s.id}" class="${s.id === this.site.id ? "on" : ""}"><b>${esc(s.name)}</b><span>${esc(s.place)}${s.rover ? ` · ${esc(s.rover)}` : ""}</span><em>${esc(s.tagline)}</em></a>`)
       .join("");
     $("#site-switch").addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -994,7 +994,8 @@ export class App {
   /** Layers this site has data for. */
   private layers(): Layer[] {
     const g = this.site.meta.grids;
-    return LAYERS.filter((l) => (l.id !== "thermal" || g.thermal) && (l.id !== "geology" || g.geology) && (l.id !== "minerals" || g.minerals) && (l.id !== "shield" || this.site.grid.shield));
+    const sand = (this.site.meta.stats?.sandPct ?? 1) > 0;
+    return LAYERS.filter((l) => (l.id !== "thermal" || g.thermal) && (l.id !== "geology" || g.geology) && (l.id !== "minerals" || g.minerals) && (l.id !== "shield" || this.site.grid.shield) && (l.id !== "sand" || sand));
   }
 
   // ================================================================ left panel
@@ -1095,7 +1096,7 @@ export class App {
   private renderViewMenu(): void {
     $("#view-menu").innerHTML = `
       <h3>Display</h3>
-      <label class="switch"><span>${esc(this.roverName)}'s real track</span><input class="sr" type="checkbox" id="track" ${this.showTrack ? "checked" : ""}/><i></i></label>
+      ${this.site.rover.traverse.length ? `<label class="switch"><span>${esc(this.roverName)}'s real track</span><input class="sr" type="checkbox" id="track" ${this.showTrack ? "checked" : ""}/><i></i></label>` : ""}
       <label class="switch"><span>Sun shadows</span><input class="sr" type="checkbox" id="shadows" ${this.showShadows ? "checked" : ""}/><i></i></label>
       <label class="slider"><span>Vertical exaggeration <b id="exag-val">×${this.exag.toFixed(2)}</b></span><input type="range" id="exag" min="1" max="2.5" step="0.25" value="${this.exag}"/></label>`;
   }
@@ -1307,14 +1308,21 @@ export class App {
           <p class="note">DONKI ${esc(r.donki.cme.activityID)}: ${esc(r.donki.cme.type)}-type CME, ${Math.round(r.donki.cme.speedKmS)} km/s. The public notification came ${r.donki.alert.delayAfterCmeStartH.toFixed(1)} h after the eruption — CAIRN alerts on the first dose-rate rise instead.</p>
         </section>
         <section>
-          <header class="sec-head"><h2>Weather</h2><button class="link" data-act="sources" data-id="meda">${ic.info}<span>${esc((this.site.weather.instrument ?? "MEDA").split(" ").pop()!)}</span></button></header>
+          ${
+            this.site.weather
+              ? `<header class="sec-head"><h2>Weather</h2><button class="link" data-act="sources" data-id="meda">${ic.info}<span>${esc((this.site.weather.instrument ?? "MEDA").split(" ").pop()!)}</span></button></header>`
+              : `<header class="sec-head"><h2>Time and Sun</h2></header>`
+          }
           <dl class="kv">
             <dt>Local time</dt><dd id="lv-lmst"></dd>
           <dt>Sun</dt><dd id="lv-sun"></dd>
-            <dt>Air · ground</dt><dd id="lv-temp"></dd>
-            <dt>Pressure</dt><dd id="lv-pres"></dd>
+            ${this.site.weather ? `<dt>Air · ground</dt><dd id="lv-temp"></dd><dt>Pressure</dt><dd id="lv-pres"></dd>` : ""}
           </dl>
-          <p class="note">${esc(this.site.weather.instrument ?? "Perseverance MEDA")} readings for the same time of day on sol ${this.site.weather.sol}.</p>
+          <p class="note">${
+            this.site.weather
+              ? `${esc(this.site.weather.instrument ?? "Perseverance MEDA")} readings for the same time of day on sol ${this.site.weather.sol}.`
+              : "No lander or rover has measured the weather here."
+          }</p>
         </section>
       </div>`;
     this.doseChart = null;
@@ -1445,7 +1453,7 @@ export class App {
             ? `<div class="key">
                  <span><i style="background:#56b4e9"></i>&lt; 10°</span><span><i style="background:#f0e442"></i>10–18°</span>
                  <span><i style="background:#e69f00"></i>18–25°</span><span><i style="background:${HATCH}"></i>too steep</span>
-                 <span><i class="sand"></i>sand</span>${this.plan && this.plan.radio.lostS > 0 ? `<span><i class="noradio"></i>no radio</span>` : ""}${straight ? `<span><i class="dash"></i>straight line</span>` : ""}
+                 ${(this.site.meta.stats?.sandPct ?? 1) > 0 ? `<span><i class="sand"></i>sand</span>` : ""}${this.plan && this.plan.radio.lostS > 0 ? `<span><i class="noradio"></i>no radio</span>` : ""}${straight ? `<span><i class="dash"></i>straight line</span>` : ""}
                </div>`
             : summary
         }
@@ -1559,7 +1567,7 @@ export class App {
       },
       {
         title: "The real Sun",
-        body: `CAIRN places the Sun for the actual sol (${meta.eva?.sol ?? "—"}) and casts shadows from the real terrain. At dawn, long shadows hide rocks and holes — so the plan leaves later.`,
+        body: `CAIRN places the Sun for ${meta.eva?.sol !== undefined ? `the actual sol (${meta.eva.sol})` : `the planning date (${esc(meta.eva?.label ?? "—")})`} and casts shadows from the real terrain. At dawn, long shadows hide rocks and holes — so the plan leaves later.`,
         run: async (d) => {
           const keep = this.startLmst;
           this.startLmst = 7.6;
@@ -1609,7 +1617,7 @@ export class App {
       },
       {
         title: objective ? `Walk to ${objective.short}` : "Walk the route",
-        body: `The visor shows heading, oxygen, dose and the next stop. At each stop: what ${esc(this.roverName)} actually saw there.`,
+        body: `The visor shows heading, oxygen, dose and the next stop.${this.roverName ? ` At each stop: what ${esc(this.roverName)} actually saw there.` : ""}`,
         run: async (d) => {
           this.storm = true;
           this.demoArrived = null;
@@ -2450,7 +2458,8 @@ export class App {
   private weatherAt(tS: number): { lmst: string; air: number | null; ground: number | null; pressure: number | null } {
     const w = this.site.weather;
     const hours = ((this.lmstAt(tS) % 24) + 24) % 24;
-    const pick = (arr: (number | null)[]) => {
+    const pick = (arr: (number | null)[] | undefined) => {
+      if (!w || !arr) return null;
       const i = Math.floor(hours / w.stepH);
       for (let d = 0; d < arr.length; d++) {
         const v = arr[(i + d) % arr.length] ?? arr[(i - d + arr.length) % arr.length];
@@ -2460,7 +2469,7 @@ export class App {
     };
     const hh = Math.floor(hours);
     const mm = Math.floor((hours - hh) * 60);
-    return { lmst: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`, air: pick(w.airTempK), ground: pick(w.groundTempK), pressure: pick(w.pressurePa) };
+    return { lmst: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`, air: pick(w?.airTempK), ground: pick(w?.groundTempK), pressure: pick(w?.pressurePa) };
   }
 
   private stormUtc(m: Mission): string {
@@ -2510,8 +2519,8 @@ export class App {
     $("#lv-rate").parentElement!.className = m.outdoorRate > this.rad.baseline * 3 ? (m.sheltered ? "warnc" : "bad") : "";
     setText($("#lv-dose"), fmtDose(m.doseUGy));
     setText($("#lv-lmst"), `${w.lmst} LMST`);
-    setText($("#lv-temp"), `${w.air !== null ? Math.round(w.air - 273.15) : "—"} °C / ${w.ground !== null ? Math.round(w.ground - 273.15) : "—"} °C`);
-    setText($("#lv-pres"), w.pressure !== null ? `${Math.round(w.pressure)} Pa` : "—");
+    setText(document.getElementById("lv-temp"), `${w.air !== null ? Math.round(w.air - 273.15) : "—"} °C / ${w.ground !== null ? Math.round(w.ground - 273.15) : "—"} °C`);
+    setText(document.getElementById("lv-pres"), w.pressure !== null ? `${Math.round(w.pressure)} Pa` : "—");
     const sunNow = this.sunAtEva(m.t);
     const pose = m.pose();
     const shaded = sunNow.elevation > 0 && inTerrainShadow(this.site.grid, pose.x, pose.y, sunNow.elevation, sunNow.azimuth);
@@ -2567,8 +2576,8 @@ export class App {
       <div class="hud-side right">
         <div class="hud-item" id="hud-ratebox"><span>Dose rate</span><b><i id="hud-rate">—</i> µGy/h</b></div>
         <div class="hud-item minor"><span>Dose</span><b id="hud-dose">—</b></div>
-        <div class="hud-item minor"><span>Air · ground</span><b id="hud-temp">—</b></div>
-        <div class="hud-item minor"><span>Pressure</span><b id="hud-pres">—</b></div>
+        ${this.site.weather ? `<div class="hud-item minor"><span>Air · ground</span><b id="hud-temp">—</b></div>
+        <div class="hud-item minor"><span>Pressure</span><b id="hud-pres">—</b></div>` : ""}
       </div>
       <div class="hud-bottom">
         <div class="arrow" id="hud-arrow">▲</div>
@@ -2637,8 +2646,8 @@ export class App {
     setText($("#hud-rate"), fmtRate(m.doseRate));
     $("#hud-ratebox").className = `hud-item${m.outdoorRate > this.rad.baseline * 3 ? " bad" : ""}`;
     setText($("#hud-dose"), fmtDose(m.doseUGy));
-    setText($("#hud-temp"), `${w.air !== null ? Math.round(w.air - 273.15) : "—"} · ${w.ground !== null ? Math.round(w.ground - 273.15) : "—"} °C`);
-    setText($("#hud-pres"), w.pressure !== null ? `${Math.round(w.pressure)} Pa` : "—");
+    setText(document.getElementById("hud-temp"), `${w.air !== null ? Math.round(w.air - 273.15) : "—"} · ${w.ground !== null ? Math.round(w.ground - 273.15) : "—"} °C`);
+    setText(document.getElementById("hud-pres"), w.pressure !== null ? `${Math.round(w.pressure)} Pa` : "—");
     setText($("#hud-label"), ph.label);
     setText($("#hud-next"), ph.name);
     setText($("#hud-dist"), n.distM > 0 ? `${fmtDist(n.distM)} · ${fmtDur(n.etaS)}` : n.poi && !m.sheltered ? `${fmtDur(n.etaS)} of science left` : "");

@@ -2,7 +2,7 @@
 
 > **The rocks Perseverance found. The path humans will walk.**
 
-A Marswalk route planner for the first human explorers on Mars, built on official NASA, USGS and JPL data — at two real rover sites: **Jezero Crater** (Perseverance, Cheyava Falls) and **Gale Crater** (Curiosity, the Mount Sharp boxwork).
+A Marswalk route planner for the first human explorers on Mars, built on official NASA, USGS and JPL data — at two real rover sites, **Jezero Crater** (Perseverance, Cheyava Falls) and **Gale Crater** (Curiosity, the Mount Sharp boxwork), and at a region proposed for the first human landing, **Deuteronilus Mensae**, where glaciers lie buried under rock debris.
 
 Built for the **2026 NASA Space Apps Challenge** — *Interplanetary Survival Guide: Martian Map*.
 
@@ -64,7 +64,7 @@ Open the address Vite prints (normally http://localhost:5173).
 | Command | What it does |
 |---|---|
 | `npm run dev` | Development server |
-| `npm test` | 66 unit and integration tests |
+| `npm test` | 71 unit and integration tests |
 | `npm run build` | Type-check and build to `web/dist/` |
 | `npm run preview` | Serve the built app |
 
@@ -129,7 +129,7 @@ Only needed to change the site or the processing. Requires Python 3.11+.
 cd data-pipeline
 make setup     # virtual environment + dependencies
 make fetch     # downloads from USGS, NASA PDS, mars.nasa.gov, DONKI, Mars Trek (several GB of range requests; resumable)
-make build     # writes web/public/data/jezero/  (make gale for Gale; both end with pack_web.py)
+make build     # writes web/public/data/jezero/  (make gale, make deuteronilus for the others; all end with pack_web.py)
 ```
 
 `python progress.py --watch` shows download progress. DONKI uses `DEMO_KEY` unless `NASA_API_KEY` is set.
@@ -153,15 +153,15 @@ make build     # writes web/public/data/jezero/  (make gale for Gale; both end w
 
 ## Sites
 
-| | Jezero Crater | Gale Crater |
-|---|---|---|
-| Rover | Perseverance | Curiosity |
-| Objectives | Cheyava Falls (potential biosignature), Serpentine Rapids | Boxwork ridge (main exposure), Nevado Sajama drill site |
-| Terrain | USGS Mars 2020 TRN HiRISE mosaics + 16 km CTX surroundings | HiRISE DTM DTEEC_019698_1750_019988_1750 + 6.8 km of the same strip |
-| Weather | MEDA, sol 1215 | REMS, sol 4605 |
-| Extra layers | THEMIS, USGS geology, CRISM minerals | — |
-| 360° panoramas | — (the public Navcam frames cover under 85% of the horizon) | All five stops |
-| Storm | Curiosity RAD, 3,700 km away | Curiosity RAD, 2.3 km away |
+| | Jezero Crater | Gale Crater | Deuteronilus Mensae |
+|---|---|---|---|
+| Rover | Perseverance | Curiosity | None — proposed for the first human landing (NASA's 2015 Exploration Zone workshop) |
+| Objectives | Cheyava Falls (potential biosignature), Serpentine Rapids | Boxwork ridge (main exposure), Nevado Sajama drill site | Edge of a debris-covered glacier, brain terrain on the apron |
+| Terrain | USGS Mars 2020 TRN HiRISE mosaics + 16 km CTX surroundings | HiRISE DTM DTEEC_019698_1750_019988_1750 + 6.8 km of the same strip | HiRISE DTM DTEEC_033653_2225_033363_2225 ('Ice-rich lobate debris apron') + the same strip around it |
+| Weather | MEDA, sol 1215 | REMS, sol 4605 | — (no instrument has measured it) |
+| Extra layers | THEMIS, USGS geology, CRISM minerals | — | — |
+| Stop images | Rover photos | Rover photos, 360° panoramas at all five stops | HiRISE close-ups from orbit |
+| Storm | Curiosity RAD, 3,700 km away | Curiosity RAD, 2.3 km away | Curiosity RAD, 6,800 km away (example) |
 
 ## Differences from the plan
 

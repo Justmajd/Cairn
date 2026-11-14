@@ -1,0 +1,24 @@
+{
+ "source": "The Deuteronilus HiRISE DTM (DTEEC_033653_2225_033363_2225) resampled to 20 m, and orthoimage ESP_033653_2225_RED_C (1 m/px)",
+ "n": 271,
+ "cellM": 20.48,
+ "sizeM": 5529.6,
+ "originLocal": {
+  "x": -1740.8000000000002,
+  "y": -1740.7999999998137
+ },
+ "inner": {
+  "from": 85,
+  "to": 185
+ },
+ "height": {
+  "file": "region.u16",
+  "zMin": -3709.0,
+  "zMax": -3511.0
+ },
+ "texture": {
+  "file": "region.webp",
+  "px": 2688,
+  "mPerPx": 2.057
+ }
+}

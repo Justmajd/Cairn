@@ -14,7 +14,7 @@ export interface SiteData {
   geology: { source: string; mapScale: string; units: GeologyUnit[] } | null;
   pois: Poi[];
   rover: RoverData;
-  weather: WeatherData;
+  weather: WeatherData | null; // null where no lander or rover has measured the weather
   replay: ReplayData;
   context: ContextData;
   provenance: ProvenanceEntry[];
@@ -106,7 +106,7 @@ export async function loadSite(
     g.geology ? json<NonNullable<SiteData["geology"]>>("geology.json") : Promise.resolve(null),
     json<{ pois: Poi[] }>("pois.json"),
     json<RoverData>("rover.json"),
-    json<WeatherData>("weather.json"),
+    json<WeatherData>("weather.json").catch(() => null),
     json<ReplayData>("replay.json"),
     json<ContextData>("context.json"),
     json<{ entries: ProvenanceEntry[] }>("provenance.json"),

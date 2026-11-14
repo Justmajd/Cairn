@@ -26,7 +26,7 @@ from rasterio.transform import from_origin
 from rasterio.warp import Resampling, reproject
 from scipy import ndimage as ndi
 
-from common import CELL, CFG, LON0, N, OUT, RAW, SIZE, X0, Y0, eqc_to_lonlat, write_json
+from common import CELL, CFG, LAT_TS, LON0, N, OUT, R_MARS, RAW, SIZE, X0, Y0, eqc_to_lonlat, write_json
 
 # ---- model thresholds (demo parameters; see docs/plan.md §4-5) ----------------------------------
 SLOPE_LIMIT_DEG = 25.0      # steeper than this is impassable for a suited walker
@@ -242,6 +242,9 @@ def main():
         tn, themis_res = None, None
         sand = build_sand_index(tex05, dtm)
     sand = np.where(slope > 18, 0, sand).clip(0, 1)   # bedforms sit on gentle ground; cliffs are not sand
+    if layers.get("sand", True) is False:
+        # e.g. Deuteronilus: brain terrain has ridges at ripple wavelengths but is not loose sand
+        sand = np.zeros_like(sand)
 
     effort = 1.0 + SAND_EFFORT * sand + ROUGH_EFFORT * np.clip(rough / ROUGH_FULL_M, 0, 1)
     risk = 1.0 + SLOPE_RISK_MAX * np.clip((slope - SLOPE_RISK_START_DEG) / (SLOPE_LIMIT_DEG - SLOPE_RISK_START_DEG), 0, 1)
@@ -284,7 +287,7 @@ def write_site_json(grids, z_min, z_max, slope, blocked, sand, themis_res, ortho
     minerals = json.load(open(mp)) if os.path.exists(mp) and "minerals" in grids else None
     write_json("site.json", {
         "id": CFG["id"], "name": CFG["name"],
-        "crs": f"Equirectangular, Mars 2000 sphere (R = 3,396,190 m), lat_ts = 0, lon0 = {LON0}",
+        "crs": f"Equirectangular, Mars sphere (R = {R_MARS:,.0f} m), lat_ts = {LAT_TS:g}, lon0 = {LON0}",
         "originEqc": {"x": X0, "y": Y0},
         "boundsLonLat": {"west": round(lon0, 6), "south": round(lat0, 6), "east": round(lon1, 6), "north": round(lat1, 6)},
         "sizeM": SIZE, "grid": {"n": N, "cellM": CELL},

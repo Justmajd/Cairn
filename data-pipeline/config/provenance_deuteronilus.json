@@ -1,0 +1,106 @@
+{
+ "note": "Every layer and reading in CAIRN, with the mission, instrument, product and provider it came from.",
+ "entries": [
+  {
+   "id": "hirise_dtm",
+   "layer": "Terrain elevation (3D surface, slope, routing grid)",
+   "dataType": "Topographic",
+   "mission": "Mars Reconnaissance Orbiter",
+   "instrument": "HiRISE stereo",
+   "product": "HiRISE DTM DTEEC_033653_2225_033363_2225_A01 (1 m/post), 'Ice-rich lobate debris apron', Deuteronilus Mensae",
+   "provider": "HiRISE team, University of Arizona (NASA PDS)",
+   "url": "https://hirise-pds.lpl.arizona.edu/PDS/DTM/ESP/ORB_033600_033699/ESP_033653_2225_ESP_033363_2225/",
+   "credit": "NASA/JPL-Caltech/University of Arizona",
+   "usedFor": "3D terrain mesh (2 m), per-pixel relief lighting (1 m), slope map, metabolic cost of every step, impassable-ground mask, terrain shielding"
+  },
+  {
+   "id": "hirise_ortho",
+   "layer": "Surface image (ground texture)",
+   "dataType": "Optical",
+   "mission": "Mars Reconnaissance Orbiter",
+   "instrument": "HiRISE",
+   "product": "HiRISE orthoimage ESP_033653_2225_RED_A_01_ORTHO (25 cm/px)",
+   "provider": "HiRISE team, University of Arizona (NASA PDS)",
+   "url": "https://hirise-pds.lpl.arizona.edu/PDS/DTM/ESP/ORB_033600_033699/ESP_033653_2225_ESP_033363_2225/",
+   "credit": "NASA/JPL-Caltech/University of Arizona",
+   "usedFor": "Ground texture at 25 cm, sand-ripple detection",
+   "note": "HiRISE is a single-band (grey) image here; the Mars colour in the 3D view is a display tint."
+  },
+  {
+   "id": "region",
+   "layer": "Surrounding terrain and regional map",
+   "dataType": "Optical + topographic",
+   "mission": "Mars Reconnaissance Orbiter",
+   "instrument": "HiRISE",
+   "product": "The same HiRISE DTM at 20 m and orthoimage ESP_033653_2225_RED_C_01_ORTHO (1 m/px)",
+   "provider": "HiRISE team, University of Arizona (NASA PDS)",
+   "url": "https://hirise-pds.lpl.arizona.edu/PDS/DTM/ESP/ORB_033600_033699/ESP_033653_2225_ESP_033363_2225/",
+   "credit": "NASA/JPL-Caltech/University of Arizona",
+   "usedFor": "Terrain around the walk area in 3D and the regional map in the briefing",
+   "note": "Outside the HiRISE strip the surroundings are filled with the nearest edge values and fade out."
+  },
+  {
+   "id": "shield",
+   "layer": "Terrain shielding (sky view)",
+   "dataType": "Derived (topographic)",
+   "mission": "Mars Reconnaissance Orbiter",
+   "instrument": "HiRISE DTM",
+   "product": "Computed by CAIRN: share of the sky blocked by terrain within 260 m, weighted by a cos² zenith dependence of the surface dose",
+   "provider": "CAIRN team (derived product)",
+   "url": "https://github.com/Justmajd/cairn-demo/blob/main/data-pipeline/build_site.py",
+   "credit": "Derived from NASA/JPL-Caltech/University of Arizona data",
+   "usedFor": "Sky shielding layer, dose along the route, nearest natural cover during the storm",
+   "note": "Model, not a measurement: the zenith exponent is an assumption."
+  },
+  {
+   "id": "stops",
+   "layer": "EVA stops",
+   "dataType": "Derived",
+   "mission": "Mars Reconnaissance Orbiter",
+   "instrument": "HiRISE",
+   "product": "Stops chosen by CAIRN on the HiRISE terrain and imagery (config/stops_deuteronilus.json)",
+   "provider": "CAIRN",
+   "url": "https://hirise-pds.lpl.arizona.edu/PDS/DTM/ESP/ORB_033600_033699/ESP_033653_2225_ESP_033363_2225/",
+   "credit": "NASA/JPL/University of Arizona",
+   "usedFor": "Habitat position and science stops: no rover has visited this site",
+   "note": "Science rationale from the published radar and HiRISE studies of lobate debris aprons; the exact spots are CAIRN's choice."
+  },
+  {
+   "id": "rad",
+   "layer": "Surface radiation dose rate",
+   "dataType": "Radiation",
+   "mission": "Mars Science Laboratory Curiosity",
+   "instrument": "Radiation Assessment Detector (RAD)",
+   "product": "MSL-M-RAD-3-RDR-V1.0, sols 4189–4194 (18–24 May 2024), detector E dose rate",
+   "provider": "NASA Planetary Data System, Planetary Plasma Interactions Node",
+   "url": "https://pds-ppi.igpp.ucla.edu/data/MSL-M-RAD-3-RDR-V1.0/",
+   "credit": "NASA/JPL-Caltech/SwRI",
+   "usedFor": "Background dose rate and the measured points of the storm replay",
+   "note": "Measured by Curiosity in Gale Crater, about 6,800 km from this walk area: no instrument has measured radiation in Deuteronilus Mensae. The archive holds 2–4 hours of dosimetry per sol, so the first ~13 hours of the 20 May 2024 storm are filled by a clearly labelled model scaled to NASA's reported 8,100 micrograys."
+  },
+  {
+   "id": "donki",
+   "layer": "Space-weather alert",
+   "dataType": "Space weather",
+   "mission": "NASA Community Coordinated Modeling Center",
+   "instrument": "DONKI (Space Weather Database Of Notifications, Knowledge, Information)",
+   "product": "CME activity 2024-05-20T05:36:00-CME-001 and notification 20240520-AL-001",
+   "provider": "NASA CCMC / Moon to Mars Space Weather Analysis Office",
+   "url": "https://ccmc.gsfc.nasa.gov/tools/DONKI/",
+   "credit": "NASA CCMC DONKI",
+   "usedFor": "The real eruption record and alert text shown in the storm replay"
+  },
+  {
+   "id": "trek",
+   "layer": "Global Mars map",
+   "dataType": "Optical",
+   "mission": "Viking Orbiters",
+   "instrument": "Viking MDIM 2.1 colour mosaic",
+   "product": "Mars_Viking_MDIM21_ClrMosaic_global_232m, WMTS tiles",
+   "provider": "NASA/JPL Solar System Treks (Mars Trek)",
+   "url": "https://trek.nasa.gov/mars/",
+   "credit": "NASA/JPL-Caltech/USGS",
+   "usedFor": "Global locator in the mission briefing"
+  }
+ ]
+}

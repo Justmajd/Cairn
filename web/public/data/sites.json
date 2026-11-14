@@ -13,6 +13,13 @@
    "place": "Mount Sharp boxwork",
    "rover": "Curiosity",
    "tagline": "Groundwater ridges"
+  },
+  {
+   "id": "deuteronilus",
+   "name": "Deuteronilus Mensae",
+   "place": "Buried glacier · proposed human landing region",
+   "rover": "",
+   "tagline": "Water ice for the crew"
   }
  ]
 }

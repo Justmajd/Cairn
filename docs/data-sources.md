@@ -146,7 +146,53 @@ Stitched by CAIRN from Curiosity Navcam raw images using their CAHVOR(E) camera 
 | ridgetop | 19 | 4621–4621 | 61% | 100% |
 | midbox | 19 | 4647–4647 | 61% | 100% |
 
-## The 20 May 2024 storm replay (both sites)
+## Deuteronilus Mensae — buried glacier
+
+No rover has visited this site. EVA date: 1 Jan 2035, northern summer (Ls 121) (A planning date in northern summer, when the Sun stands highest at 42°N).
+
+- **Walk area:** 42.1446° to 42.1792° N, 18.4526° to 18.4978° E (2.048 km square), 1025 × 1025 grid at 2 m
+- **Relief:** 89 m; median slope 5.4°; 1.0% steeper than 25°
+- **Projection:** Equirectangular, Mars sphere (R = 3,387,888 m), lat_ts = 40, lon0 = 18.51
+
+### Datasets (8)
+
+| Layer | Data type | Mission · instrument | Product | Link |
+|---|---|---|---|---|
+| Terrain elevation (3D surface, slope, routing grid) | Topographic | Mars Reconnaissance Orbiter · HiRISE stereo | HiRISE DTM DTEEC_033653_2225_033363_2225_A01 (1 m/post), 'Ice-rich lobate debris apron', Deuteronilus Mensae | [source](https://hirise-pds.lpl.arizona.edu/PDS/DTM/ESP/ORB_033600_033699/ESP_033653_2225_ESP_033363_2225/) |
+| Surface image (ground texture) | Optical | Mars Reconnaissance Orbiter · HiRISE | HiRISE orthoimage ESP_033653_2225_RED_A_01_ORTHO (25 cm/px) | [source](https://hirise-pds.lpl.arizona.edu/PDS/DTM/ESP/ORB_033600_033699/ESP_033653_2225_ESP_033363_2225/) |
+| Surrounding terrain and regional map | Optical + topographic | Mars Reconnaissance Orbiter · HiRISE | The same HiRISE DTM at 20 m and orthoimage ESP_033653_2225_RED_C_01_ORTHO (1 m/px) | [source](https://hirise-pds.lpl.arizona.edu/PDS/DTM/ESP/ORB_033600_033699/ESP_033653_2225_ESP_033363_2225/) |
+| Terrain shielding (sky view) | Derived (topographic) | Mars Reconnaissance Orbiter · HiRISE DTM | Computed by CAIRN: share of the sky blocked by terrain within 260 m, weighted by a cos² zenith dependence of the surface dose | [source](https://github.com/Justmajd/cairn-demo/blob/main/data-pipeline/build_site.py) |
+| EVA stops | Derived | Mars Reconnaissance Orbiter · HiRISE | Stops chosen by CAIRN on the HiRISE terrain and imagery (config/stops_deuteronilus.json) | [source](https://hirise-pds.lpl.arizona.edu/PDS/DTM/ESP/ORB_033600_033699/ESP_033653_2225_ESP_033363_2225/) |
+| Surface radiation dose rate | Radiation | Mars Science Laboratory Curiosity · Radiation Assessment Detector (RAD) | MSL-M-RAD-3-RDR-V1.0, sols 4189–4194 (18–24 May 2024), detector E dose rate | [source](https://pds-ppi.igpp.ucla.edu/data/MSL-M-RAD-3-RDR-V1.0/) |
+| Space-weather alert | Space weather | NASA Community Coordinated Modeling Center · DONKI (Space Weather Database Of Notifications, Knowledge, Information) | CME activity 2024-05-20T05:36:00-CME-001 and notification 20240520-AL-001 | [source](https://ccmc.gsfc.nasa.gov/tools/DONKI/) |
+| Global Mars map | Optical | Viking Orbiters · Viking MDIM 2.1 colour mosaic | Mars_Viking_MDIM21_ClrMosaic_global_232m, WMTS tiles | [source](https://trek.nasa.gov/mars/) |
+
+**Notes**
+
+- *Surface image (ground texture):* HiRISE is a single-band (grey) image here; the Mars colour in the 3D view is a display tint.
+- *Surrounding terrain and regional map:* Outside the HiRISE strip the surroundings are filled with the nearest edge values and fade out.
+- *Terrain shielding (sky view):* Model, not a measurement: the zenith exponent is an assumption.
+- *EVA stops:* Science rationale from the published radar and HiRISE studies of lobate debris aprons; the exact spots are CAIRN's choice.
+- *Surface radiation dose rate:* Measured by Curiosity in Gale Crater, about 6,800 km from this walk area: no instrument has measured radiation in Deuteronilus Mensae. The archive holds 2–4 hours of dosimetry per sol, so the first ~13 hours of the 20 May 2024 storm are filled by a clearly labelled model scaled to NASA's reported 8,100 micrograys.
+
+### Stops
+
+| Stop | Lon °E | Lat °N |
+|---|---|---|
+| Pressurised rover | 18.483375 | 42.170686 |
+| Apron edge · glacier toe | 18.477988 | 42.161655 |
+| Brain terrain on the apron | 18.480196 | 42.152692 |
+| Small ring crater | 18.48417 | 42.157343 |
+| Crater rim · natural trench | 18.471586 | 42.165545 |
+
+### Science references for this site
+
+- Plaut, J. J., et al. (2009), Radar evidence for ice in lobate debris aprons in the mid-northern latitudes of Mars, *Geophys. Res. Lett.* 36, L02203.
+- Kress, A. M., and J. W. Head (2008), Ring-mold craters in lineated valley fill and lobate debris aprons on Mars: Evidence for subsurface glacial ice, *Geophys. Res. Lett.* 35, L23206.
+- Brown University (Oct 2015), Brown geologists propose Deuteronilus Mensae at NASA's First Landing Site/Exploration Zone Workshop for Human Missions to the Surface of Mars: <https://news.brown.edu/articles/2015/10/mars>
+- NASA/JPL (2019), Where should future astronauts land on Mars? Follow the water (Subsurface Water Ice Mapping): <https://www.jpl.nasa.gov/news/where-should-future-astronauts-land-on-mars-follow-the-water/>
+
+## The 20 May 2024 storm replay (all sites)
 
 - **Eruption:** DONKI `2024-05-20T05:36:00-CME-001` — R-type CME, 2678 km/s. <https://ccmc.gsfc.nasa.gov/DONKI/view/CME/31034/-1>
 - **Notification:** `20240520-AL-001`, 10.3 h after the eruption. <https://ccmc.gsfc.nasa.gov/DONKI/view/Alert/31039/1>
@@ -160,5 +206,6 @@ Stitched by CAIRN from Curiosity Navcam raw images using their CAHVOR(E) camera 
 cd data-pipeline
 make setup && make fetch && make build   # Jezero
 make gale                                 # Gale (after downloading its HiRISE files)
+make deuteronilus                         # Deuteronilus Mensae (likewise)
 python build_docs.py
 ```

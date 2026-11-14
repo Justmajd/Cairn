@@ -1,0 +1,67 @@
+{
+ "image": "context.webp",
+ "aspect": 1.0,
+ "source": "HiRISE orthoimage ESP_033653_2225 (1 m/px), the image under the Deuteronilus Mensae DTM",
+ "widthKm": 5.2,
+ "heightKm": 5.2,
+ "aoi": {
+  "uv0": [
+   0.30308,
+   0.30308
+  ],
+  "uv1": [
+   0.69692,
+   0.69692
+  ]
+ },
+ "traverse": null,
+ "places": [
+  {
+   "id": "crater",
+   "name": "Fresh 700 m crater",
+   "note": "A young impact into the plain; its bright rim is thrown-out subsurface material.",
+   "lon": 18.46518,
+   "lat": 42.16977,
+   "uv": [
+    0.41266,
+    0.41042
+   ]
+  },
+  {
+   "id": "apron",
+   "name": "Debris apron · buried glacier",
+   "note": "The apron rises south toward the mesa it flowed from.",
+   "lon": 18.47688,
+   "lat": 42.12259,
+   "uv": [
+    0.51458,
+    0.94691
+   ]
+  }
+ ],
+ "facts": [
+  {
+   "value": "66 m",
+   "label": "the apron's rise across the walk area: ice under a cover of rock, flowing onto the plain"
+  },
+  {
+   "value": "42° N",
+   "label": "the mid-latitudes, where NASA's ice mapping finds water ice close to the surface"
+  },
+  {
+   "value": "2.0 × 2.0 km",
+   "label": "EVA area mapped at 1 m elevation and 25 cm imagery"
+  }
+ ],
+ "links": [],
+ "global": {
+  "image": "global.jpg",
+  "source": "NASA/JPL Mars Trek WMTS — Mars_Viking_MDIM21_ClrMosaic_global_232m",
+  "siteUv": [
+   0.55132,
+   0.26577
+  ],
+  "lon": 18.4752,
+  "lat": 42.1619
+ }
+}

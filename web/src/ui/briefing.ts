@@ -11,7 +11,7 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
   const W = 1000;
   const H = W / c.aspect;
   const px = (uv: [number, number] | number[]) => `${(uv[0] * W).toFixed(1)},${(uv[1] * H).toFixed(1)}`;
-  const line = c.traverse.points.map((p) => px(p)).join(" ");
+  const line = c.traverse?.points.map((p) => px(p)).join(" ") ?? "";
   const [u0, v0] = c.aoi.uv0;
   const [u1, v1] = c.aoi.uv1;
   const place = (id: string) => c.places.find((p) => p.id === id);
@@ -29,12 +29,12 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
     .map((p) => {
       const [x, y] = [p.uv[0] * W, p.uv[1] * H];
       const left = p.uv[0] > 0.55;
-      return `<g class="place ${p.id}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7"/><text x="${(x + (left ? -13 : 13)).toFixed(1)}" y="${(y + 5).toFixed(1)}" text-anchor="${left ? "end" : "start"}">${esc(p.name)}</text><title>${esc(p.note)} (sol ${p.sol})</title></g>`;
+      return `<g class="place ${p.id}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7"/><text x="${(x + (left ? -13 : 13)).toFixed(1)}" y="${(y + 5).toFixed(1)}" text-anchor="${left ? "end" : "start"}">${esc(p.name)}</text><title>${esc(p.note)}${p.sol !== undefined ? ` (sol ${p.sol})` : ""}</title></g>`;
     })
     .join("");
   const switcher = sites.length > 1
     ? `<div class="brief-sites" role="tablist">${sites
-        .map((s) => `<a role="tab" class="${s.id === site.id ? "on" : ""}" href="?site=${s.id}"><b>${esc(s.name)}</b><span>${esc(s.place)} · ${esc(s.rover)}</span></a>`)
+        .map((s) => `<a role="tab" class="${s.id === site.id ? "on" : ""}" href="?site=${s.id}"><b>${esc(s.name)}</b><span>${esc(s.place)}${s.rover ? ` · ${esc(s.rover)}` : ""}</span></a>`)
         .join("")}</div>`
     : "";
 
@@ -56,7 +56,7 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
         <div class="region">
           <img src="${site.base}${c.image}" alt="Regional orbital image around the EVA area" />
           <svg viewBox="0 0 ${W} ${H.toFixed(1)}" preserveAspectRatio="none">
-            <polyline class="trav" points="${line}"/>
+            ${line ? `<polyline class="trav" points="${line}"/>` : ""}
             ${links}
             <rect class="aoi" x="${(u0 * W).toFixed(1)}" y="${(v0 * H).toFixed(1)}" width="${((u1 - u0) * W).toFixed(1)}" height="${((v1 - v0) * H).toFixed(1)}"/>
             <text class="aoi-label" x="${(u0 * W).toFixed(1)}" y="${(v1 * H + 22).toFixed(1)}">EVA area</text>
@@ -68,7 +68,7 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
             <span>${esc(site.meta.name.split(" — ")[0])} · ${latText}</span>
           </div>
         </div>
-        <p class="fine">Regional map: ${esc(c.source)} (${c.widthKm} × ${c.heightKm} km). Green line: ${esc(rover)}'s traverse, ${esc(c.traverse.source)}. Global map: ${esc(c.global.source)}.</p>
+        <p class="fine">Regional map: ${esc(c.source)} (${c.widthKm} × ${c.heightKm} km). ${c.traverse ? `Green line: ${esc(rover)}'s traverse, ${esc(c.traverse.source)}. ` : ""}Global map: ${esc(c.global.source)}.</p>
       </section>
     </div>`;
   host.hidden = false;

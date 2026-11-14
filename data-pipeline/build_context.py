@@ -55,6 +55,8 @@ def main():
     def norm(x, y):   # eqc metres -> [0..1] image coords (u right, v down)
         return [round((x - b.left) / (b.right - b.left), 5), round((b.top - y) / (b.top - b.bottom), 5)]
 
+    if not CFG.get("rover"):
+        return finish_no_rover(norm, b, w, h, ctx)
     way = json.load(open(os.path.join(RAW, "M20_waypoints.json" if SITE == "jezero" else "MSL_waypoints.json")))["features"]
     pts = [(f["properties"], lonlat_to_eqc(f["properties"]["lon"], f["properties"]["lat"])) for f in way]
     line, last = [], None
@@ -92,13 +94,7 @@ def main():
     facts += [{"value": f"{SIZE / 1000:.1f} × {SIZE / 1000:.1f} km", "label": "EVA area mapped at 1 m elevation and 25 cm imagery"},
               {"value": f"{pts[-1][0]['dist_total_m'] / 1000:.2f} km", "label": f"driven by {CFG['rover']['name']} up to sol {pts[-1][0]['sol']} — the trail we follow"}]
 
-    # global mosaic from Mars Trek WMTS tiles (level 2 = 8 x 4 tiles of 256 px, equirectangular)
-    sheet = Image.new("RGB", (8 * 256, 4 * 256))
-    for r in range(4):
-        for c in range(8):
-            sheet.paste(Image.open(os.path.join(SHARED, "trek", f"2_{r}_{c}.jpg")).convert("RGB"), (c * 256, r * 256))
-    sheet.resize((1536, 768), Image.LANCZOS).save(os.path.join(OUT, "global.jpg"), quality=85)
-
+    save_global()
     lon_c, lat_c = eqc_to_lonlat(X0 + SIZE / 2, Y0 + SIZE / 2)
     write_json("context.json", {
         "image": "context.jpg", "aspect": round(w / h, 5),
@@ -114,6 +110,38 @@ def main():
                    "lon": round(lon_c, 4), "lat": round(lat_c, 4)},
     })
     print("context", w, h, "traverse pts", len(line), "places", [p["id"] for p in places])
+
+
+def save_global():
+    """Global mosaic from Mars Trek WMTS tiles (level 2 = 8 x 4 tiles of 256 px, equirectangular)."""
+    sheet = Image.new("RGB", (8 * 256, 4 * 256))
+    for r in range(4):
+        for c in range(8):
+            sheet.paste(Image.open(os.path.join(SHARED, "trek", f"2_{r}_{c}.jpg")).convert("RGB"), (c * 256, r * 256))
+    sheet.resize((1536, 768), Image.LANCZOS).save(os.path.join(OUT, "global.jpg"), quality=85)
+
+
+def finish_no_rover(norm, b, w, h, ctx):
+    """A site no rover has visited: places and facts come from the config, there is no traverse."""
+    places = []
+    for pl in ctx.get("places", []):
+        x, y = lonlat_to_eqc(pl["lon"], pl["lat"])
+        u, v = norm(x, y)
+        if 0 <= u <= 1 and 0 <= v <= 1:
+            places.append({**pl, "uv": [u, v]})
+    facts = ctx.get("facts", []) + [{"value": f"{SIZE / 1000:.1f} × {SIZE / 1000:.1f} km", "label": "EVA area mapped at 1 m elevation and 25 cm imagery"}]
+    save_global()
+    lon_c, lat_c = eqc_to_lonlat(X0 + SIZE / 2, Y0 + SIZE / 2)
+    write_json("context.json", {
+        "image": "context.jpg", "aspect": round(w / h, 5), "source": ctx.get("source", ""),
+        "widthKm": round((b.right - b.left) / 1000, 2), "heightKm": round((b.top - b.bottom) / 1000, 2),
+        "aoi": {"uv0": norm(X0, Y0 + SIZE), "uv1": norm(X0 + SIZE, Y0)},
+        "traverse": None, "places": places, "facts": facts, "links": ctx.get("links", []),
+        "global": {"image": "global.jpg", "source": f"NASA/JPL Mars Trek WMTS — {TREK_LAYER}",
+                   "siteUv": [round((((lon_c + 180) % 360) - 0) / 360, 5), round((90 - lat_c) / 180, 5)],
+                   "lon": round(lon_c, 4), "lat": round(lat_c, 4)},
+    })
+    print("context", w, h, "places", [p["id"] for p in places])
 
 
 if __name__ == "__main__":

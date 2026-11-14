@@ -428,6 +428,7 @@ svg .shelter-band { fill: rgba(90, 212, 138, 0.12); }
 .region .place circle { fill: #fff; stroke: #000; stroke-width: 2; }
 .region .place.cheyava circle { fill: var(--accent); }
 .region .place.threeforks circle { fill: var(--warn); }
+.region .place.apron circle { fill: var(--accent); }
 .region .place text { fill: #fff; font: 500 16px var(--sans); paint-order: stroke; stroke: #000; stroke-width: 4px; }
 .globe { position: absolute; right: 14px; bottom: 14px; width: 30%; border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden; background: #000; }
 .globe img { display: block; width: 100%; }
@@ -518,12 +519,12 @@ table.sources .note { margin-top: 6px; color: #f7cf86; font-size: 12px; }
 #site-menu b { font-weight: 600; }
 #site-menu span { grid-column: 1; color: var(--text-3); font-size: 12px; }
 #site-menu em { grid-row: 1 / 3; grid-column: 2; align-self: center; font: 500 11px var(--sans); font-style: normal; color: var(--brand); }
-.brief-sites { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: -14px 0 28px; }
+.brief-sites { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; margin: -14px 0 28px; }
 .brief-sites a { display: block; padding: 10px 12px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--raise); color: var(--text-2); text-decoration: none; }
 .brief-sites a:hover { border-color: var(--line-2); color: var(--text); }
 .brief-sites a.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
 .brief-sites b { display: block; font-weight: 600; color: var(--text); }
-.brief-sites span { font-size: 12px; }
+.brief-sites span { font-size: 11.5px; line-height: 1.35; display: block; margin-top: 2px; }
 .brief-cta { display: flex; gap: 10px; flex-wrap: wrap; }
 .brief-cta button.big { width: auto; }
 

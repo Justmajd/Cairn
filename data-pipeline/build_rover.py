@@ -1,5 +1,8 @@
 """Build pois.json and rover.json: the EVA stops, Perseverance's real traverse through the AOI,
-and the photographs the rover took at each stop (downloaded from the official raw-image feed)."""
+and the photographs the rover took at each stop (downloaded from the official raw-image feed).
+
+Sites with no rover (a candidate landing site: `"rover": null` in the config) take their stops from
+config/stops_<site>.json as local x / y metres, with no photos and an empty traverse."""
 import json
 import os
 import urllib.request
@@ -12,7 +15,7 @@ from pack_web import read_grid
 CAMERA_NAMES = {"NAVCAM_LEFT": "Navigation Camera (left)", "MCZ_LEFT": "Mastcam-Z (left)",
                 "SHERLOC_WATSON": "SHERLOC WATSON close-up camera", "FRONT_HAZCAM_LEFT_A": "Front Hazard Camera",
                 "MAHLI": "Mars Hand Lens Imager (MAHLI)"}
-if CFG["rover"]["name"] == "Curiosity":
+if (CFG.get("rover") or {}).get("name") == "Curiosity":
     CAMERA_NAMES["MCZ_LEFT"] = "Mastcam (left)"
 WAYPOINTS = "M20_waypoints.json" if SITE == "jezero" else "MSL_waypoints.json"
 STOPS = "stops.json" if SITE == "jezero" else f"stops_{SITE}.json"
@@ -45,7 +48,32 @@ def shrink(path, max_px=1200):
         im.save(path, quality=88)
 
 
+def main_no_rover():
+    """Candidate landing site: stops placed in the config (local metres), no rover photos or track."""
+    cfg = json.load(open(os.path.join(HERE, "config", STOPS)))
+    slope = np.frombuffer(read_grid("slope.u8"), dtype=np.uint8).reshape(N, N)
+    from common import eqc_to_lonlat, X0, Y0
+    pois = []
+    for sid in cfg["order"]:
+        s = cfg["stops"][sid]
+        x, y = s["x"], s["y"]
+        if s["kind"] == "shelter":
+            x, y = flattest_near(slope, x, y)
+        lon, lat = eqc_to_lonlat(X0 + x, Y0 + y)
+        pois.append({"id": sid, "kind": s["kind"], "name": s["name"], "short": s["short"],
+                     "x": round(x, 1), "y": round(y, 1), "rmc": "", "sols": "",
+                     "lon": round(lon, 6), "lat": round(lat, 6),
+                     "description": s["description"], "science": s["science"], "whyHumans": s["whyHumans"],
+                     "dwellMin": s["dwellMin"], "images": []})
+        c, r = local_to_node(x, y)
+        print(f"{sid:11s} x {x:7.1f} y {y:7.1f} slope {slope[r, c]:2d} deg")
+    write_json("pois.json", {"source": cfg.get("source", "Stops chosen by CAIRN on the HiRISE terrain"), "pois": pois})
+    write_json("rover.json", {"source": "No rover has visited this site", "rover": None, "traverse": [], "waypoints": []})
+
+
 def main():
+    if not CFG.get("rover"):
+        return main_no_rover()
     way = json.load(open(os.path.join(RAW, WAYPOINTS)))["features"]
     by_rmc = {f["properties"]["RMC"]: f["properties"] for f in way}
     index = {r["id"]: r for rows in json.load(open(os.path.join(RAW, "images_index.json"))).values() for r in rows}

@@ -1,0 +1,89 @@
+{
+"files": [
+{
+"path": "context.json",
+"bytes": 1358
+},
+{
+"path": "context.webp",
+"bytes": 1326956
+},
+{
+"path": "effort.u8.pk",
+"bytes": 270566
+},
+{
+"path": "global.jpg",
+"bytes": 302052
+},
+{
+"path": "height.u16.pk",
+"bytes": 1244298
+},
+{
+"path": "pack.json",
+"bytes": 732
+},
+{
+"path": "pois.json",
+"bytes": 3764
+},
+{
+"path": "provenance.json",
+"bytes": 5507
+},
+{
+"path": "region.json",
+"bytes": 459
+},
+{
+"path": "region.u16.pk",
+"bytes": 78569
+},
+{
+"path": "region.webp",
+"bytes": 1482908
+},
+{
+"path": "relief.webp",
+"bytes": 548396
+},
+{
+"path": "replay.json",
+"bytes": 28626
+},
+{
+"path": "risk.u8.pk",
+"bytes": 341678
+},
+{
+"path": "rover.json",
+"bytes": 98
+},
+{
+"path": "sand.u8.pk",
+"bytes": 1053
+},
+{
+"path": "shield.u8.pk",
+"bytes": 120700
+},
+{
+"path": "site.json",
+"bytes": 2408
+},
+{
+"path": "slope.u8.pk",
+"bytes": 466405
+},
+{
+"path": "texture.webp",
+"bytes": 2764832
+},
+{
+"path": "texture_8k.webp",
+"bytes": 9487344
+}
+],
+"totalBytes": 18478709
+}

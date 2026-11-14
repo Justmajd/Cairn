@@ -10,7 +10,7 @@ A starting point for the project page of the **Interplanetary Survival Guide: Ma
 
 ## High-level summary
 
-CAIRN plans safe walks (EVAs) for the first astronauts on Mars, on real NASA terrain. Pick the science stops; CAIRN finds the safest walking route over 1 m HiRISE elevation, budgets oxygen with a walk-back margin, checks radiation, daylight and radio contact with the rover, and suggests where to stand up a radio relay or park the rover. During the walk it guides the crew in a visor view, replays the real 20 May 2024 solar storm and lets the crew practise a suit leak or a twisted ankle, finding the quickest safe way home each time. It runs in any browser, works offline, and prints a one-page cue card — at Jezero and Gale craters, where Perseverance and Curiosity show what the crew would see.
+CAIRN plans safe walks (EVAs) for the first astronauts on Mars, on real NASA terrain. Pick the science stops; CAIRN finds the safest walking route over 1 m HiRISE elevation, budgets oxygen with a walk-back margin, checks radiation, daylight and radio contact with the rover, and suggests where to stand up a radio relay or park the rover. During the walk it guides the crew in a visor view, replays the real 20 May 2024 solar storm and lets the crew practise a suit leak or a twisted ankle, finding the quickest safe way home each time. It runs in any browser, works offline, and prints a one-page cue card — at Jezero and Gale craters, where Perseverance and Curiosity show what the crew would see, and at Deuteronilus Mensae, a buried glacier proposed at NASA's 2015 workshop on landing sites for the first humans.
 
 ## Links
 
@@ -38,7 +38,7 @@ The challenge asks for a map that helps people survive on Mars. CAIRN answers th
 
 | Data | Mission · instrument | Used for |
 |---|---|---|
-| HiRISE DTMs (1 m) and orthoimages (25 cm) | Mars Reconnaissance Orbiter · HiRISE | Terrain, slopes, routing grid, surface images, radio line of sight, shade |
+| HiRISE DTMs (1 m) and orthoimages (25 cm) | Mars Reconnaissance Orbiter · HiRISE | Terrain, slopes, routing grid, surface images, radio line of sight, shade (three sites, incl. DTEEC_033653_2225_033363_2225 'Ice-rich lobate debris apron') |
 | CTX mosaics | Mars Reconnaissance Orbiter · Context Camera | Surrounding terrain and regional map (Jezero) |
 | CRISM spectral parameters | Mars Reconnaissance Orbiter · CRISM | Mineral layer (Jezero) |
 | THEMIS night IR | 2001 Mars Odyssey · THEMIS | Thermal layer, loose-sand detection (Jezero) |
