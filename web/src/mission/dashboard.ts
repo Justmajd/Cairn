@@ -58,7 +58,7 @@ export function startMissionControl(site: string): void {
           <button id="mc-replay-exit">Back to live</button></div>
         <div class="mc-replay-track"><div id="mc-replay-marks" aria-hidden="true"></div>
           <label class="vh" for="mc-replay-t">Earth clock during the replay</label><input type="range" id="mc-replay-t" min="0" max="1" step="1" value="0"/></div>
-        <p class="mc-replay-key"><i class="k-alert"></i>Event on Mars <i class="k-earth"></i>Earth finds out <i class="k-msg"></i>Message from Earth</p>
+        <p class="mc-replay-key"><span><i class="k-alert"></i>Event on Mars</span><span><i class="k-earth"></i>Earth finds out</span><span><i class="k-msg"></i>Message from Earth</span></p>
       </div>
       <div class="mc-sim" id="mc-sim" role="status" hidden></div>
       <div class="mc-banner" id="mc-banner" hidden></div>
@@ -276,7 +276,7 @@ export function startMissionControl(site: string): void {
     if (replay || S !== L || !L.eva?.running || document.hidden) return;
     const f = viewFrame();
     $("#mc-now").textContent = `T+${fmtClock(earthNow())}`;
-    $("#mc-shown").textContent = f ? `T+${fmtClock(f.t)}` : "no signal yet";
+    $("#mc-shown").textContent = f ? `T+${fmtClock(f.t)}` : "waiting";
     $("#mc-shown-lmst").textContent = f ? `${f.lmst} LMST on Mars` : "";
     renderTelemetry(f);
     draw();
@@ -298,7 +298,7 @@ export function startMissionControl(site: string): void {
     $("#mc-now").textContent = S.eva ? `T+${fmtClock(earthNow())}` : "no EVA";
     $("#mc-delay").textContent = S.lightTimeS ? fmtLight(S.lightTimeS) : "—";
     const f = viewFrame();
-    $("#mc-shown").textContent = f ? `T+${fmtClock(f.t)}` : S.eva ? "no signal yet" : "—";
+    $("#mc-shown").textContent = f ? `T+${fmtClock(f.t)}` : S.eva ? "waiting" : "—";
     $("#mc-shown-lmst").textContent = f ? `${f.lmst} LMST on Mars` : "";
 
     // waiting messages over the map

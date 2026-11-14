@@ -1601,7 +1601,7 @@ export class App {
                  <button class="ghost" data-act="skip" title="Jump to the end of the current step">${ic.skip}<span>Skip</span></button>
                  <button class="ghost" data-act="note-here" title="Geotagged note or sample where you stand">${ic.note}<span>Note</span></button>
                  ${this.voice.supported ? `<button class="ghost voice${this.voice.enabled ? " on" : ""}" data-act="voice" title="Spoken directions" aria-pressed="${this.voice.enabled}">${this.voice.enabled ? ic.voiceOn : ic.voiceOff}<span>Voice</span></button>` : ""}
-                 <button class="ghost" data-act="end">${ic.stop}<span>End EVA</span></button>
+                 <button class="ghost" data-act="end" aria-label="End EVA">${ic.stop}<span>End<span class="wide-only"> EVA</span></span></button>
                </div>`
             : `<h2>Elevation along the route</h2>`
         }
@@ -2093,7 +2093,7 @@ export class App {
     const badge = document.getElementById("crew-badge");
     if (badge) {
       badge.hidden = this.member === "ev1" && this.ev2Online === 0;
-      badge.textContent = this.member === "ev2" ? "EV2" : "EV1 · EV2 linked";
+      badge.innerHTML = this.member === "ev2" ? "EV2" : `EV1<span class="wide-only"> · EV2 linked</span><span class="narrow-only">+2</span>`;
       badge.title = this.member === "ev2" ? "This device is EV2: you walk EV1's EVA with them" : "EV2 is linked on another device";
     }
     // the label is hidden on small screens: say the state in words too

@@ -161,3 +161,7 @@ li.empty { color: var(--text-3); background: none !important; padding: 4px 0; }
 .mc-sim.run b { color: var(--good); }
 .mc-sim.paused { border-color: rgba(245, 181, 68, 0.5); background: rgba(245, 181, 68, 0.08); }
 .mc-sim.paused b { color: var(--warn); }
+
+/* phones: long clock values shorten instead of widening the page */
+.mc-clocks b, .mc-clocks small { overflow: hidden; text-overflow: ellipsis; }
+.mc-replay-key span { white-space: nowrap; }
