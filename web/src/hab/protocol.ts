@@ -94,6 +94,8 @@ export interface NoteRecord {
   lmst: string;
   created: string;
   updated?: string;
+  /** The EVA it was taken on (null: while planning).  Earth gets it one light time after evaT on that EVA. */
+  eva?: string | null;
 }
 
 /** A message from Earth to the crew. */

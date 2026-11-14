@@ -52,6 +52,9 @@ async function room(site: string): Promise<Room> {
   if (!r) {
     r = new Room(site);
     rooms.set(site, r);
+    // carry on with the EVA that was under way when the hab stopped (if any)
+    const live = await store.live<ReturnType<Room["liveState"]>>(site);
+    if (live?.evaId) r.restore(live);
     r.loadNotes(await store.notes(site));
   }
   return r;
@@ -194,6 +197,7 @@ function cleanNote(v: unknown, id: string): NoteRecord | null {
     evaT: num(n.evaT),
     lmst: String(n.lmst ?? "").slice(0, 8),
     created: String(n.created ?? new Date().toISOString()).slice(0, 40),
+    eva: typeof n.eva === "string" && SAFE_ID.test(n.eva) ? n.eva : null,
     updated: typeof n.updated === "string" ? n.updated.slice(0, 40) : new Date().toISOString(),
   };
 }
@@ -360,6 +364,16 @@ const heartbeat = setInterval(() => {
     c.ws.ping();
   }
 }, 20_000);
+// the EVA under way, on disk every 2 s when it changes (a restarted hab carries on with it)
+const saved = new Map<string, string>();
+const saver = setInterval(() => {
+  for (const r of rooms.values()) {
+    const state = JSON.stringify(r.liveState());
+    if (saved.get(r.site) === state) continue;
+    saved.set(r.site, state);
+    store.putLive(r.site, r.liveState()).catch((e) => console.error("hab: saving live state", e));
+  }
+}, 2000);
 let lastTick = Date.now();
 const ticker = setInterval(() => {
   const now = Date.now();
@@ -382,6 +396,7 @@ server.listen(PORT, HOST, () => {
 function stop(): void {
   clearInterval(heartbeat);
   clearInterval(ticker);
+  clearInterval(saver);
   for (const c of clients) c.ws.close(1001, "hab shutting down");
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1500).unref();

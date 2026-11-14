@@ -4,6 +4,7 @@
  *   <root>/<site>/notes.json        field notebook entries
  *   <root>/<site>/audio/<id>.bin    a voice note as the browser recorded it, <id>.type its MIME type
  *   <root>/<site>/evas.json         the last 50 EVAs (log, plan, final telemetry)
+ *   <root>/<site>/live.json         the EVA under way (so a restarted hab carries on with it)
  *
  * Writes go to a temporary file first and are renamed into place, so a crash never leaves half a file.
  */
@@ -110,6 +111,15 @@ export class Store {
     if (!SAFE_ID.test(id)) return;
     const dir = this.dir(site, "audio");
     await Promise.all([rm(join(dir, `${id}.bin`), { force: true }), rm(join(dir, `${id}.type`), { force: true })]);
+  }
+
+  // ---------------------------------------------------------------- the EVA under way
+  live<T>(site: string): Promise<T | null> {
+    return this.readJson<T | null>(this.dir(site, "live.json"), null);
+  }
+
+  putLive(site: string, state: unknown): Promise<void> {
+    return this.writeJson(this.dir(site, "live.json"), state);
   }
 
   // ---------------------------------------------------------------- EVA records

@@ -26,6 +26,8 @@ export interface FieldNote {
   created: string;
   /** Last edit (ISO time): the newer copy wins when devices sync. */
   updated?: string;
+  /** The EVA it was taken on (null: while planning): Earth gets it one light time after it was taken. */
+  eva?: string | null;
 }
 
 const DB = "cairn-notebook";

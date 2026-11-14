@@ -130,6 +130,7 @@ export function startMissionControl(site: string): void {
     switch (m.type) {
       case "snapshot": {
         const s = m.snap;
+        clockHist = [{ p: performance.now(), t: s.now }];
         L.plan = s.plan;
         L.crewOnline = s.crewOnline;
         L.eva = s.eva;
@@ -152,6 +153,7 @@ export function startMissionControl(site: string): void {
         break;
       case "eva":
         if (m.eva && m.eva.id !== L.eva?.id) {
+          clockHist = [];
           L.frames = [];
           L.log = [];
           L.alert = null;
@@ -162,13 +164,19 @@ export function startMissionControl(site: string): void {
         L.eva = m.eva;
         if (m.eva?.ended) void loadHistory();
         break;
-      case "clock":
+      case "clock": {
+        const p = performance.now();
+        const lastT = clockHist[clockHist.length - 1]?.t;
+        if (lastT !== undefined && m.now < lastT - 1) clockHist = []; // a new or restarted timeline
+        clockHist.push({ p, t: m.now });
+        while (clockHist.length > 2 && clockHist[1].p < p - 3000) clockHist.shift();
         L.now = m.now;
         L.lightTimeS = m.lightTimeS;
         L.speed = m.speed;
         L.hidden = !!m.hidden;
         L.live = m.live;
         break;
+      }
       case "frame":
         L.frames.push(m.frame);
         break;
@@ -214,7 +222,65 @@ export function startMissionControl(site: string): void {
   }
 
   // ---------------------------------------------------------------- rendering
-  const lastFrame = () => S.frames[S.frames.length - 1] ?? null;
+
+  // ---- one smooth timeline: between the hab's updates (4 a second of real time, i.e. 75 s of EVA time
+  // at 300×) Earth's clock runs on at the crew's speed, and the crew is shown between received positions.
+  /**
+   * Earth's EVA clock, played 0.3 s of real time behind the hab's reports and interpolated between them:
+   * it moves smoothly at whatever speed the crew runs, follows speed changes as they happen, and never
+   * has to step back (it never runs ahead of what the hab has said).
+   */
+  let clockHist: { p: number; t: number }[] = [];
+  const PLAY_BEHIND_MS = 300;
+  function earthNow(): number {
+    if (replay || S !== L) return S.now;
+    const h = clockHist;
+    if (!h.length) return L.now;
+    const q = performance.now() - PLAY_BEHIND_MS;
+    if (q <= h[0].p) return h[0].t;
+    for (let i = h.length - 1; i > 0; i--) {
+      if (h[i - 1].p <= q) {
+        const a = h[i - 1], b = h[i];
+        return q >= b.p ? b.t : a.t + ((b.t - a.t) * (q - a.p)) / Math.max(1, b.p - a.p);
+      }
+    }
+    return h[h.length - 1].t;
+  }
+
+  /**
+   * What Earth sees at this moment: the crew between the two received frames around Earth's clock minus
+   * one light time (Earth's clock plays behind the hab's, so the next frame has always arrived).
+   */
+  function viewFrame(): Frame | null {
+    const fr = S.frames;
+    if (!fr.length) return null;
+    const t = earthNow() - S.lightTimeS;
+    if (t <= fr[0].t) return fr[0];
+    let i = fr.length - 1;
+    while (i > 0 && fr[i].t > t) i--;
+    const a = fr[i], b = fr[i + 1];
+    if (!b || b.t <= a.t) return a;
+    const k = (t - a.t) / (b.t - a.t);
+    const mix = (x: number, y: number) => x + (y - x) * k;
+    const dh = ((b.headingDeg - a.headingDeg + 540) % 360) - 180;
+    return {
+      ...a,
+      t, x: mix(a.x, b.x), y: mix(a.y, b.y), headingDeg: a.headingDeg + dh * k,
+      o2LeftL: mix(a.o2LeftL, b.o2LeftL), doseUGy: mix(a.doseUGy, b.doseUGy), doseRate: mix(a.doseRate, b.doseRate),
+      nextDistM: mix(a.nextDistM, b.nextDistM), homeS: mix(a.homeS, b.homeS), sunEl: mix(a.sunEl, b.sunEl),
+      buddy: a.buddy && b.buddy ? { x: mix(a.buddy.x, b.buddy.x), y: mix(a.buddy.y, b.buddy.y) } : a.buddy,
+    };
+  }
+  /** Ten times a second while a live EVA is shown: the clocks, the map and the tiles move together. */
+  window.setInterval(() => {
+    if (replay || S !== L || !L.eva?.running || document.hidden) return;
+    const f = viewFrame();
+    $("#mc-now").textContent = `T+${fmtClock(earthNow())}`;
+    $("#mc-shown").textContent = f ? `T+${fmtClock(f.t)}` : "no signal yet";
+    $("#mc-shown-lmst").textContent = f ? `${f.lmst} LMST on Mars` : "";
+    renderTelemetry(f);
+    draw();
+  }, 100);
 
   function render(): void {
     for (const st of S.plan?.stops ?? []) stopNames.set(st.id, st.short);
@@ -229,9 +295,9 @@ export function startMissionControl(site: string): void {
 
     const running = !!S.eva?.running;
     const ended = !!S.eva?.ended;
-    $("#mc-now").textContent = S.eva ? `T+${fmtClock(S.now)}` : "no EVA";
+    $("#mc-now").textContent = S.eva ? `T+${fmtClock(earthNow())}` : "no EVA";
     $("#mc-delay").textContent = S.lightTimeS ? fmtLight(S.lightTimeS) : "—";
-    const f = lastFrame();
+    const f = viewFrame();
     $("#mc-shown").textContent = f ? `T+${fmtClock(f.t)}` : S.eva ? "no signal yet" : "—";
     $("#mc-shown-lmst").textContent = f ? `${f.lmst} LMST on Mars` : "";
 
@@ -283,7 +349,7 @@ export function startMissionControl(site: string): void {
 
   function renderTelemetry(f: Frame | null): void {
     const P = S.plan;
-    $("#mc-age").textContent = f ? `data ${fmtLight(Math.max(0, S.now - f.t))} old on arrival` : "";
+    $("#mc-age").textContent = f ? `what Mars was doing ${fmtLight(Math.max(0, earthNow() - f.t))} ago` : "";
     if (!f || !P) {
       $("#mc-status").innerHTML = S.eva?.ended && !f ? "EVA ended" : "No telemetry yet";
       $("#mc-tiles").innerHTML = "";
@@ -292,7 +358,7 @@ export function startMissionControl(site: string): void {
     }
     const reserveHit = f.o2LeftL <= P.o2ReserveL;
     const rateX = f.doseRate / Math.max(1e-6, f.baseline);
-    $("#mc-status").innerHTML = `<b>${esc(f.status)}</b> ${esc(f.next)}${f.nextDistM > 0 ? ` · ${fmtDistM(f.nextDistM)}` : ""}${S.eva?.ended && S.frames.length && f === lastFrame() ? "" : ""}`;
+    $("#mc-status").innerHTML = `<b>${esc(f.status)}</b> ${esc(f.next)}${f.nextDistM > 0 ? ` · ${fmtDistM(f.nextDistM)}` : ""}`;
     const tile = (label: string, value: string, cls = "", sub = "") => `<div class="mc-tile ${cls}"><span>${label}</span><b>${value}</b>${sub ? `<small>${sub}</small>` : ""}</div>`;
     $("#mc-tiles").innerHTML = [
       tile("Oxygen", `${Math.round(f.o2LeftL)} L`, reserveHit ? "bad" : "", `<i class="bar" aria-hidden="true"><u style="width:${Math.max(0, Math.min(100, (f.o2LeftL / P.o2SupplyL) * 100)).toFixed(1)}%"></u><em style="left:${((P.o2ReserveL / P.o2SupplyL) * 100).toFixed(1)}%"></em></i>`),
@@ -404,8 +470,10 @@ export function startMissionControl(site: string): void {
       g.fillStyle = n.note.sample ? "#8af0c8" : "#ffe08a";
       g.fillRect(X(n.note.x) - 3, Y(n.note.y) - 3, 6, 6);
     }
-    line(S.frames.map((f) => [f.x, f.y]), "rgba(255, 196, 92, 0.95)", 2);
-    const f = lastFrame();
+    const f = viewFrame();
+    const trail: [number, number][] = S.frames.filter((x) => !f || x.t <= f.t).map((x) => [x.x, x.y]);
+    if (f) trail.push([f.x, f.y]);
+    line(trail, "rgba(255, 196, 92, 0.95)", 2);
     if (f) {
       const a = (f.headingDeg * Math.PI) / 180;
       g.save();
@@ -468,7 +536,7 @@ export function startMissionControl(site: string): void {
         g.fillText(`+${i + 1}`, X(p.x) + 11, Y(p.y) + 4);
       });
     }
-    const lf = lastFrame();
+    const lf = viewFrame();
     canvas.setAttribute(
       "aria-label",
       lf

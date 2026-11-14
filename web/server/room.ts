@@ -73,7 +73,30 @@ export class Room {
     return o;
   }
 
+  /** What a restarted hab needs to carry on with the same EVA (store.ts keeps it on disk). */
+  liveState(): { evaId: string | null; running: boolean; now: number; lightTimeS: number; speed: number; plan: PlanInfo | null } {
+    return { evaId: this.evaId, running: this.running, now: this.now, lightTimeS: this.lightTimeS, speed: this.speed, plan: this.plan };
+  }
+
+  /** After a restart of the hab: the EVA that was under way, as it was last saved. */
+  restore(s: ReturnType<Room["liveState"]>): void {
+    this.evaId = s.evaId;
+    this.running = s.running;
+    this.ended = !s.running && !!s.evaId;
+    this.now = s.now;
+    this.lightTimeS = s.lightTimeS;
+    this.speed = s.speed;
+    this.plan = s.plan;
+  }
+
   startEva(evaId: string, lightTimeS: number): Out {
+    if (evaId === this.evaId && this.running) {
+      // the same EVA again: the crew's device reconnected (or the hab restarted). Carry on, do not reset
+      // Earth's timeline (the clock catches up with the crew's next frame).
+      const o = out();
+      o.mc.push({ type: "eva", eva: this.evaState() });
+      return o;
+    }
     this.evaId = evaId;
     this.running = true;
     this.ended = false;
@@ -88,7 +111,6 @@ export class Room {
     this.live = null;
     this.evaNotes.clear();
     // notes from earlier EVAs and from planning stay known on Earth; this EVA's arrive with the delay
-    for (const n of this.notes.values()) if (n.evaT === null) this.notesOut.add(n.id);
     this.outbox = this.outbox.filter((m) => !m.delivered && m.immediate);
     const o = out();
     o.mc.push({ type: "eva", eva: this.evaState() });
@@ -137,17 +159,24 @@ export class Room {
   }
 
   /** A note saved on the hab (by any crew device): crew devices get it now, Earth after the delay. */
+  /**
+   * Has a note reached Earth?  A note taken on the EVA under way arrives one light time after it was
+   * taken; anything else (taken while planning, or on an earlier EVA) is already known.  Decided from the
+   * note itself, so it holds after a restart of the hab or of Mission Control.
+   */
+  private noteDue(n: NoteRecord): boolean {
+    const thisEva = this.evaId !== null && (n.eva === this.evaId || (n.eva === undefined && this.evaNotes.has(n.id)));
+    return !thisEva || n.evaT === null || n.evaT <= this.shownT;
+  }
+
   upsertNote(n: NoteRecord): Out {
     if (this.running && n.evaT !== null) this.evaNotes.add(n.id);
     const known = this.notesOut.has(n.id);
     this.notes.set(n.id, n);
     const o = out();
-    if (known || n.evaT === null || !this.evaId) {
+    if (known || this.noteDue(n)) {
       this.notesOut.add(n.id);
       o.mc.push({ type: "note", note: n });
-    } else {
-      const r = this.release();
-      o.mc.push(...r.mc);
     }
     return o;
   }
@@ -160,10 +189,7 @@ export class Room {
   }
 
   loadNotes(notes: NoteRecord[]): void {
-    for (const n of notes) {
-      this.notes.set(n.id, n);
-      this.notesOut.add(n.id); // stored before this run of the server: already known on Earth
-    }
+    for (const n of notes) this.notes.set(n.id, n); // released (or not) by noteDue, like any other
   }
 
   /** Mission Control sends a message to the crew. */
@@ -233,7 +259,7 @@ export class Room {
       }
     }
     for (const n of this.notes.values()) {
-      if (!this.notesOut.has(n.id) && (n.evaT ?? -Infinity) <= shown) {
+      if (!this.notesOut.has(n.id) && this.noteDue(n)) {
         this.notesOut.add(n.id);
         o.mc.push({ type: "note", note: n });
       }
@@ -258,7 +284,10 @@ export class Room {
       lightTimeS: this.lightTimeS,
       frames: this.frames.slice(0, this.framesOut),
       log: this.log.filter((e) => this.logOut.has(key(e))),
-      notes: [...this.notes.values()].filter((n) => this.notesOut.has(n.id)),
+      notes: [...this.notes.values()].filter((n) => {
+        if (this.noteDue(n)) this.notesOut.add(n.id);
+        return this.notesOut.has(n.id);
+      }),
       outbox: this.outbox.slice(-50),
     };
   }
@@ -274,7 +303,7 @@ export class Room {
       plan: this.plan,
       log: this.log.slice(),
       frames,
-      notes: [...this.notes.values()].filter((n) => this.evaNotes.has(n.id)),
+      notes: [...this.notes.values()].filter((n) => this.evaNotes.has(n.id) || (n.eva != null && n.eva === this.evaId)),
       outbox: this.outbox.slice(-50),
       lightTimeS: this.lightTimeS,
       lastFrame: this.frames[this.frames.length - 1] ?? null,

@@ -2222,6 +2222,7 @@ export class App {
     if (m.type === "crew-eva") {
       if (this.member !== "ev2") return;
       this.evaRunningOnEv1 = !!m.eva?.running;
+      if (m.eva?.id) this.evaId = m.eva.id; // EV2's notes belong to EV1's EVA
       if (m.eva?.running && this.phase === "planning") {
         // EV1 started: walk it with them (the plan is already EV1's; the clock follows EV1's frames)
         window.setTimeout(() => {
@@ -2487,6 +2488,7 @@ export class App {
       text: "",
       audio: false,
       evaT,
+      eva: evaT !== null ? this.evaId || null : null,
       lmst: evaT !== null ? fmtLmst(this.lmstAt(evaT)) : "",
       created: new Date().toISOString(),
     };
@@ -2668,7 +2670,7 @@ export class App {
     this.tellEarth("EVA started", false);
     this.dustWarned = false;
     window.setTimeout(() => this.warnDust(), 2500);
-    this.evaId = `eva-${Date.now().toString(36)}`;
+    if (this.member === "ev1") this.evaId = `eva-${Date.now().toString(36)}`; // EV2 keeps EV1's (from the hab)
     this.logSent = "";
     this.crewSend({ type: "eva", state: "start", evaId: this.evaId, lightTimeS: this.skyAt(0).lightTimeS }, true);
     this.sendFrame();
