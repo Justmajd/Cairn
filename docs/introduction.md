@@ -161,7 +161,7 @@ Space Apps typically judges on the five criteria below (confirm against the 2026
 | Routing | **A\*** on a cost grid in a **Web Worker** | Fast re-planning without freezing the UI (needed for Act 3) |
 | Charts | Lightweight chart library or plain SVG | Elevation profile, dose curve |
 | Preprocessing | **Python + GDAL / rasterio / numpy** | Standard tools for planetary rasters |
-| Hosting | GitHub Pages / any static host | No backend needed for the demo |
+| Hosting | **Railway** (one Node service: app + hab server) | Mission Control and the shared notebook need the hab; the planner alone still runs on any static host |
 
 ### 3.4 Routing model
 

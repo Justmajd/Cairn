@@ -106,14 +106,14 @@ For development, `npm run dev:all` starts both in one terminal (open http://loca
 ### Deploy on Railway
 
 The hab server serves the app, the API and the WebSocket from one process, so CAIRN runs as a single
-Railway service. `web/railway.json` holds the build and start commands and the health check.
+Railway service. `railway.json` and `package.json` at the repository root hold the build and start
+commands and the health check; they hand over to `web/`.
 
-1. Create a project from this GitHub repository.
-2. In the service's **Settings**: set **Root Directory** to `web` and **Config file path** to
-   `/web/railway.json` (Railway does not look for the config file inside the root directory).
-3. Add a **Volume** to the service, mounted at `/data`, and set the variable `CAIRN_DATA=/data`.
+1. Create a project from this GitHub repository. Leave **Root Directory** empty (the repository
+   root).
+2. Add a **Volume** to the service, mounted at `/data`, and set the variable `CAIRN_DATA=/data`.
    Without it, notebooks, voice notes and EVA records are lost on every deploy.
-4. Under **Networking**, generate a domain. It is https, so the microphone works on phones, and
+3. Under **Networking**, generate a domain. It is https, so the microphone works on phones, and
    Mission Control connects over `wss://` on the same address.
 
 The build downloads the speech model (`npm run build:deploy` runs `fetch-speech`, then `build`).

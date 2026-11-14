@@ -1,0 +1,12 @@
+{
+  "name": "cairn-deploy",
+  "private": true,
+  "description": "Deploy entry for Railway: the app and hab server live in web/.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "cd web && npm ci --include=dev && npm run build:deploy",
+    "start": "cd web && node server/index.ts"
+  }
+}
