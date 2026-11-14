@@ -73,7 +73,7 @@ The buttons at the bottom-right of the map do the same things.
 
 ## The demo
 
-Press **Demo** (top right) or **Watch the 2-minute demo** in the briefing. It walks through: the site → real terrain in 3D → traversability and the deadly straight line → the real Sun and shadows → a flyover → the walk, arriving at the first objective (with the 360° view at Gale) → the 20 May 2024 storm, the re-route and the dose avoided. Pause, skip or exit at any time.
+Press **Demo** (top right) or **Watch the 2-minute demo** in the briefing. It walks through: the site → real terrain in 3D → traversability and the deadly straight line → the real Sun and shadows → radio contact and where to stand up a relay → a flyover → the walk, arriving at the first objective (with the 360° view at Gale) → the 20 May 2024 storm, the re-route and the dose avoided. Pause, skip or exit at any time.
 
 ## How it works
 

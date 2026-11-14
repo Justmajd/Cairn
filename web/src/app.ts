@@ -1255,6 +1255,31 @@ export class App {
         },
       },
       {
+        title: "Radio contact",
+        body: () => {
+          const rc = this.plan?.radio;
+          if (!rc) return "Hills block radio. CAIRN draws the line of sight to the rover's antenna.";
+          return rc.lostS < 20
+            ? "Hills block radio. CAIRN draws the line of sight to the rover's antenna: this whole walk stays in contact."
+            : `Hills block radio. CAIRN draws the line of sight to the rover's antenna: this walk keeps contact for <b>${Math.floor(rc.coveredFraction * 100)}%</b> of the time.`;
+        },
+        run: async (d) => {
+          this.selectLayer("radio");
+          await d.sleep(4500);
+          const relay = this.plan?.relay;
+          if (relay) {
+            const toward = this.relayLeg(relay);
+            this.setRelay(true);
+            await d.until(() => !this.busy, 6000);
+            d.say(`CAIRN finds where the crew should stand up a relay mast: after ${fmtDist(relay.alongM)}${toward ? `, on the way to ${esc(toward)}` : ""}. Contact goes to <b>${Math.floor(relay.after.coveredFraction * 100)}%</b>.`);
+            await d.sleep(5000);
+          } else {
+            await d.sleep(1000);
+          }
+          this.selectLayer("none");
+        },
+      },
+      {
         title: "Fly the route",
         body: "The safe route, draped over the real ground.",
         run: async (d) => {
@@ -1459,6 +1484,7 @@ export class App {
   private resetForDemo(): void {
     if (this.phase !== "planning") this.backToPlanning();
     this.closeCard();
+    this.useRelay = false;
     this.selected = this.site.pois.filter((p) => p.kind === "objective").map((p) => p.id);
     this.pois = this.pois.filter((p) => !p.id.startsWith("custom-"));
     this.startLmst = this.site.meta.eva?.startLmst ?? 10;
