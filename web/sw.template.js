@@ -28,6 +28,8 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET" || req.headers.has("range")) return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  // the hab server's live data (notebook, voice notes, EVA logs) is never cached
+  if (url.pathname.includes("/api/")) return;
 
   // the page itself: network first, so a new version shows up; the cached copy when offline
   if (req.mode === "navigate") {

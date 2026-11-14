@@ -5,3 +5,4 @@ data-pipeline/raw/
 data-pipeline/.venv/
 __pycache__/
 *.pyc
+web/hab-data/

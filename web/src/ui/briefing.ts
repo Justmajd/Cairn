@@ -2,6 +2,7 @@ import type { SiteData, SiteEntry } from "../data/loaders";
 import { $, esc, LOGO_SVG } from "./dom";
 import { dissolve } from "./dissolve";
 import { prefetchSite } from "../data/prefetch";
+import { marsSky } from "../eva/sky";
 
 /**
  * Mission briefing: the site's story, a regional orbital map with the rover's real traverse and the
@@ -23,6 +24,9 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
     .map(([a, b]) => `<line class="drive" x1="${(a.uv[0] * W).toFixed(1)}" y1="${(a.uv[1] * H).toFixed(1)}" x2="${(b.uv[0] * W).toFixed(1)}" y2="${(b.uv[1] * H).toFixed(1)}"/>`)
     .join("");
   const story = site.meta.story ?? { headline: site.meta.name, paragraphs: [] };
+  const centre = site.meta.centerLonLat ?? { lon: (site.meta.boundsLonLat.west + site.meta.boundsLonLat.east) / 2, lat: (site.meta.boundsLonLat.south + site.meta.boundsLonLat.north) / 2 };
+  const lightS = marsSky(Date.parse(site.meta.eva?.utc ?? "2024-07-21T02:10:26Z"), centre.lat, centre.lon).lightTimeS;
+  const lightText = `${Math.round(lightS / 60)} minutes`;
   const rover = site.meta.rover?.name ?? "the rover";
   const lat = c.global.lat;
   const latText = `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? "N" : "S"} ${c.global.lon.toFixed(2)}°E`;
@@ -52,6 +56,7 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
           <button id="brief-enter" class="primary big">Open the EVA planner →</button>
           <button id="brief-demo" class="big">▶ Watch the 2-minute demo</button>
         </div>
+        <button id="brief-mc" class="brief-mc"><b>Mission Control</b><span>Watch the EVA from Earth, ${lightText} behind Mars, and message the crew</span></button>
         <p class="fine">Every map layer, photo and reading comes from NASA, USGS or JPL archives — see About → Data sources in the planner. Suit and physiology numbers are labelled demo assumptions.</p>
       </section>
       <section class="brief-map">
@@ -91,6 +96,9 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
   $("#brief-enter", host).addEventListener("click", () => {
     close();
     onEnter();
+  });
+  $("#brief-mc", host).addEventListener("click", () => {
+    window.open(`?view=mission&site=${encodeURIComponent(site.id)}`, `cairn-mc-${site.id}`, "noopener");
   });
   $("#brief-demo", host).addEventListener("click", () => {
     close();

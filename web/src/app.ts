@@ -7,6 +7,8 @@ import { RadiationModel } from "./eva/radiation";
 import { HAB_WEIGHTS, HabMap, habSuitability } from "./eva/hab";
 import { DUST_PRESETS, dustEffect, fmtVisibility } from "./eva/dust";
 import { editNote, FieldNote, Notebook } from "./ui/notebook";
+import { HabLink, type LinkState } from "./hab/link";
+import type { Frame, PlanInfo, ServerMsg } from "./hab/protocol";
 import { bestRelay, inContact, lineOfSight, RadioCoverage, radioCoverage, radioShadow, relayFromShadow, RelaySuggestion, RELAY_MAST_M, SUIT_ANTENNA_M } from "./eva/radio";
 import { inTerrainShadow } from "./eva/shade";
 import { geometricMedian } from "./routing/median";
@@ -119,6 +121,13 @@ export class App {
   private ghostClock = 0;
   private ghostHeading = 0;
   private readonly notebook: Notebook;
+  /** Link to the hab server (the habitat's computer): Mission Control, shared notebook, EVA records. */
+  private readonly habLink: HabLink;
+  private habState: LinkState = "connecting";
+  private mcWatching = 0;
+  private evaId = "";
+  private frameTimer = 0;
+  private logSent = "";
   /** "Where do we put the hab?" scores, for the stops they were worked out from. */
   private hab: HabMap | null = null;
   private habKey = "";
@@ -169,7 +178,7 @@ export class App {
   /** The relay is up during the current EVA. */
   private relayUp = false;
   /** What happened during the current EVA, for the summary (mission seconds, kind, text). */
-  private log: { t: number; kind: "go" | "stop" | "radio" | "alert" | "home" | "note"; text: string }[] = [];
+  private log: { t: number; kind: "go" | "stop" | "radio" | "alert" | "home" | "note" | "earth"; text: string }[] = [];
 
   /** Messages on their way between the crew and Earth: the mission time each one arrives, and its log line. */
   private earthQueue: { t: number; text: string }[] = [];
@@ -218,6 +227,21 @@ export class App {
     view.onNoteClick = (id) => this.openNote(id);
     this.notebook = new Notebook(site.meta.id);
     this.pushNotes();
+    this.notebook.onChange = () => {
+      this.pushNotes();
+      this.renderLeft();
+    };
+    this.habLink = new HabLink("crew", site.meta.id);
+    this.habLink.onMessage((m) => this.onHab(m));
+    this.habLink.onState((st) => {
+      this.habState = st;
+      if (st === "online") {
+        void this.notebook.sync().then((ok) => ok && this.notebook.onChange());
+        if (this.phase !== "eva") this.habLink.send({ type: "eva", state: "idle" });
+        this.sendPlan();
+      }
+      this.renderHabChip();
+    });
     view.onHover = (p, cx, cy) => this.hover(p, cx, cy);
     new ResizeObserver(() => this.renderProfileChart()).observe($("#bottom"));
     new ResizeObserver(() => this.updateInsets()).observe($("#app"));
@@ -241,6 +265,7 @@ export class App {
     ].map(([v, i, label, title]) => `<button data-view="${v}" title="${title}">${i}<span>${label}</span></button>`).join("");
     $(".top-actions").innerHTML = `
       <button id="btn-panels" class="compact-only" title="Route and map layers">${ic.layers}<span>Route & layers</span></button>
+      <button id="btn-hab" class="hab-chip" title="Mission Control">${ic.radio}<span>Mission Control</span><i></i></button>
       <button id="btn-demo" class="demo-btn" title="Play the guided demo">${ic.play}<span>Demo</span></button>
       <button id="btn-about" aria-haspopup="menu" title="Briefing, data sources and assumptions">${ic.info}<span>About</span>${ic.chev}</button>`;
     $("#about-menu").innerHTML = `
@@ -309,6 +334,8 @@ export class App {
     $("#scene").addEventListener("pointerdown", used);
     $("#scene").addEventListener("wheel", used, { passive: true });
     $("#btn-demo").addEventListener("click", () => void this.startDemo());
+    $("#btn-hab").addEventListener("click", () => this.openMissionControl());
+    this.renderHabChip();
     $("#btn-panels").addEventListener("click", (ev) => {
       ev.stopPropagation();
       $("#app").classList.toggle("drawer");
@@ -879,6 +906,7 @@ export class App {
 
   private afterPlan(): void {
     if (this.phase === "planning") this.writePlanHash();
+    this.sendPlan();
     this.view.setSpot(null);
     this.pushRoutes();
     this.pushPois();
@@ -2007,6 +2035,128 @@ export class App {
     void this.replan();
   }
 
+  // ================================================================ hab link (Mission Control)
+  private renderHabChip(): void {
+    const b = document.getElementById("btn-hab");
+    if (!b) return;
+    b.className = `hab-chip ${this.habState}`;
+    b.title =
+      this.habState === "online"
+        ? `Connected to the hab server. ${this.mcWatching ? `Mission Control is watching on ${this.mcWatching} screen${this.mcWatching === 1 ? "" : "s"}.` : "Open Mission Control to watch this EVA from Earth."}`
+        : this.habState === "connecting"
+          ? "Looking for the hab server…"
+          : "No hab server: the planner works on its own. Start it with `npm start` to link Mission Control and share notes.";
+    const label = b.querySelector("span");
+    if (label) label.textContent = this.habState === "online" && this.mcWatching ? `Mission Control · ${this.mcWatching}` : "Mission Control";
+  }
+
+  /** Open Mission Control for this site, in its own window. */
+  openMissionControl(): void {
+    window.open(`?view=mission&site=${encodeURIComponent(this.site.meta.id)}`, `cairn-mc-${this.site.meta.id}`, "noopener");
+  }
+
+  private planInfo(): PlanInfo | null {
+    if (!this.plan) return null;
+    const b = this.plan.budget;
+    const pts: [number, number][] = [];
+    let last: XY | null = null;
+    for (const leg of this.plan.legs) {
+      for (const smp of leg.samples) {
+        if (last && Math.hypot(smp.x - last.x, smp.y - last.y) < 4) continue;
+        pts.push([Math.round(smp.x * 10) / 10, Math.round(smp.y * 10) / 10]);
+        last = smp;
+      }
+    }
+    const order = this.plan.order;
+    const stops = this.pois
+      .filter((p) => p.kind === "shelter" || this.selected.includes(p.id))
+      .map((p) => ({ id: p.id, name: p.name, short: p.short, x: p.x, y: p.y, kind: p.kind, order: Math.max(0, order.findIndex((o, i) => o.id === p.id && i > 0 && i < order.length - 1)) }));
+    const dust = DUST_PRESETS.find((d) => d.id === this.dustId) ?? DUST_PRESETS[0];
+    return {
+      site: this.site.meta.id,
+      siteName: this.site.meta.name,
+      sizeM: this.site.meta.sizeM,
+      image: `${this.site.base}${this.site.meta.texture.file}`,
+      route: pts,
+      stops,
+      roverName: this.roverName,
+      startLmst: fmtLmst(this.startLmst),
+      distanceM: b.distanceM,
+      timeS: b.totalTimeS,
+      o2SupplyL: this.P.o2SupplyL,
+      o2ReserveL: this.P.o2SupplyL * this.P.reserveFraction,
+      lightTimeS: this.skyAt(0).lightTimeS,
+      storm: this.storm,
+      buddy: this.buddy,
+      dust: { tau: dust.tau, name: dust.name },
+    };
+  }
+
+  private sendPlan(): void {
+    const plan = this.planInfo();
+    if (plan) this.habLink.send({ type: "plan", plan }, true);
+  }
+
+  /** Telemetry to the hab, four times a second of real time during an EVA. */
+  private sendFrame(): void {
+    const m = this.mission;
+    if (!m || this.phase !== "eva" || this.habState !== "online") return;
+    const pose = m.pose();
+    const n = m.next();
+    const sun = this.sunAtEva(m.t);
+    const viaRelay = !this.radioLost && this.relayUp && !inContact(this.radio, this.site.grid, pose.x, pose.y);
+    const frame: Frame = {
+      t: m.t,
+      x: pose.x,
+      y: pose.y,
+      headingDeg: (pose.headingRad * 180) / Math.PI,
+      o2LeftL: this.P.o2SupplyL - m.o2UsedL,
+      doseUGy: m.doseUGy,
+      doseRate: m.doseRate,
+      baseline: this.rad.baseline,
+      status: this.phaseLabel(m).label,
+      next: this.phaseLabel(m).name,
+      nextDistM: n.distM,
+      homeS: m.returnTimeS(),
+      radio: this.radioLost ? "lost" : viaRelay ? "relay" : "ok",
+      sheltered: m.sheltered,
+      storm: m.stormActive,
+      lmst: fmtLmst(this.lmstAt(m.t)),
+      sunEl: sun.elevation,
+      lightTimeS: this.skyAt(m.t).lightTimeS,
+      speed: this.paused ? 0 : this.speed,
+      buddy: this.buddy ? m.buddyPose() : null,
+    };
+    this.habLink.send({ type: "frame", frame });
+    this.sendLog();
+  }
+
+  private sendLog(): void {
+    const sig = `${this.log.length}|${this.log[this.log.length - 1]?.t ?? 0}`;
+    if (sig === this.logSent) return;
+    const entries = this.log.filter((e) => e.kind !== "earth").map((e) => ({ t: e.t, kind: e.kind, text: e.text })); // Earth knows when it heard
+    if (this.habLink.send({ type: "log", entries })) this.logSent = sig;
+  }
+
+  private onHab(m: ServerMsg): void {
+    if (m.type === "mc") {
+      this.mcWatching = m.online;
+      this.renderHabChip();
+    } else if (m.type === "notebook") {
+      this.notebook.applyRemote(m.notes as FieldNote[]);
+    } else if (m.type === "msg") {
+      const at = this.mission?.t ?? 0;
+      const lag = m.msg.immediate ? "" : ` (sent ${fmtLightTime(m.msg.deliverT - m.msg.sentT)} ago)`;
+      if (this.phase === "eva") {
+        this.log.push({ t: at, kind: "radio", text: `Mission Control: “${m.msg.text}”${lag}` });
+        this.log.sort((a, b) => a.t - b.t);
+      }
+      this.toast(`Message from Mission Control${lag}: “${m.msg.text}”`, 9000);
+      this.voice.say(`Message from Mission Control. ${m.msg.text}`);
+      this.buzz([80, 60, 80]);
+    }
+  }
+
   // ================================================================ dust storm
   private get dustTau(): number {
     return (DUST_PRESETS.find((d) => d.id === this.dustId) ?? DUST_PRESETS[0]).tau;
@@ -2281,6 +2431,10 @@ export class App {
     this.tellEarth("EVA started", false);
     this.dustWarned = false;
     window.setTimeout(() => this.warnDust(), 2500);
+    this.evaId = `eva-${Date.now().toString(36)}`;
+    this.logSent = "";
+    this.habLink.send({ type: "eva", state: "start", evaId: this.evaId, lightTimeS: this.skyAt(0).lightTimeS }, true);
+    this.sendFrame();
     this.view.setRelay(this.useRelay ? this.plan?.relay?.at ?? null : null);
     $("#pin-menu").hidden = true;
     this.closeCard();
@@ -2295,6 +2449,7 @@ export class App {
   }
 
   private backToPlanning(): void {
+    if (this.phase === "eva" && this.evaId) this.habLink.send({ type: "eva", state: "end", evaId: this.evaId, aborted: true, summary: "EVA ended early from the planner." }, true);
     void this.keepAwake(false);
     this.mission = null;
     this.voice.stop();
@@ -2363,11 +2518,16 @@ export class App {
     }
     while (m && this.phase === "eva" && this.earthQueue.length && this.earthQueue[0].t <= m.t) {
       const msg = this.earthQueue.shift()!;
-      this.log.push({ t: msg.t, kind: "radio", text: msg.text });
+      this.log.push({ t: msg.t, kind: "earth", text: msg.text });
       this.log.sort((x, y) => x.t - y.t); // a skip ahead can deliver it after later events
       this.toast(msg.text, 3500);
     }
     this.tickGhost(dt);
+    this.frameTimer += dt;
+    if (this.frameTimer > 0.25) {
+      this.frameTimer = 0;
+      this.sendFrame();
+    }
     this.liveTimer += dt;
     if (this.liveTimer > 0.1) {
       this.liveTimer = 0;
@@ -2466,6 +2626,9 @@ export class App {
   }
 
   private onComplete(aborted: boolean): void {
+    this.sendFrame();
+    this.sendLog();
+    this.habLink.send({ type: "eva", state: "end", evaId: this.evaId, aborted, summary: this.log.map((e) => `${fmtClock(e.t)} ${e.text}`).join("\n") }, true);
     this.phase = "summary";
     void this.keepAwake(false);
     this.clearAlert();

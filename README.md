@@ -64,15 +64,34 @@ Open the address Vite prints (normally http://localhost:5173).
 | Command | What it does |
 |---|---|
 | `npm run dev` | Development server |
-| `npm test` | 71 unit and integration tests |
+| `npm test` | 91 unit and integration tests (including the hab server end to end) |
 | `npm run build` | Type-check and build to `web/dist/` |
 | `npm run preview` | Serve the built app |
+| `npm start` | Build, then serve the app with the hab server (Mission Control, shared notebook) |
+| `npm run hab` | The hab server alone, for development next to `npm run dev` |
 
 URL options: `?site=gale` opens Gale Crater (default `jezero`), `?skip=1` skips the briefing, `?demo=1` plays the guided demo straight away (for a booth screen or recording the video), `?q=low` uses a lighter mesh and the 50 cm texture for slow GPUs, `?tex=4k` stays on the 50 cm texture. The part after `#` is the plan, e.g. `#stops=cheyava,serpentine&t=9.5&relay=1`; links with a plan open straight on it.
 
 Works on desktop, tablets and phones: below 1180 px the route and layers panel becomes a drawer (layers button, top right); in portrait the plan becomes a bottom sheet, and during a walk the controls sit in a strip above it.
 
 Offline mode needs the built app (`npm run build`, then `npm run preview` or any static host): the service worker is not registered by the development server.
+
+### With the hab server (Mission Control, shared notebook)
+
+The planner works on its own, as a static site. Run it with the **hab server** — the habitat's computer — to link Mission Control on Earth and share the field notebook between devices:
+
+```bash
+cd web
+npm start            # builds the app, then serves it with the hab on http://localhost:8787
+```
+
+The server prints its network address too (e.g. `http://192.168.1.10:8787`), so a second laptop, tablet or phone on the same Wi-Fi can join: one device walks the EVA, another runs Mission Control.
+
+- **Mission Control** opens from the main menu (or the *Mission Control* button in the planner's top bar, or `?view=mission&site=jezero`). It shows the crew's position, oxygen, dose, log, notes and voice notes **one light time late** (13–22 min, for the EVA's real date), and messages typed there reach the crew one light time after they are sent. The delay runs on the EVA clock, so it speeds up with the simulation.
+- **Field notebook** entries and voice notes are kept on the hab (`web/hab-data/`, not committed) and appear on every crew device; edits made offline sync when the hab is back. Finished EVAs are recorded there too.
+- Without the hab, nothing changes: the planner shows a grey dot on *Mission Control* and keeps notes on the device.
+
+For development, run `npm run hab` (restarts on changes) next to `npm run dev`; Vite forwards `/api` and `/hab` to it. Environment: `PORT` (8787), `HOST` (`0.0.0.0`), `CAIRN_DATA` (`web/hab-data`), `CAIRN_DIST` (`web/dist`).
 
 ## Controls
 
@@ -92,7 +111,7 @@ Press **Demo** (top right) or **Watch the 2-minute demo** in the briefing. It wa
 ## How it works
 
 ```
-data-pipeline/  (Python)                     web/  (TypeScript + Three.js, fully static)
+data-pipeline/  (Python)                     web/  (TypeScript + Three.js; static, or served by the hab)
   fetch_*.py     download official data        data/      loaders, terrain grid, path measurement
   build_site.py  terrain, slope, sand,         routing/   A*, return-to-shelter field, smoothing (Web Worker)
                  thermal, geology, textures    eva/       walking energy, oxygen budget, radiation
@@ -101,6 +120,10 @@ data-pipeline/  (Python)                     web/  (TypeScript + Three.js, fully
   build_replay.py RAD + DONKI storm replay     scene/     terrain mesh, layers, routes, cameras
   build_weather.py MEDA weather                ui/        briefing, panels, charts, dialogs
   build_context.py regional + global maps      app.ts     controller
+                                               mission/   Mission Control dashboard
+                                               hab/       link to the hab server (protocol, WebSocket, storage API)
+                                             web/server/  the hab server (Node): static files, notebook storage,
+                                                          live link with the light-time delay (room.ts)
         │
   pack_web.py    compress grids for the web
         │
@@ -121,6 +144,7 @@ data-pipeline/  (Python)                     web/  (TypeScript + Three.js, fully
 - **One measuring function.** `measurePath()` produces every number shown about a route, so the router, the budget, the chart and the simulation cannot disagree.
 - **Radio line of sight.** Rays from the rover's mast antenna (3 m) to every edge of the grid keep the steepest terrain angle seen so far, with the curvature of Mars; each point stores how far a suit antenna (1.8 m) would have to rise to see the rover. The relay search tries every ~8 m of the route where a 2.5 m mast still sees the rover and counts the blackout time it covers *after* the crew gets there.
 - **Fast first load.** Grids are row-delta coded and gzipped (Gale: 6.3 → 3.2 MB), the HiRISE images and relief map are WebP (the 25 cm image: 14.5 → 8 MB), and all files load in parallel with the return-to-shelter calculation. The planner opens on the 50 cm image; the 25 cm one streams in afterwards.
+- **Mars–Earth delay on one timeline.** The hab server holds every item that crosses between Mars and Earth until the EVA clock has moved on by one light time (from JPL planet positions for the EVA's date), in both directions; a Mission Control screen that joins late gets exactly what Earth could know by then. Unit-tested on the delay logic and end to end over real WebSockets.
 - **Offline.** A service worker keeps the app and every file of a site; its data cache is versioned by the data, so app updates do not throw away a saved site.
 
 ## Rebuilding the data

@@ -45,5 +45,13 @@ export default defineConfig({
   plugins: [serviceWorker()],
   worker: { format: "es" },
   build: { target: "es2022", chunkSizeWarningLimit: 900 },
-  server: { port: 5173, strictPort: false },
+  // in development the hab server (npm run hab) answers /api and /hab; Vite forwards them
+  server: {
+    port: 5173,
+    strictPort: false,
+    proxy: {
+      "/api": { target: "http://localhost:8787", changeOrigin: false },
+      "/hab": { target: "ws://localhost:8787", ws: true },
+    },
+  },
 });

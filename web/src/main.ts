@@ -180,14 +180,21 @@ async function boot(): Promise<void> {
   }
 }
 
-initOffline();
-offerLiteIfSlow();
+const missionControl = new URLSearchParams(location.search).get("view") === "mission";
+if (!missionControl) {
+  initOffline();
+  offerLiteIfSlow();
+  // Trackpad pinch arrives as ctrl+wheel: keep it for the map instead of zooming the whole page.
+  window.addEventListener("wheel", (ev) => ev.ctrlKey && ev.preventDefault(), { passive: false });
+  for (const type of ["gesturestart", "gesturechange"]) window.addEventListener(type, (ev) => ev.preventDefault());
+}
 
-// Trackpad pinch arrives as ctrl+wheel: keep it for the map instead of zooming the whole page.
-window.addEventListener("wheel", (ev) => ev.ctrlKey && ev.preventDefault(), { passive: false });
-for (const type of ["gesturestart", "gesturechange"]) window.addEventListener(type, (ev) => ev.preventDefault());
-
-boot().catch((err: unknown) => {
+if (missionControl) {
+  // Mission Control: its own page, no 3D terrain to load
+  document.documentElement.classList.remove("sweep-boot");
+  const site = new URLSearchParams(location.search).get("site") ?? "jezero";
+  void import("./mission/dashboard").then(({ startMissionControl }) => startMissionControl(/^[A-Za-z0-9_-]{1,64}$/.test(site) ? site : "jezero"));
+} else boot().catch((err: unknown) => {
   arrival?.(); // show the error, not the curtain
   console.error(err);
   const box = $("#loading");
