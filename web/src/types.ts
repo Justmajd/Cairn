@@ -16,7 +16,13 @@ export interface SiteMeta {
   height: { file: string; zMin: number; zMax: number };
   texture: { file: string; px: number; mPerPx: number; hi?: { file: string; px: number; mPerPx: number } };
   relief?: { file: string; range: number };
-  grids: Record<string, string>;
+  shielding?: { file: string; exponent: number; azimuths: number; radiusM: number };
+  eva?: { sol: number; utc: string; note: string; startLmst: number };
+  rover?: { name: string; mission: string };
+  story?: { headline: string; paragraphs: string[] };
+  minerals?: { source: string; product: string; mPerPx: number; coveragePct?: number; bands: { key: string; name: string; parameter: string; color: [number, number, number] }[] };
+  centerLonLat?: { lon: number; lat: number };
+  grids: { slope: string; sand: string; effort: string; risk: string; thermal?: string; geology?: string; minerals?: string };
   model: {
     slopeLimitDeg: number;
     slopeRiskStartDeg: number;
@@ -77,6 +83,7 @@ export interface RoverData {
 
 export interface WeatherData {
   source: string;
+  instrument?: string;
   sol: number;
   site: string;
   stepH: number;
@@ -133,7 +140,8 @@ export interface ContextData {
   aoi: { uv0: [number, number]; uv1: [number, number] };
   traverse: { source: string; points: [number, number, number][]; totalKm: number; lastSol: number };
   places: { id: string; name: string; sol: number; uv: [number, number]; note: string; lon: number; lat: number }[];
-  depotToCheyavaKm: number;
+  facts: { value: string; label: string }[];
+  links: { from: string; to: string }[];
   global: { image: string; source: string; siteUv: [number, number]; lon: number; lat: number };
 }
 
@@ -162,6 +170,7 @@ export interface PathSample {
   slopeDeg: number; // terrain slope at the sample
   gradeDeg: number; // slope in the walking direction (signed)
   sand: number; // 0..1
+  shield: number; // fraction of the open-sky dose rate received here (terrain shielding), 0..1
   blocked: boolean;
 }
 

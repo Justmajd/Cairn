@@ -1,0 +1,24 @@
+{
+ "source": "USGS Mars 2020 TRN CTX DTM (20 m) and orthomosaic (6 m)",
+ "n": 331,
+ "cellM": 20.48,
+ "sizeM": 6758.400000000001,
+ "originLocal": {
+  "x": -2355.2000000000003,
+  "y": -2355.2000000000116
+ },
+ "inner": {
+  "from": 115,
+  "to": 215
+ },
+ "height": {
+  "file": "region.u16",
+  "zMin": -4222.0,
+  "zMax": -2891.0
+ },
+ "texture": {
+  "file": "region.jpg",
+  "px": 2688,
+  "mPerPx": 2.514
+ }
+}

@@ -1,0 +1,113 @@
+{
+ "order": [
+  "rover",
+  "ridge",
+  "sajama",
+  "ridgetop",
+  "midbox"
+ ],
+ "stops": {
+  "rover": {
+   "kind": "shelter",
+   "name": "Pressurised rover",
+   "short": "Rover",
+   "rmc": "116_2214",
+   "sols": "4571",
+   "solRange": [
+    4571,
+    4572
+   ],
+   "dwellMin": 0,
+   "description": "EVA start, end and radiation shelter. Parked on the gentle slope north of the boxwork, where Curiosity stopped on sol 4571 before climbing in.",
+   "science": "From here the crew sees the whole boxwork network: a mesh of pale ridges rising above darker hollows.",
+   "whyHumans": "A crewed rover can reposition in minutes when the plan changes — no overnight command cycle from Earth.",
+   "images": [
+    "NLB_803291861EDR_S1162214NCAM00269M_",
+    "NLB_803291799EDR_S1162214NCAM00269M_",
+    "4571MH0002270001604096R00_DXXX"
+   ]
+  },
+  "ridge": {
+   "kind": "objective",
+   "name": "Boxwork ridge · main exposure",
+   "short": "Boxwork ridge",
+   "rmc": "117_2538",
+   "sols": "4602–4606",
+   "solRange": [
+    4602,
+    4606
+   ],
+   "dwellMin": 30,
+   "description": "Curiosity climbed an 11 m slope on sols 4602–4603 to reach the top of the ridge that opens onto the boxwork, and reached the main exposure by sols 4604–4606 (July 2025).",
+   "science": "Boxwork ridges formed where groundwater seeped through cracks and left minerals that hardened the rock. The softer rock around them eroded away. They show water was still moving under Mount Sharp as Mars dried out.",
+   "whyHumans": "A geologist can walk the ridge crest, trace the central fracture by hand and compare it with the hollow beside it in one afternoon.",
+   "images": [
+    "NLB_806305920EDR_S1172538NCAM00265M_",
+    "NLB_806305865EDR_S1172538NCAM00265M_",
+    "4604MH0002240021700141C00_DXXX",
+    "NLB_806306182EDR_F1172538NCAM00264M_"
+   ]
+  },
+  "sajama": {
+   "kind": "objective",
+   "name": "Nevado Sajama drill site",
+   "short": "Nevado Sajama",
+   "rmc": "120_574",
+   "sols": "4752–4804",
+   "solRange": [
+    4789,
+    4804
+   ],
+   "dwellMin": 30,
+   "description": "Curiosity's long stay in the middle of the boxwork. The rover finished its 'Nevado Sajama 2' drill sample here before starting the final phase of the boxwork campaign (sols 4804–4811).",
+   "science": "Drill powder lets the rover's labs measure the minerals and chemistry locked inside the boxwork rock, not just its dusty surface.",
+   "whyHumans": "On site, a person can choose a drill spot in minutes, take several cores and bring the best ones home for laboratories on Earth.",
+   "images": [
+    "NLB_822633005EDR_D1200574TRAV01464M_",
+    "NLB_822634066EDR_F1200574NCAM00278M_",
+    "NLB_822633932EDR_S1200574NCAM00279M_",
+    "4791MH0008640011703751C00_DXXX"
+   ]
+  },
+  "ridgetop": {
+   "kind": "optional",
+   "name": "Ridge-top route",
+   "short": "Ridge top",
+   "rmc": "118_372",
+   "sols": "4614–4621",
+   "solRange": [
+    4614,
+    4621
+   ],
+   "dwellMin": 20,
+   "description": "Curiosity drove along the crest of a boxwork ridge here. The ridge is about 5 m wide — wide enough for the car-sized rover.",
+   "science": "Ridge crests expose the hardened, mineral-filled cores of the old fractures.",
+   "whyHumans": "Walking a narrow crest is easy for a person; the rover had to plan every drive across it from Earth.",
+   "images": [
+    "NLB_807730909EDR_F1180372NCAM00283M_",
+    "NLB_807730725EDR_F1180372NCAM00283M_",
+    "4616MH0001680011700415C00_DXXX"
+   ]
+  },
+  "midbox": {
+   "kind": "optional",
+   "name": "Inside the boxwork",
+   "short": "Mid boxwork",
+   "rmc": "118_2268",
+   "sols": "4647–4650",
+   "solRange": [
+    4647,
+    4650
+   ],
+   "dwellMin": 15,
+   "description": "A stop deep inside the ridge network, between the ridge-top route and the drill site.",
+   "science": "Comparing several stations shows whether the cement changes from one ridge to the next.",
+   "whyHumans": "A crew can sample many ridges in one walk; the rover needed weeks.",
+   "images": [
+    "NLB_810034800EDR_F1182268NCAM00267M_",
+    "NLB_810035968EDR_F1182268NCAM00268M_",
+    "4649MH0001680021701496C00_DXXX"
+   ]
+  }
+ }
+}

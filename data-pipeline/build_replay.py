@@ -15,7 +15,7 @@ import re
 
 import numpy as np
 
-from common import RAW, write_json
+from common import SHARED as RAW, write_json
 
 NASA_TOTAL_UGY = 8100.0
 CME_ID = "2024-05-20T05:36:00-CME-001"

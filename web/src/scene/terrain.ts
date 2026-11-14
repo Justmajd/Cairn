@@ -9,7 +9,7 @@ export const SKY_HORIZON = 0xd9a878;
 export const MAP_BG = 0x0f0d0c;
 
 /** Map layers coloured on the GPU from the data grids. */
-export const LAYER_IDS = { none: 0, risk: 1, slope: 2, sand: 3, thermal: 4, geology: 5, shelter: 6 } as const;
+export const LAYER_IDS = { none: 0, risk: 1, slope: 2, sand: 3, thermal: 4, geology: 5, shelter: 6, shield: 7, minerals: 8 } as const;
 export type LayerId = keyof typeof LAYER_IDS;
 
 const COMMON = /* glsl */ `
@@ -23,6 +23,61 @@ const COMMON = /* glsl */ `
     vec2 i = floor(p), f = fract(p);
     vec2 u = f * f * (3.0 - 2.0 * f);
     return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+  }
+`;
+
+/** Cast shadows: march from each pixel toward the Sun across the walk-area and regional elevation grids. */
+const SHADOW = /* glsl */ `
+  uniform sampler2D uAoiHeight;
+  uniform float uAoiN;
+  uniform float uAoiCell;
+  uniform float uAoiHalf;
+  uniform sampler2D uRegHeight;
+  uniform float uRegN;
+  uniform float uRegCell;
+  uniform vec2 uRegOrigin; // world X of the west edge, world Z of the north edge
+  uniform float uHasRegion;
+  uniform vec3 uSunDir;
+  uniform float uShadows;
+
+  float groundAt(vec2 xz) {
+    vec2 a = (xz + uAoiHalf) / uAoiCell;
+    if (all(greaterThanEqual(a, vec2(0.0))) && all(lessThanEqual(a, vec2(uAoiN - 1.0)))) {
+      return texture2D(uAoiHeight, (a + 0.5) / uAoiN).r * uExag;
+    }
+    if (uHasRegion > 0.5) {
+      vec2 r = (xz - uRegOrigin) / uRegCell;
+      if (all(greaterThanEqual(r, vec2(0.0))) && all(lessThanEqual(r, vec2(uRegN - 1.0)))) {
+        return texture2D(uRegHeight, (r + 0.5) / uRegN).r * uExag;
+      }
+    }
+    return -1e6;
+  }
+
+  // 1 = full sun, 0 = in shadow; soft edge from the closest miss along the ray
+  float sunVisibility(vec3 p, vec3 n) {
+    if (uSunDir.y <= 0.0) return 0.0;
+    if (uShadows < 0.5) return 1.0;
+    vec3 o = p + n * 0.6;
+    float vis = 1.0;
+    float t = 1.2;
+    for (int i = 0; i < 64; i++) {
+      vec3 q = o + uSunDir * t;
+      float h = groundAt(q.xz);
+      float gap = q.y - h;
+      if (gap < 0.0) return 0.0;
+      vis = min(vis, 9.0 * gap / t);
+      t *= 1.115;
+      if (t > 9000.0 || q.y > 1200.0 * uExag) break;
+    }
+    return clamp(vis, 0.0, 1.0);
+  }
+
+  // daylight: dim towards twilight, warm low sun
+  vec3 sunLight(float nl, float vis) {
+    float day = smoothstep(-2.0, 12.0, degrees(asin(clamp(uSunDir.y, -1.0, 1.0))));
+    float direct = max(nl, 0.0) * vis;
+    return vec3(0.36 + 0.86 * direct) * mix(0.25, 1.0, day);
   }
 `;
 
@@ -58,7 +113,7 @@ const AOI_FRAG = /* glsl */ `
   uniform sampler2D uRelief;
   uniform float uReliefRange;
   uniform float uExag;
-  uniform vec3 uSun;
+  ${SHADOW}
   uniform int uLayer;
   uniform float uLayerMix;
   uniform float uGridN;
@@ -68,6 +123,8 @@ const AOI_FRAG = /* glsl */ `
   uniform sampler2D uRisk;
   uniform sampler2D uThermal;
   uniform sampler2D uShelter;
+  uniform sampler2D uShield;
+  uniform sampler2D uMinerals;
   uniform sampler2D uGeo;
   uniform sampler2D uGeoLut;
   varying vec2 vUv;
@@ -147,6 +204,24 @@ const AOI_FRAG = /* glsl */ `
       if (n1 != id || n2 != id) c = vec4(c.rgb * 0.45, 0.9); // unit boundaries
       return c;
     }
+    if (uLayer == 8) {
+      // CRISM summary parameters: r = olivine, g = Fe/Mg clay, b = carbonate (0..1 strength), a = imaged by CRISM
+      vec4 m = texture2D(uMinerals, g);
+      if (m.a < 0.5) {
+        float hatch = step(0.82, fract((vWorld.x + vWorld.z) / 14.0));
+        return vec4(0.08, 0.06, 0.05, 0.28 + 0.18 * hatch); // not imaged by CRISM
+      }
+      vec3 col = (m.r * vec3(0.72, 0.88, 0.29) + m.g * vec3(0.3, 0.64, 1.0) + m.b * vec3(1.0, 0.35, 0.82)) / max(m.r + m.g + m.b, 1e-3);
+      return vec4(col, smoothstep(0.05, 0.55, max(m.r, max(m.g, m.b))) * 0.88);
+    }
+    if (uLayer == 7) {
+      float f = texture2D(uShield, g).r;            // dose factor, 1 = open sky
+      float cut = (1.0 - f) * 100.0;                // percent less dose
+      vec4 c = ramp(cut, 0.0, 1.0, 4.0, 8.0, 14.0,
+        vec4(0.25, 0.55, 1.0, 0.0), vec4(0.25, 0.55, 1.0, 0.25), vec4(0.3, 0.7, 1.0, 0.55),
+        vec4(0.55, 0.85, 1.0, 0.72), vec4(0.85, 0.97, 1.0, 0.85));
+      return c;
+    }
     if (uLayer == 6) {
       float raw = texture2D(uShelter, g).r * 255.0;
       float minutes = raw / 4.0;
@@ -177,8 +252,8 @@ const AOI_FRAG = /* glsl */ `
     // per-pixel lighting from the 1 m HiRISE elevation gradient
     vec2 grad = (texture2D(uRelief, vUv).rg * 2.0 - 1.0) * uReliefRange * uExag;
     vec3 n = normalize(vec3(-grad.x, 1.0, grad.y));
-    float nl = dot(n, uSun);
-    c *= 0.72 + 0.5 * nl;
+    float nl = dot(n, uSunDir);
+    c *= sunLight(nl, sunVisibility(vWorld, n));
 
     // fine grain right at the camera so the ground does not look smeared at eye height (rendering detail only)
     float d = distance(cameraPosition, vWorld);
@@ -201,7 +276,8 @@ const REGION_FRAG = /* glsl */ `
   #include <logdepthbuf_pars_fragment>
   ${COMMON}
   uniform sampler2D uMap;
-  uniform vec3 uSun;
+  uniform float uExag;
+  ${SHADOW}
   uniform vec3 uEdgeColor;
   uniform float uHalf;
   uniform float uFade;
@@ -211,7 +287,8 @@ const REGION_FRAG = /* glsl */ `
   void main() {
     #include <logdepthbuf_fragment>
     vec3 c = marsTint(texture2D(uMap, vUv).r);
-    c *= 0.72 + 0.5 * dot(normalize(vNormal), uSun);
+    vec3 n = normalize(vNormal);
+    c *= sunLight(dot(n, uSunDir), sunVisibility(vWorld, n));
     c *= 0.86; // slightly darker than the HiRISE walk area, which stays the focus
     vec2 e = uHalf - abs(vWorld.xz);
     c = mix(uEdgeColor, c, smoothstep(0.0, uFade, min(e.x, e.y)));
@@ -228,6 +305,8 @@ export interface GridTextures {
   thermal: THREE.DataTexture;
   geology: THREE.DataTexture;
   geoLut: THREE.DataTexture;
+  shield: THREE.DataTexture;
+  minerals: THREE.DataTexture;
 }
 
 /** One byte per node, smoothly interpolated on the GPU (so layers look smooth, not pixelated). */
@@ -251,14 +330,70 @@ export function geologyLut(units: GeologyUnit[]): THREE.DataTexture {
   return tex;
 }
 
+/** RGBA-per-node grid (4 bytes) as a texture, smoothly interpolated. */
+export function rgbaTexture(rgba: Uint8Array | null, n: number): THREE.DataTexture {
+  const data = rgba ? new Uint8Array(rgba) : new Uint8Array(n * n * 4);
+  const tex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 export interface Terrain {
   mesh: THREE.Mesh;
   uniforms: Record<string, THREE.IUniform>;
 }
 
-function material(frag: string, extra: Record<string, THREE.IUniform>): THREE.ShaderMaterial {
-  const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uExag: { value: 1 }, uSun: { value: SUN_DIR.clone() } }]);
-  Object.assign(uniforms, extra); // textures are assigned after merge so they are not cloned
+/** Uniforms shared by both terrain materials (one object, so a change applies to both). */
+export interface ShadowUniforms {
+  uAoiHeight: THREE.IUniform<THREE.Texture | null>;
+  uAoiN: THREE.IUniform<number>;
+  uAoiCell: THREE.IUniform<number>;
+  uAoiHalf: THREE.IUniform<number>;
+  uRegHeight: THREE.IUniform<THREE.Texture | null>;
+  uRegN: THREE.IUniform<number>;
+  uRegCell: THREE.IUniform<number>;
+  uRegOrigin: THREE.IUniform<THREE.Vector2>;
+  uHasRegion: THREE.IUniform<number>;
+  uSunDir: THREE.IUniform<THREE.Vector3>;
+  uShadows: THREE.IUniform<number>;
+  uExag: THREE.IUniform<number>;
+}
+
+/** Heights (metres above `zRef`) as a half-float texture: hardware-filtered and precise to ~0.25 m. */
+export function heightTexture(heights: Float32Array, n: number, zRef: number): THREE.DataTexture {
+  const data = new Uint16Array(n * n);
+  for (let i = 0; i < data.length; i++) data[i] = THREE.DataUtils.toHalfFloat(heights[i] - zRef);
+  const tex = new THREE.DataTexture(data, n, n, THREE.RedFormat, THREE.HalfFloatType);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  tex.unpackAlignment = 2;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+export function makeShadowUniforms(): ShadowUniforms {
+  return {
+    uAoiHeight: { value: null },
+    uAoiN: { value: 2 },
+    uAoiCell: { value: 1 },
+    uAoiHalf: { value: 1 },
+    uRegHeight: { value: null },
+    uRegN: { value: 2 },
+    uRegCell: { value: 1 },
+    uRegOrigin: { value: new THREE.Vector2() },
+    uHasRegion: { value: 0 },
+    uSunDir: { value: SUN_DIR.clone() },
+    uShadows: { value: 1 },
+    uExag: { value: 1 },
+  };
+}
+
+function material(frag: string, extra: Record<string, THREE.IUniform>, shared: ShadowUniforms): THREE.ShaderMaterial {
+  const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog]);
+  Object.assign(uniforms, shared, extra); // shared + texture uniforms are assigned after merge so they are not cloned
   return new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: frag, fog: true, side: THREE.DoubleSide });
 }
 
@@ -275,6 +410,7 @@ export function buildTerrain(
   reliefRange: number,
   layers: GridTextures,
   step: number,
+  shared: ShadowUniforms,
 ): Terrain {
   const n = grid.n;
   const m = Math.floor((n - 1) / step) + 1;
@@ -360,7 +496,9 @@ export function buildTerrain(
     uShelter: { value: layers.slope },
     uGeo: { value: layers.geology },
     uGeoLut: { value: layers.geoLut },
-  });
+    uShield: { value: layers.shield },
+    uMinerals: { value: layers.minerals },
+  }, shared);
   const mesh = new THREE.Mesh(geometry, mat);
   mesh.frustumCulled = false;
   mesh.matrixAutoUpdate = false;
@@ -368,7 +506,7 @@ export function buildTerrain(
 }
 
 /** Regional CTX terrain with a hole where the HiRISE walk area sits. */
-export function buildRegion(region: RegionMeta, heights: Float32Array, zRef: number, map: THREE.Texture, aoiSize: number, step: number): Terrain {
+export function buildRegion(region: RegionMeta, heights: Float32Array, zRef: number, map: THREE.Texture, aoiSize: number, step: number, shared: ShadowUniforms): Terrain {
   const n = region.n;
   const m = Math.floor((n - 1) / step) + 1;
   const cell = region.cellM * step;
@@ -421,7 +559,7 @@ export function buildRegion(region: RegionMeta, heights: Float32Array, zRef: num
     uEdgeColor: { value: new THREE.Color().setHex(MAP_BG, THREE.LinearSRGBColorSpace) },
     uHalf: { value: region.sizeM / 2 },
     uFade: { value: 2600 },
-  });
+  }, shared);
   // the region is centred on the walk area only if the margins are equal (they are, by construction)
   const mesh = new THREE.Mesh(geometry, mat);
   mesh.frustumCulled = false;
@@ -430,7 +568,7 @@ export function buildRegion(region: RegionMeta, heights: Float32Array, zRef: num
 }
 
 /** Sky dome: butterscotch haze at the horizon, darker overhead; a flat dark backdrop in the map view. */
-export function buildSky(): { mesh: THREE.Mesh; setMapMode: (k: number) => void } {
+export function buildSky(): { mesh: THREE.Mesh; setMapMode: (k: number) => void; setSunElevation: (deg: number) => void } {
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
@@ -442,19 +580,25 @@ export function buildSky(): { mesh: THREE.Mesh; setMapMode: (k: number) => void 
       uZenith: { value: new THREE.Color().setHex(0x6b4a3a, THREE.LinearSRGBColorSpace) },
       uMapBg: { value: new THREE.Color().setHex(MAP_BG, THREE.LinearSRGBColorSpace) },
       uMap: { value: 1 },
+      uDay: { value: 1 },
     },
     vertexShader: /* glsl */ `varying vec3 vDir; void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */ `
-      uniform vec3 uHorizon; uniform vec3 uZenith; uniform vec3 uMapBg; uniform float uMap; varying vec3 vDir;
+      uniform vec3 uHorizon; uniform vec3 uZenith; uniform vec3 uMapBg; uniform float uMap; uniform float uDay; varying vec3 vDir;
       void main() {
         float t = pow(clamp(vDir.y, 0.0, 1.0), 0.45);
         vec3 c = mix(uHorizon, uZenith, t);
         c = mix(c, uHorizon * 0.82, smoothstep(0.0, -0.25, vDir.y));
+        c *= mix(0.22, 1.0, uDay); // dusk and night
         gl_FragColor = vec4(mix(c, uMapBg, uMap), 1.0);
       }`,
   });
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), material);
   mesh.renderOrder = -10;
   mesh.frustumCulled = false;
-  return { mesh, setMapMode: (k) => (material.uniforms.uMap.value = k) };
+  return {
+    mesh,
+    setMapMode: (k) => (material.uniforms.uMap.value = k),
+    setSunElevation: (deg) => (material.uniforms.uDay.value = Math.min(1, Math.max(0, (deg + 2) / 14))),
+  };
 }

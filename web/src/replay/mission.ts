@@ -64,6 +64,7 @@ export class Mission {
     readonly params: EvaParams,
     readonly lookup: ReturnLookup,
     readonly stormOnsetS: number | null,
+    readonly shieldAt: (x: number, y: number) => number = () => 1,
   ) {
     this.segments = segments.slice();
     this.plannedSegments = segments.slice();
@@ -83,9 +84,11 @@ export class Mission {
     return this.stormOnsetS !== null && this.t >= this.stormOnsetS;
   }
 
-  /** Dose rate the astronaut is receiving right now (µGy/h), including shelter shielding. */
+  /** Dose rate the astronaut is receiving right now (µGy/h), including shelter and terrain shielding. */
   get doseRate(): number {
-    return this.rad.rateAt(this.t, this.stormOnsetS) * (this.sheltered ? this.params.shelterFactor : 1);
+    if (this.sheltered) return this.rad.rateAt(this.t, this.stormOnsetS) * this.params.shelterFactor;
+    const p = this.pose();
+    return this.rad.rateAt(this.t, this.stormOnsetS) * this.shieldAt(p.x, p.y);
   }
 
   get outdoorRate(): number {
@@ -166,7 +169,11 @@ export class Mission {
       } else {
         this.o2UsedL += o2Litres(0, step, seg.sheltered ? this.params.restingW : this.params.workingW, this.params);
       }
-      const factor = this.sheltered ? this.params.shelterFactor : 1;
+      let factor = this.params.shelterFactor;
+      if (!this.sheltered) {
+        const p = this.pose();
+        factor = this.shieldAt(p.x, p.y);
+      }
       this.doseUGy += this.rad.dose(t0, t1, this.stormOnsetS, () => factor, 5);
 
       this.t = t1;
@@ -216,7 +223,11 @@ export class Mission {
     const f = this.params.shelterFactor;
     const continueUGy =
       this.doseUGy + this.rad.dose(alertS, this.plannedEndS, this.stormOnsetS) + this.rad.dose(this.plannedEndS, horizonS, this.stormOnsetS, () => f);
-    const shelterUGy = this.doseUGy + this.rad.dose(alertS, arriveS, this.stormOnsetS) + this.rad.dose(arriveS, horizonS, this.stormOnsetS, () => f);
+    const along = (t: number) => {
+      const s = sampleAtTime(path, t - alertS);
+      return this.shieldAt(s.x, s.y);
+    };
+    const shelterUGy = this.doseUGy + this.rad.dose(alertS, arriveS, this.stormOnsetS, along) + this.rad.dose(arriveS, horizonS, this.stormOnsetS, () => f);
     this.projection = {
       alertS, arriveS, horizonS, doseAtAlert: this.doseUGy, continueUGy, shelterUGy,
       avoidedUGy: continueUGy - shelterUGy, shelterDistM: path.distance,

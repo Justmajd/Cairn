@@ -1,7 +1,7 @@
 {
  "id": "jezero",
  "name": "Jezero Crater — Neretva Vallis / Bright Angel",
- "crs": "Equirectangular, Mars 2000 sphere (R = 3,396,190 m), lat_ts = 0, lon0 = 0",
+ "crs": "Equirectangular, Mars 2000 sphere (R = 3,396,190 m), lat_ts = 0, lon0 = 0.0",
  "originEqc": {
   "x": 4581276,
   "y": 1095126
@@ -36,13 +36,92 @@
   "file": "relief.png",
   "range": 1.5
  },
+ "eva": {
+  "sol": 1215,
+  "utc": "2024-07-21T02:10:26Z",
+  "note": "Sol Perseverance cored Cheyava Falls (Sapphire Canyon)",
+  "startLmst": 10.0
+ },
+ "rover": {
+  "name": "Perseverance",
+  "mission": "Mars 2020"
+ },
+ "story": {
+  "headline": "The rocks Perseverance found. The path humans will walk.",
+  "paragraphs": [
+   "In 2024 Perseverance cored a rock called <b>Cheyava Falls</b> on the edge of an ancient river channel in Jezero Crater. In September 2025 NASA reported its “leopard spots” as a <b>potential biosignature</b> — the strongest candidate sign of ancient life found on Mars so far. A rover cannot settle the question.",
+   "<b>Your mission:</b> walk to it. CAIRN layers data from four NASA missions and the USGS into one map, finds the safest route for a person in a spacesuit, and gets you back to the rover if the Sun turns on you."
+  ]
+ },
+ "minerals": {
+  "source": "MRO CRISM MTRDR summary parameters (PDS Geosciences Node)",
+  "product": "FRT00005C5E_07_SU166J_MTR3 + HRL000040FF_07_SU183J_MTR3",
+  "mPerPx": 18,
+  "bands": [
+   {
+    "key": "olivine",
+    "name": "Olivine",
+    "parameter": "OLINDEX3",
+    "floor": 0.06,
+    "p995": 0.1875,
+    "color": [
+     184,
+     224,
+     74
+    ],
+    "coveragePct": 25.0,
+    "detectedPct": 18.3
+   },
+   {
+    "key": "clay",
+    "name": "Fe/Mg clay",
+    "parameter": "D2300",
+    "floor": 0.005,
+    "p995": 0.0251,
+    "color": [
+     77,
+     163,
+     255
+    ],
+    "coveragePct": 25.0,
+    "detectedPct": 5.7
+   },
+   {
+    "key": "carbonate",
+    "name": "Carbonate",
+    "parameter": "MIN2295_2480",
+    "floor": 0.002,
+    "p995": 0.0167,
+    "color": [
+     255,
+     90,
+     209
+    ],
+    "coveragePct": 25.0,
+    "detectedPct": 0.1
+   }
+  ],
+  "coveragePct": 25.0,
+  "scaling": "Strength = (band depth - floor) / (99.5th percentile - floor), per parameter"
+ },
+ "centerLonLat": {
+  "lon": 77.306173,
+  "lat": 18.492714
+ },
+ "shielding": {
+  "file": "shield.u8",
+  "exponent": 2.0,
+  "azimuths": 24,
+  "radiusM": 260
+ },
  "grids": {
   "slope": "slope.u8",
   "sand": "sand.u8",
   "effort": "effort.u8",
   "risk": "risk.u8",
   "thermal": "thermal.u8",
-  "geology": "geology.u8"
+  "geology": "geology.u8",
+  "minerals": "minerals.rgba"
  },
  "model": {
   "slopeLimitDeg": 25.0,

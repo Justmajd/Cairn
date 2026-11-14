@@ -1,0 +1,51 @@
+{
+ "source": "MRO CRISM MTRDR summary parameters (PDS Geosciences Node)",
+ "product": "FRT00005C5E_07_SU166J_MTR3 + HRL000040FF_07_SU183J_MTR3",
+ "mPerPx": 18,
+ "bands": [
+  {
+   "key": "olivine",
+   "name": "Olivine",
+   "parameter": "OLINDEX3",
+   "floor": 0.06,
+   "p995": 0.1875,
+   "color": [
+    184,
+    224,
+    74
+   ],
+   "coveragePct": 25.0,
+   "detectedPct": 18.3
+  },
+  {
+   "key": "clay",
+   "name": "Fe/Mg clay",
+   "parameter": "D2300",
+   "floor": 0.005,
+   "p995": 0.0251,
+   "color": [
+    77,
+    163,
+    255
+   ],
+   "coveragePct": 25.0,
+   "detectedPct": 5.7
+  },
+  {
+   "key": "carbonate",
+   "name": "Carbonate",
+   "parameter": "MIN2295_2480",
+   "floor": 0.002,
+   "p995": 0.0167,
+   "color": [
+    255,
+    90,
+    209
+   ],
+   "coveragePct": 25.0,
+   "detectedPct": 0.1
+  }
+ ],
+ "coveragePct": 25.0,
+ "scaling": "Strength = (band depth - floor) / (99.5th percentile - floor), per parameter"
+}

@@ -22,6 +22,7 @@ export class TerrainGrid {
     readonly sand: Uint8Array, // 0..255
     readonly effortScale = 50,
     readonly riskScale = 50,
+    readonly shield: Uint8Array | null = null, // dose factor x 255 (terrain blocking part of the sky)
   ) {
     this.size = (n - 1) * cell;
   }
@@ -66,6 +67,11 @@ export class TerrainGrid {
 
   riskAt(node: number): number {
     return this.risk[node] / this.riskScale;
+  }
+
+  /** Fraction of the open-sky dose rate received at a position (1 = open ground). */
+  shieldAt(x: number, y: number): number {
+    return this.shield ? this.shield[this.nodeAt(x, y)] / 255 : 1;
   }
 
   isBlocked(node: number): boolean {
@@ -124,6 +130,7 @@ export function measurePath(grid: TerrainGrid, points: XY[], p: EvaParams, step 
     samples.push({
       x, y, z, dist, energy, time, slopeDeg, gradeDeg,
       sand: grid.sand[node] / 255,
+      shield: grid.shield ? grid.shield[node] / 255 : 1,
       blocked: grid.isBlocked(node),
     });
     if (slopeDeg > maxSlope) maxSlope = slopeDeg;

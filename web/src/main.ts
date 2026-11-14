@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { App } from "./app";
-import { loadSite } from "./data/loaders";
+import { loadSite, loadSites } from "./data/loaders";
 import { DEFAULT_PARAMS } from "./eva/params";
 import { Router } from "./routing/client";
 import { SceneView } from "./scene/view";
@@ -33,7 +33,8 @@ async function boot(): Promise<void> {
   const query = new URLSearchParams(location.search);
   const quality = query.get("q") === "low" ? "low" : "high";
 
-  const site = await loadSite(progress);
+  const [site, sites] = await Promise.all([loadSite(progress), loadSites()]);
+  document.title = `CAIRN — ${site.meta.name.split(" — ")[0]} · Marswalk Route Planner`;
   // Use the full 25 cm HiRISE image when the GPU can hold an 8192 px texture; otherwise the 50 cm version.
   const hi = site.meta.texture.hi;
   const useHi = !!hi && quality === "high" && query.get("tex") !== "4k" && maxTextureSize() >= hi.px;
@@ -70,13 +71,13 @@ async function boot(): Promise<void> {
   view.setShelterTimes(field.time);
   texture.anisotropy = view.renderer.capabilities.getMaxAnisotropy();
   if (regionMap) regionMap.anisotropy = texture.anisotropy;
-  const app = new App(site, view, router, field);
+  const app = new App(site, view, router, field, sites);
   view.start((dt) => app.tick(dt));
   (window as unknown as { cairn: unknown }).cairn = { app, view, site, field, textureMPerPx: chosen.mPerPx };
 
   progress("Ready", 1);
   $("#loading").hidden = true;
-  if (query.get("skip") !== "1") showBriefing(site, () => {});
+  if (query.get("skip") !== "1") showBriefing(site, () => {}, sites);
 }
 
 // Trackpad pinch arrives as ctrl+wheel: keep it for the map instead of zooming the whole page.

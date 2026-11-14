@@ -12,6 +12,7 @@ Outputs (web/public/data/<site>/)
   site.json  geology.json
 """
 import glob
+import json
 import os
 
 import numpy as np
@@ -25,7 +26,7 @@ from rasterio.transform import from_origin
 from rasterio.warp import Resampling, reproject
 from scipy import ndimage as ndi
 
-from common import CELL, CFG, N, OUT, RAW, SIZE, X0, Y0, eqc_to_lonlat, write_json
+from common import CELL, CFG, LON0, N, OUT, RAW, SIZE, X0, Y0, eqc_to_lonlat, write_json
 
 # ---- model thresholds (demo parameters; see docs/plan.md §4-5) ----------------------------------
 SLOPE_LIMIT_DEG = 25.0      # steeper than this is impassable for a suited walker
@@ -41,7 +42,7 @@ EQC = None  # CRS of the USGS mosaics, read from the CTX file
 def eqc_crs():
     global EQC
     if EQC is None:
-        with rasterio.open(os.path.join(RAW, "ctx_dtm.tif")) as ds:
+        with rasterio.open(os.path.join(RAW, CFG["region"]["dtm"])) as ds:
             EQC = ds.crs
     return EQC
 
@@ -142,6 +143,37 @@ def build_relief(dtm):
     Image.fromarray(rgb, "RGB").save(os.path.join(OUT, "relief.png"), optimize=True)
 
 
+# ---- terrain shielding --------------------------------------------------------------------------
+SHIELD_EXPONENT = 2.0   # dose from zenith angle t falls as cos(t)^n (assumption; Wimmer-Schweingruber et al. 2015 measured a zenith dependence)
+SHIELD_AZIMUTHS = 24
+
+
+def build_shielding(h, cell):
+    """Fraction of the surface radiation dose still received at each node once nearby terrain blocks
+    part of the sky.  Per azimuth, terrain up to elevation angle b blocks sin(b)^(n+1) of a cos^n-weighted
+    hemisphere.  1.0 = open ground; cliffs and channel walls give a few to ~15 percent less."""
+    n = h.shape[0]
+    pad = 260                                                # metres of terrain considered around each node
+    k = int(pad / cell)
+    hp = np.pad(h, k, mode="edge")
+    dists = np.unique(np.round(np.geomspace(cell, pad, 34) / cell).astype(int))
+    blocked = np.zeros_like(h)
+    for a in range(SHIELD_AZIMUTHS):
+        th = 2 * np.pi * a / SHIELD_AZIMUTHS
+        best = np.zeros_like(h)
+        for d in dists:
+            dc = int(round(np.sin(th) * d))
+            dr = int(round(-np.cos(th) * d))
+            if dc == 0 and dr == 0:
+                continue
+            other = hp[k + dr:k + dr + n, k + dc:k + dc + n]
+            ang = (other - h) / (cell * np.hypot(dc, dr))
+            np.maximum(best, ang, out=best)
+        sinb = np.sin(np.arctan(best))
+        blocked += sinb ** (SHIELD_EXPONENT + 1)
+    return np.clip(1.0 - blocked / SHIELD_AZIMUTHS, 0, 1)
+
+
 # ---- THEMIS thermal ----------------------------------------------------------------------------
 def build_thermal():
     path = glob.glob(os.path.join(RAW, "sim3464", "**", "*NightIR*.tif"), recursive=True)[0]
@@ -198,57 +230,81 @@ def main():
     slope = horn_slope_deg(h, CELL)
     rough = build_roughness(dtm)
     tex05 = build_texture(ortho)                      # 0.5 m/px float image, reused for sand
-    thermal, themis_res = build_thermal()
-    lo, hi = np.percentile(thermal, [2, 98])
-    tn = ((thermal - lo) / (hi - lo)).clip(0, 1)      # THEMIS night IR, 0 = coldest, 1 = warmest
-
-    # Sand hazard = HiRISE bedform texture, weighted by THEMIS night-time temperature:
-    # loose sand has low thermal inertia and is cold at night, bedrock stays warm.
-    sand = build_sand_index(tex05, dtm) * (0.3 + 0.7 * np.clip((0.75 - tn) / 0.45, 0, 1))
+    layers = CFG.get("layers", {})
+    if layers.get("themis", True):
+        thermal, themis_res = build_thermal()
+        lo, hi = np.percentile(thermal, [2, 98])
+        tn = ((thermal - lo) / (hi - lo)).clip(0, 1)  # THEMIS night IR, 0 = coldest, 1 = warmest
+        # Sand hazard = HiRISE bedform texture, weighted by THEMIS night-time temperature:
+        # loose sand has low thermal inertia and is cold at night, bedrock stays warm.
+        sand = build_sand_index(tex05, dtm) * (0.3 + 0.7 * np.clip((0.75 - tn) / 0.45, 0, 1))
+    else:
+        tn, themis_res = None, None
+        sand = build_sand_index(tex05, dtm)
     sand = np.where(slope > 18, 0, sand).clip(0, 1)   # bedforms sit on gentle ground; cliffs are not sand
 
     effort = 1.0 + SAND_EFFORT * sand + ROUGH_EFFORT * np.clip(rough / ROUGH_FULL_M, 0, 1)
     risk = 1.0 + SLOPE_RISK_MAX * np.clip((slope - SLOPE_RISK_START_DEG) / (SLOPE_LIMIT_DEG - SLOPE_RISK_START_DEG), 0, 1)
     blocked = slope > SLOPE_LIMIT_DEG
 
+    shield = build_shielding(h, CELL)
+    save_u8("shield.u8", np.round(shield * 255))
+    print("terrain shielding: dose factor min %.3f, p1 %.3f, median %.3f" % (shield.min(), np.percentile(shield, 1), np.median(shield)))
     save_u8("slope.u8", np.clip(slope.round(), 0, 90))
     save_u8("sand.u8", (sand * 255).round())
     save_u8("effort.u8", np.clip((effort * 50).round(), 0, 254))             # value / 50 = multiplier
     save_u8("risk.u8", np.where(blocked, 255, np.clip((risk * 50).round(), 0, 254)))  # 255 = impassable
 
 
-    save_u8("thermal.u8", (tn * 255).round())
+    grids = {"slope": "slope.u8", "sand": "sand.u8", "effort": "effort.u8", "risk": "risk.u8"}
+    if tn is not None:
+        save_u8("thermal.u8", (tn * 255).round())
+        grids["thermal"] = "thermal.u8"
+    if layers.get("geology", True):
+        build_and_save_geology()
+        grids["geology"] = "geology.u8"
+    if os.path.exists(os.path.join(OUT, "minerals.rgba")):
+        grids["minerals"] = "minerals.rgba"
 
+    write_site_json(grids, z_min, z_max, slope, blocked, sand, themis_res, ortho.shape[0])
+
+
+def build_and_save_geology():
     geo, units = build_geology()
     save_u8("geology.u8", geo)
     write_json("geology.json", {"source": "USGS SIM 3464 (Sun & Stack, 2020), GeoUnits_v1", "mapScale": "1:75,000",
                                 "units": units})
 
+
+def write_site_json(grids, z_min, z_max, slope, blocked, sand, themis_res, ortho_px):
     lon0, lat0 = eqc_to_lonlat(X0, Y0)
     lon1, lat1 = eqc_to_lonlat(X0 + SIZE, Y0 + SIZE)
+    story = CFG.get("story")
+    mp = os.path.join(OUT, "minerals.json")
+    minerals = json.load(open(mp)) if os.path.exists(mp) and "minerals" in grids else None
     write_json("site.json", {
         "id": CFG["id"], "name": CFG["name"],
-        "crs": "Equirectangular, Mars 2000 sphere (R = 3,396,190 m), lat_ts = 0, lon0 = 0",
+        "crs": f"Equirectangular, Mars 2000 sphere (R = 3,396,190 m), lat_ts = 0, lon0 = {LON0}",
         "originEqc": {"x": X0, "y": Y0},
         "boundsLonLat": {"west": round(lon0, 6), "south": round(lat0, 6), "east": round(lon1, 6), "north": round(lat1, 6)},
         "sizeM": SIZE, "grid": {"n": N, "cellM": CELL},
         "height": {"file": "height.u16", "zMin": z_min, "zMax": z_max},
         "texture": {"file": "texture.jpg", "px": CFG["texture_px"], "mPerPx": SIZE / CFG["texture_px"],
-                    "hi": {"file": "texture_8k.jpg", "px": ortho.shape[0], "mPerPx": SIZE / ortho.shape[0]}},
+                    "hi": {"file": "texture_8k.jpg", "px": ortho_px, "mPerPx": SIZE / ortho_px}},
         "relief": {"file": "relief.png", "range": RELIEF_RANGE},
-        "grids": {"slope": "slope.u8", "sand": "sand.u8", "effort": "effort.u8", "risk": "risk.u8",
-                  "thermal": "thermal.u8", "geology": "geology.u8"},
+        "eva": CFG.get("eva"), "rover": CFG.get("rover"), "story": story, "minerals": minerals,
+        "centerLonLat": {"lon": round((lon0 + lon1) / 2, 6), "lat": round((lat0 + lat1) / 2, 6)},
+        "shielding": {"file": "shield.u8", "exponent": SHIELD_EXPONENT, "azimuths": SHIELD_AZIMUTHS, "radiusM": 260},
+        "grids": grids,
         "model": {"slopeLimitDeg": SLOPE_LIMIT_DEG, "slopeRiskStartDeg": SLOPE_RISK_START_DEG,
                   "slopeRiskMax": SLOPE_RISK_MAX, "sandEffort": SAND_EFFORT, "roughEffort": ROUGH_EFFORT,
-                  "effortScale": 50, "riskScale": 50, "themisNativeResM": round(themis_res, 1)},
+                  "effortScale": 50, "riskScale": 50, "themisNativeResM": round(themis_res, 1) if themis_res else None},
         "stats": {"slopeMedianDeg": round(float(np.median(slope)), 1),
                   "blockedPct": round(float(blocked.mean()) * 100, 1),
                   "sandPct": round(float((sand > 0.5).mean()) * 100, 1),
                   "reliefM": round(z_max - z_min, 1)},
     })
-    print("slope median %.1f deg, blocked %.1f%%, sand>0.5 %.1f%%, rough p50/p95 %.2f/%.2f m" % (
-        np.median(slope), blocked.mean() * 100, (sand > 0.5).mean() * 100,
-        np.percentile(rough, 50), np.percentile(rough, 95)))
+    print("slope median %.1f deg, blocked %.1f%%, sand>0.5 %.1f%%" % (np.median(slope), blocked.mean() * 100, (sand > 0.5).mean() * 100))
 
 
 if __name__ == "__main__":

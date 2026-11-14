@@ -9,8 +9,11 @@ import { smoothPath } from "../routing/smooth";
 import type { MeasuredPath, Poi, SiteMeta } from "../types";
 import { measurePath, TerrainGrid } from "./grid";
 
-/** Integration test against the real Jezero data produced by the pipeline. */
-const DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../../public/data/jezero");
+/** Integration test against the real site data produced by the pipeline (both sites). */
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../public/data");
+
+describe.each(["jezero", "gale"])("%s site data", (siteId) => {
+const DIR = resolve(ROOT, siteId);
 const bin = (name: string) => new Uint8Array(readFileSync(resolve(DIR, name)));
 const json = <T,>(name: string) => JSON.parse(readFileSync(resolve(DIR, name), "utf8")) as T;
 
@@ -34,7 +37,8 @@ beforeAll(() => {
   field = buildReturnField(grid, grid.nearestPassable(pois.rover.x, pois.rover.y), P);
   console.log(`return field: ${(performance.now() - t0).toFixed(0)} ms`);
 
-  const order = ["rover", "cheyava", "serpentine", "rover"];
+  const objectives = Object.values(pois).filter((p) => p.kind === "objective").map((p) => p.id);
+  const order = ["rover", ...objectives, "rover"];
   for (let i = 1; i < order.length; i++) {
     const a = pois[order[i - 1]];
     const b = pois[order[i]];
@@ -54,11 +58,11 @@ beforeAll(() => {
   }
 });
 
-describe("Jezero site data", () => {
+describe("checks", () => {
   it("loads a consistent grid", () => {
     expect(grid.n).toBe(1025);
     expect(grid.size).toBe(2048);
-    expect(grid.height.every((h) => h > -2500 && h < -1900)).toBe(true);
+    expect(grid.height.every((h) => h > -4500 && h < -1500)).toBe(true);
   });
 
   it("places every stop on passable ground inside the AOI", () => {
@@ -70,7 +74,7 @@ describe("Jezero site data", () => {
   });
 
   it("finds a safe route for every leg of the default EVA", () => {
-    expect(legs.length).toBe(3);
+    expect(legs.length).toBe(Object.values(pois).filter((p) => p.kind === "objective").length + 1);
     for (const leg of legs) {
       expect(leg.blockedM).toBe(0);
       expect(leg.maxSlopeDeg).toBeLessThanOrEqual(25);
@@ -80,7 +84,7 @@ describe("Jezero site data", () => {
 
   it("the safe route is never worse than the straight line", () => {
     legs.forEach((leg, i) => expect(leg.cost).toBeLessThanOrEqual(straight[i].cost * 1.001));
-    expect(straight.some((s) => s.blockedM > 0)).toBe(true); // the demo needs at least one deadly straight line
+    if (siteId === "jezero") expect(straight.some((s) => s.blockedM > 0)).toBe(true); // the demo's deadly straight line
   });
 
   it("can get home from every stop, and the default EVA fits the suit budget", () => {
@@ -89,13 +93,12 @@ describe("Jezero site data", () => {
       return { timeS: field.time[node], energyJ: field.energy[node] };
     };
     for (const p of Object.values(pois)) expect(pathToShelter(field, grid.nearestPassable(p.x, p.y))).not.toBeNull();
-    const segments: Segment[] = [
-      { kind: "walk", path: legs[0], to: pois.cheyava, label: "" },
-      { kind: "dwell", poi: pois.cheyava, durationS: 1800, sheltered: false },
-      { kind: "walk", path: legs[1], to: pois.serpentine, label: "" },
-      { kind: "dwell", poi: pois.serpentine, durationS: 1800, sheltered: false },
-      { kind: "walk", path: legs[2], to: pois.rover, label: "" },
-    ];
+    const objectives = Object.values(pois).filter((p) => p.kind === "objective");
+    const segments: Segment[] = [];
+    objectives.forEach((p, i) => {
+      segments.push({ kind: "walk", path: legs[i], to: p, label: "" }, { kind: "dwell", poi: p, durationS: 1800, sheltered: false });
+    });
+    segments.push({ kind: "walk", path: legs[legs.length - 1], to: pois.rover, label: "" });
     const b = buildBudget(segments, P, lookup);
     console.log(
       `EVA: ${(b.distanceM / 1000).toFixed(2)} km, ${(b.totalTimeS / 3600).toFixed(2)} h, O2 ${b.o2UsedL.toFixed(0)} L of ${b.o2UsableL.toFixed(0)} usable, ` +
@@ -104,4 +107,5 @@ describe("Jezero site data", () => {
     expect(b.feasible).toBe(true);
     expect(b.walkBack.minMarginL).toBeGreaterThan(0);
   });
+});
 });

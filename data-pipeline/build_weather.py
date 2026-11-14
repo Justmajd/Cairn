@@ -36,13 +36,43 @@ def binned(series, step=0.25):
     return rows
 
 
+def rems(path):
+    """Curiosity REMS MODRDR table: LMST (col 2), BRIGHTNESS_TEMP = ground (8), AMBIENT_TEMP = air (16), PRESSURE (38)."""
+    cols = {"air": 15, "ground": 7, "pressure": 37}
+    out = {k: [] for k in cols}
+    with open(path, newline="") as f:
+        for row in csv.reader(f, skipinitialspace=True):
+            if len(row) < 38:
+                continue
+            h = lmst_hours(row[1].strip().strip('"'))
+            for k, i in cols.items():
+                v = float(row[i])
+                lo, hi = {"air": (150, 320), "ground": (150, 330), "pressure": (400, 1200)}[k]
+                if lo < v < hi:
+                    out[k].append((h, v))
+    return {k: np.array(v) for k, v in out.items()}
+
+
 if __name__ == "__main__":
-    ps = column(os.path.join(RAW, "meda_PS.csv"), "PRESSURE", lambda v: 400 < v < 1200)
-    air = column(os.path.join(RAW, "meda_TIRScal.csv"), "AIR_TEMP", lambda v: 120 < v < 320)
-    gnd = column(os.path.join(RAW, "meda_TIRScal.csv"), "GROUND_TEMP", lambda v: 120 < v < 340)
+    from common import CFG, SITE
+    if SITE == "jezero":
+        ps = column(os.path.join(RAW, "meda_PS.csv"), "PRESSURE", lambda v: 400 < v < 1200)
+        air = column(os.path.join(RAW, "meda_TIRScal.csv"), "AIR_TEMP", lambda v: 120 < v < 320)
+        gnd = column(os.path.join(RAW, "meda_TIRScal.csv"), "GROUND_TEMP", lambda v: 120 < v < 340)
+        source = "Mars 2020 MEDA, PDS Atmospheres node (derived PS, calibrated TIRS)"
+        where = "Bright Angel, Neretva Vallis (rover parked at Cheyava Falls)"
+        instrument = "Perseverance MEDA"
+    else:
+        import glob
+        r = rems(glob.glob(os.path.join(RAW, "rems", "*RMD*.TAB"))[0])
+        ps, air, gnd = r["pressure"], r["air"], r["ground"]
+        SOL = CFG["eva"]["sol"]
+        source = "MSL REMS calibrated environmental data (MODRDR), PDS Atmospheres node"
+        where = "Boxwork, Mount Sharp (Curiosity at the main exposure)"
+        instrument = "Curiosity REMS"
     write_json("weather.json", {
-        "source": "Mars 2020 MEDA, PDS Atmospheres node (derived PS, calibrated TIRS)", "sol": SOL,
-        "site": "Bright Angel, Neretva Vallis (rover parked at Cheyava Falls)",
+        "source": source, "instrument": instrument, "sol": SOL,
+        "site": where,
         "stepH": 0.25,
         "pressurePa": binned(ps), "airTempK": binned(air), "groundTempK": binned(gnd),
         "range": {"pressurePa": [round(float(ps[:, 1].min()), 1), round(float(ps[:, 1].max()), 1)],

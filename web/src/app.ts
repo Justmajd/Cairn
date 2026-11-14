@@ -1,9 +1,10 @@
 import type { LayerId } from "./scene/terrain";
 import { measurePath } from "./data/grid";
-import type { SiteData } from "./data/loaders";
-import { buildBudget, EvaBudget, ReturnLookup, Segment } from "./eva/budget";
+import type { SiteData, SiteEntry } from "./data/loaders";
+import { buildBudget, EvaBudget, o2Litres, ReturnLookup, Segment, walkO2 } from "./eva/budget";
 import { DEFAULT_PARAMS, EvaParams } from "./eva/params";
 import { RadiationModel } from "./eva/radiation";
+import { fmtLmst, MARS_HOUR_S, SolarGeometry, solarGeometry, sunAt, SunPosition } from "./eva/sun";
 import { Mission, MissionEvent } from "./replay/mission";
 import type { FieldResult, Router } from "./routing/client";
 import type { SceneView } from "./scene/view";
@@ -13,6 +14,9 @@ import { DoseChartHandle, ProfileHandle, renderDoseChart, renderProfile } from "
 import { $, esc, fmtClock, fmtDist, fmtDose, fmtDur, fmtRate, setText } from "./ui/dom";
 import { ic } from "./ui/icons";
 import { showAssumptions, showSources, stopCardHtml } from "./ui/modals";
+import { openPanorama } from "./ui/panorama";
+import { DemoRunner, DemoStep } from "./ui/demo";
+import { CueRow, showCueCard } from "./ui/cuecard";
 
 interface Plan {
   order: Poi[]; // rover, stops…, rover
@@ -36,7 +40,9 @@ const LAYERS: Layer[] = [
   { id: "slope", name: "Slope", source: "hirise_dtm", swatch: "linear-gradient(90deg,#78dc50,#ffdc00,#ff8c00,#eb2828)", legend: ["5°", "25°+"] },
   { id: "sand", name: "Loose sand", source: "sand", swatch: "linear-gradient(90deg,rgba(255,194,77,.15),#ffc24d)", legend: ["firm", "loose"] },
   { id: "thermal", name: "Night thermal", source: "themis", swatch: "linear-gradient(90deg,#140a5a,#731491,#d13d5c,#fa9926,#faf099)", legend: ["cold · sand", "warm · rock"] },
+  { id: "minerals", name: "Minerals · CRISM", source: "crism", swatch: "linear-gradient(135deg,#b8e04a 0 33%,#4da3ff 33% 66%,#ff5ad1 66%)", legend: null },
   { id: "geology", name: "Geology", source: "geology", swatch: "linear-gradient(90deg,#e69f00 0 25%,#56b4e9 25% 50%,#009e73 50% 75%,#f0e442 75%)", legend: null },
+  { id: "shield", name: "Sky shielding", source: "hirise_dtm", swatch: "linear-gradient(90deg,rgba(64,140,255,.2),#4d9bff,#d9f5ff)", legend: ["open sky", "−15 % dose"] },
   { id: "shelter", name: "To shelter", source: "hirise_dtm", swatch: "linear-gradient(90deg,#33f280,#bff240,#ffcc26,#ff731a,#d91f40)", legend: ["0 min", "24+ min"] },
 ];
 
@@ -48,8 +54,7 @@ function heroDur(s: number): string {
   const h = Math.floor(min / 60);
   return h ? `<b>${h}<small>h</small> ${String(min % 60).padStart(2, "0")}<small>min</small></b>` : `<b>${min}<small>min</small></b>`;
 }
-const EVA_START_LMST = 10; // local mean solar time the EVA leaves the rover
-const MARS_HOUR_S = 3699;
+
 const PX_PER_DEG = 4;
 
 /** Application controller: owns the plan, the EVA simulation and every panel. */
@@ -59,12 +64,18 @@ export class App {
   private readonly rover: Poi;
   private pois: Poi[];
   private customCount = 0;
-  private selected: string[] = ["cheyava", "serpentine"];
+  private selected: string[];
+  private readonly roverName: string;
 
   private layer: LayerId = "none";
   private opacity = 0.8;
   private showTrack = false;
   private showStraight = true;
+  private showShadows = true;
+  private startLmst: number;
+  private readonly solar: SolarGeometry;
+  private readonly lat: number;
+  private lastSun = "";
   private exag = 1;
   private storm = true;
   private buddy = false;
@@ -89,8 +100,19 @@ export class App {
 
   private readonly lookup: ReturnLookup;
 
-  constructor(private readonly site: SiteData, private readonly view: SceneView, private readonly router: Router, private readonly field: FieldResult) {
+  constructor(
+    private readonly site: SiteData,
+    private readonly view: SceneView,
+    private readonly router: Router,
+    private readonly field: FieldResult,
+    private readonly sites: SiteEntry[] = [],
+  ) {
     this.rad = new RadiationModel(site.replay);
+    this.roverName = site.meta.rover?.name ?? "Perseverance";
+    this.selected = site.pois.filter((p) => p.kind === "objective").map((p) => p.id);
+    this.startLmst = site.meta.eva?.startLmst ?? 10;
+    this.solar = solarGeometry(Date.parse(site.meta.eva?.utc ?? "2024-07-21T02:10:26Z"));
+    this.lat = site.meta.centerLonLat?.lat ?? (site.meta.boundsLonLat.south + site.meta.boundsLonLat.north) / 2;
     this.pois = site.pois.slice();
     this.rover = this.pois.find((p) => p.kind === "shelter")!;
     this.lookup = (x, y) => {
@@ -122,6 +144,8 @@ export class App {
       ["walk", ic.visor, "Visor", "First-person helmet display"],
     ].map(([v, i, label, title]) => `<button data-view="${v}" title="${title}">${i}<span>${label}</span></button>`).join("");
     $(".top-actions").innerHTML = `
+      <button id="btn-panels" class="compact-only" title="Route and map layers">${ic.layers}<span>Route & layers</span></button>
+      <button id="btn-demo" class="demo-btn" title="Play the guided demo">${ic.play}<span>Demo</span></button>
       <button id="btn-briefing" title="Mission briefing">${ic.book}<span>Briefing</span></button>
       <button id="btn-sources" title="Where every layer comes from">${ic.data}<span>Data sources</span></button>
       <button id="btn-model" title="Spacesuit and model assumptions">${ic.sliders}<span>Assumptions</span></button>`;
@@ -142,7 +166,24 @@ export class App {
       const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("button[data-nav]");
       if (btn) this.view.nudge(btn.dataset.nav as "in" | "out" | "left" | "right" | "up" | "down" | "north");
     });
-    $("#btn-briefing").addEventListener("click", () => showBriefing(this.site, () => {}));
+    $("#btn-briefing").addEventListener("click", () => showBriefing(this.site, () => {}, this.sites));
+    $("#btn-demo").addEventListener("click", () => void this.startDemo());
+    $("#btn-panels").addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      $("#app").classList.toggle("drawer");
+      requestAnimationFrame(() => this.updateInsets());
+    });
+    $("#stage").addEventListener("pointerdown", () => $("#app").classList.remove("drawer"));
+    window.addEventListener("cairn:demo", () => void this.startDemo());
+    const menu = $("#site-menu");
+    menu.innerHTML = this.sites
+      .map((s) => `<a role="menuitem" href="?site=${s.id}" class="${s.id === this.site.id ? "on" : ""}"><b>${esc(s.name)}</b><span>${esc(s.place)} · ${esc(s.rover)}</span><em>${esc(s.tagline)}</em></a>`)
+      .join("");
+    $("#site-switch").addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      menu.hidden = !menu.hidden;
+    });
+    document.addEventListener("click", () => (menu.hidden = true));
     $("#btn-sources").addEventListener("click", () => showSources(this.site));
     $("#btn-model").addEventListener("click", () => showAssumptions(this.site, this.P));
 
@@ -163,11 +204,23 @@ export class App {
       if (t.id === "opt-storm") this.storm = t.checked;
       if (t.id === "opt-buddy") this.buddy = t.checked;
     });
+    right.addEventListener("input", (ev) => {
+      const t = ev.target as HTMLInputElement;
+      if (t.id !== "start" || !this.plan) return;
+      this.startLmst = Number(t.value);
+      const b = this.plan.budget;
+      setText($("#start-val"), `${fmtLmst(this.startLmst)} LMST`);
+      setText($("#sun-val"), `Sun ${this.sunText(this.sunAtEva(0))} → ${this.sunText(this.sunAtEva(b.totalTimeS))} at ${fmtLmst(this.lmstAt(b.totalTimeS))}`);
+    });
+    right.addEventListener("change", (ev) => {
+      if ((ev.target as HTMLElement).id === "start") this.renderRight(); // refresh warnings and dose
+    });
     right.addEventListener("click", (ev) => {
       const t = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]");
       if (!t) return;
       const act = t.dataset.act;
       if (act === "start") this.startEva();
+      else if (act === "cue") this.openCueCard();
       else if (act === "resume") this.resumeRemaining();
       else if (act === "replan") this.backToPlanning();
       else if (act === "sources") showSources(this.site, t.dataset.id);
@@ -238,6 +291,23 @@ export class App {
         : "<b>Drag</b> rotate <i></i> <b>Shift-drag</b> pan <i></i> <b>Scroll</b> zoom <i></i> <b>Double-click</b> centre";
   }
 
+  /** Local mean solar time at EVA time `tS`. */
+  private lmstAt(tS: number): number {
+    return this.startLmst + tS / MARS_HOUR_S;
+  }
+
+  private sunAtEva(tS: number): SunPosition {
+    return sunAt(this.lat, this.lmstAt(tS), this.solar);
+  }
+
+  private static compass(az: number): string {
+    return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(az / 45) % 8];
+  }
+
+  private sunText(sun: SunPosition): string {
+    return sun.elevation <= 0 ? "below the horizon" : `${Math.round(sun.elevation)}° up, ${App.compass(sun.azimuth)}`;
+  }
+
   /** Tell the 3D view which parts of the screen the floating panels cover. */
   private updateInsets(): void {
     const app = $("#app").getBoundingClientRect();
@@ -246,14 +316,15 @@ export class App {
       return el.offsetParent === null || getComputedStyle(el).display === "none" ? null : el.getBoundingClientRect();
     };
     const top = box("#topbar");
-    const left = box("#left");
+    const left = $("#app").classList.contains("drawer") || window.innerWidth > 1180 ? box("#left") : null; // a closed drawer covers nothing
     const right = box("#right");
     const bottom = box("#bottom");
+    const sheet = !!right && right.width > app.width * 0.6; // portrait: the plan is a bottom sheet
     this.view.setInsets({
       top: top ? top.bottom - app.top : 0,
-      left: left ? left.right - app.left : 0,
-      right: right ? app.right - right.left : 0,
-      bottom: bottom ? app.bottom - bottom.top : 0,
+      left: left ? Math.max(0, left.right - app.left) : 0,
+      right: right && !sheet ? app.right - right.left : 0,
+      bottom: Math.max(bottom ? app.bottom - bottom.top : 0, sheet && right ? app.bottom - right.top : 0),
     });
   }
 
@@ -330,7 +401,7 @@ export class App {
       segments.push({ kind: "walk", path, to, label: to.short });
       if (to.kind !== "shelter") segments.push({ kind: "dwell", poi: to, durationS: to.dwellMin * 60, sheltered: false });
     });
-    this.plan = { order, legs, straight, budget: buildBudget(segments, this.P, this.lookup), routeMs: result.ms };
+    this.plan = { order, legs, straight, budget: buildBudget(segments, this.P, this.lookup, (poi) => grid.shieldAt(poi.x, poi.y)), routeMs: result.ms };
     this.planError = null;
     this.afterPlan();
   }
@@ -405,10 +476,36 @@ export class App {
     void this.replan();
   }
 
+  /** Strongest CRISM mineral signal at a node, in words (null where nothing stands out). */
+  private mineralsAt(node: number): string | null {
+    const m = this.site.mineralGrid;
+    const bands = this.site.meta.minerals?.bands;
+    if (!m || !bands) return null;
+    let best = -1;
+    let bestV = 0;
+    if (m[node * 4 + 3] < 128) return "not imaged by CRISM";
+    for (let k = 0; k < 3; k++) {
+      const v = m[node * 4 + k] / 255;
+      if (v > bestV) {
+        bestV = v;
+        best = k;
+      }
+    }
+    if (best < 0 || bestV < 0.15) return "no strong signal";
+    return `${bands[best].name} ${bestV > 0.6 ? "(strong)" : bestV > 0.3 ? "(moderate)" : "(weak)"}`;
+  }
+
   private unitAt(x: number, y: number): string | null {
+    if (!this.site.geologyGrid || !this.site.geology) return null;
     const id = this.site.geologyGrid[this.site.grid.nodeAt(x, y)];
     const u = this.site.geology.units.find((g) => g.id === id);
     return u ? `${u.name} (${u.symbol})` : null;
+  }
+
+  /** Layers this site has data for. */
+  private layers(): Layer[] {
+    const g = this.site.meta.grids;
+    return LAYERS.filter((l) => (l.id !== "thermal" || g.thermal) && (l.id !== "geology" || g.geology) && (l.id !== "minerals" || g.minerals) && (l.id !== "shield" || this.site.grid.shield));
   }
 
   // ================================================================ left panel
@@ -437,15 +534,21 @@ export class App {
       })
       .join("");
 
-    const layers = LAYERS.map(
+    const layers = this.layers().map(
       (l) => `<label class="layer${l.id === this.layer ? " on" : ""}">
           <input class="sr" type="radio" name="layer" value="${l.id}" ${l.id === this.layer ? "checked" : ""}/>
           <i class="swatch" style="background:${l.swatch}"></i><span>${esc(l.name)}</span>
         </label>`,
     ).join("");
-    const active = LAYERS.find((l) => l.id === this.layer)!;
+    const active = this.layers().find((l) => l.id === this.layer) ?? LAYERS[0];
     let legend = "";
-    if (this.layer === "geology") {
+    if (this.layer === "minerals" && this.site.meta.minerals) {
+      const mm = this.site.meta.minerals;
+      legend = `<div class="legend units">${mm.bands
+        .map((b) => `<span><i style="background:rgb(${b.color.join(",")})"></i>${esc(b.name)}<em>${esc(b.parameter)}</em></span>`)
+        .join("")}<span><i class="hatch"></i>Not imaged by CRISM<em>${100 - Math.round(mm.coveragePct ?? 0)}%</em></span></div>
+        <p class="note">CRISM band depths at ${mm.mPerPx} m/px, scaled to these observations. Colour shows where each signal is strongest, not a mineral survey.</p>`;
+    } else if (this.layer === "geology" && this.site.geology) {
       legend = `<div class="legend units">${this.site.geology.units
         .map((u) => `<span><i style="background:rgb(${u.color.join(",")})"></i>${esc(u.name)}<em>${esc(u.symbol)}</em></span>`)
         .join("")}</div>`;
@@ -474,8 +577,9 @@ export class App {
       </section>
       <section>
         <header class="sec-head"><h2>Display</h2></header>
-        <label class="switch"><span>Perseverance's real track</span><input class="sr" type="checkbox" id="track" ${this.showTrack ? "checked" : ""}/><i></i></label>
+        <label class="switch"><span>${esc(this.roverName)}'s real track</span><input class="sr" type="checkbox" id="track" ${this.showTrack ? "checked" : ""}/><i></i></label>
         <label class="switch"><span>Straight-line comparison</span><input class="sr" type="checkbox" id="straight" ${this.showStraight ? "checked" : ""}/><i></i></label>
+        <label class="switch"><span>Sun shadows</span><input class="sr" type="checkbox" id="shadows" ${this.showShadows ? "checked" : ""}/><i></i></label>
         <label class="slider"><span>Vertical exaggeration <b id="exag-val">×${this.exag.toFixed(2)}</b></span><input type="range" id="exag" min="1" max="2.5" step="0.25" value="${this.exag}"/></label>
       </section>`;
   }
@@ -492,6 +596,9 @@ export class App {
     } else if (t.id === "track") {
       this.showTrack = t.checked;
       this.view.setTrackVisible(this.showTrack);
+    } else if (t.id === "shadows") {
+      this.showShadows = t.checked;
+      this.view.setShadows(this.showShadows);
     } else if (t.id === "straight") {
       this.showStraight = t.checked;
       this.pushRoutes();
@@ -538,7 +645,10 @@ export class App {
     const issues: string[] = [];
     if (!b.withinTime) issues.push(`longer than the ${P.maxEvaH} h suit limit`);
     if (!b.withinO2) issues.push("short of oxygen to keep the reserve and walk home");
-    const dose = (this.rad.baseline * b.totalTimeS) / 3600;
+    const dose = this.rad.baseline * b.exposureH;
+    const sunStart = this.sunAtEva(0);
+    const sunEnd = this.sunAtEva(b.totalTimeS);
+    const lowSun = sunStart.elevation < 8 || sunEnd.elevation < 8;
     const margin = b.walkBack.minMarginL;
 
     host.innerHTML = `
@@ -548,10 +658,14 @@ export class App {
             b.feasible ? `<span class="status ok">${ic.check}Within suit limits</span>` : `<span class="status bad">${ic.warn}Not safe</span>`
           }</header>
           ${issues.length ? `<p class="callout bad">${ic.warn}<span>This plan is ${issues.join(" and ")}. Remove a stop.</span></p>` : ""}
+          ${lowSun ? `<p class="callout warn">${ic.warn}<span>The Sun is under 8° at the ${sunStart.elevation < 8 ? "start" : "end"} of this EVA. Long shadows hide rocks and holes, and it gets cold fast — leave later or plan a shorter walk.</span></p>` : ""}
           <div class="hero">
             <div><span>Distance</span>${heroDist(b.distanceM)}</div>
             <div><span>Time outside</span>${heroDur(b.totalTimeS)}</div>
           </div>
+          <label class="slider start"><span>Leave the rover at <b id="start-val">${fmtLmst(this.startLmst)} LMST</b></span>
+            <input type="range" id="start" min="6" max="17" step="0.25" value="${this.startLmst}"/>
+            <small id="sun-val">Sun ${this.sunText(sunStart)} → ${this.sunText(sunEnd)} at ${fmtLmst(this.lmstAt(b.totalTimeS))}</small></label>
           <dl class="kv">
             <dt>Walking</dt><dd>${fmtDur(b.walkTimeS)}</dd>
             <dt>Science at stops</dt><dd>${fmtDur(b.stopTimeS)}</dd>
@@ -593,7 +707,10 @@ export class App {
       <footer class="panel-foot">
         <label class="switch"><span>Replay the 20 May 2024 solar storm</span><input class="sr" type="checkbox" id="opt-storm" ${this.storm ? "checked" : ""}/><i></i></label>
         <label class="switch"><span>Buddy mode · two astronauts</span><input class="sr" type="checkbox" id="opt-buddy" ${this.buddy ? "checked" : ""}/><i></i></label>
-        <button class="primary big" data-act="start" ${b.feasible ? "" : "disabled"}>${ic.play}<span>Start EVA</span></button>
+        <div class="foot-row">
+          <button class="big secondary" data-act="cue" title="One-page printable plan">${ic.book}<span>Cue card</span></button>
+          <button class="primary big" data-act="start" ${b.feasible ? "" : "disabled"}>${ic.play}<span>Start EVA</span></button>
+        </div>
       </footer>`;
   }
 
@@ -636,13 +753,14 @@ export class App {
           <p class="note">DONKI ${esc(r.donki.cme.activityID)}: ${esc(r.donki.cme.type)}-type CME, ${Math.round(r.donki.cme.speedKmS)} km/s. The public notification came ${r.donki.alert.delayAfterCmeStartH.toFixed(1)} h after the eruption — CAIRN alerts on the first dose-rate rise instead.</p>
         </section>
         <section>
-          <header class="sec-head"><h2>Weather</h2><button class="link" data-act="sources" data-id="meda">${ic.info}<span>MEDA</span></button></header>
+          <header class="sec-head"><h2>Weather</h2><button class="link" data-act="sources" data-id="meda">${ic.info}<span>${esc((this.site.weather.instrument ?? "MEDA").split(" ").pop()!)}</span></button></header>
           <dl class="kv">
             <dt>Local time</dt><dd id="lv-lmst"></dd>
+          <dt>Sun</dt><dd id="lv-sun"></dd>
             <dt>Air · ground</dt><dd id="lv-temp"></dd>
             <dt>Pressure</dt><dd id="lv-pres"></dd>
           </dl>
-          <p class="note">Perseverance MEDA readings for the same time of day on sol ${this.site.weather.sol}.</p>
+          <p class="note">${esc(this.site.weather.instrument ?? "Perseverance MEDA")} readings for the same time of day on sol ${this.site.weather.sol}.</p>
         </section>
       </div>`;
     this.doseChart = null;
@@ -727,19 +845,232 @@ export class App {
     const poi = this.poi(id);
     if (!poi) return;
     const card = $("#card");
-    card.innerHTML = stopCardHtml(poi, this.site.base, this.unitAt(poi.x, poi.y), arrived);
+    card.innerHTML = stopCardHtml(poi, this.site.base, this.unitAt(poi.x, poi.y), arrived, this.roverName, !!this.site.panoramas?.panoramas[poi.id]);
     card.hidden = false;
     card.classList.toggle("arrived", arrived);
     this.cardPoi = id;
     card.onclick = (ev) => {
       const t = ev.target as HTMLElement;
       if (t.closest(".close")) return this.closeCard();
+      const look = t.closest<HTMLElement>("[data-pano]");
+      if (look) return void this.openPano(look.dataset.pano!);
       const i = t.dataset.i;
       if (i !== undefined && t.tagName === "BUTTON") {
         for (const f of card.querySelectorAll("figure")) f.classList.toggle("on", f.dataset.i === i);
         for (const d of card.querySelectorAll(".dots button")) d.classList.toggle("on", (d as HTMLElement).dataset.i === i);
       }
     };
+  }
+
+  // ================================================================ guided demo
+  private demo: DemoRunner | null = null;
+  private demoArrived: string | null = null; // first stop reached during the demo (the walk pauses there)
+
+  async startDemo(): Promise<void> {
+    this.demo?.stop();
+    $("#briefing").hidden = true;
+    $("#modal").hidden = true;
+    const objective = this.site.pois.find((p) => p.kind === "objective");
+    const sum = (f: (m: MeasuredPath) => number) => (this.plan ? this.plan.straight.reduce((s, m) => s + f(m), 0) : 0);
+    const meta = this.site.meta;
+    const story = meta.story?.paragraphs[0]?.replace(/<[^>]+>/g, "") ?? meta.name;
+    const firstSentence = story.split(/(?<=\.)\s/)[0];
+    let closePano: (() => void) | null = null;
+    let lastAvoided = 0;
+
+    const steps: DemoStep[] = [
+      {
+        title: meta.name.split(" — ")[0],
+        body: `${esc(firstSentence)}`,
+        run: async (d) => {
+          this.resetForDemo();
+          await this.view.overview();
+          await d.sleep(2500);
+        },
+      },
+      {
+        title: "Real terrain, not a model",
+        body: `The walk area is HiRISE data: <b>1 m elevation</b> and a <b>25 cm image</b> — the sharpest view of Mars from orbit. Around it: ${esc(this.site.region ? `${(this.site.region.meta.sizeM / 1000).toFixed(0)} km of surrounding terrain` : "the wider region")}.`,
+        run: async (d) => {
+          this.setView("orbit");
+          await d.until(() => !this.view.isAnimating(), 4000);
+          this.view.setAutoRotate(true, 0.9);
+          await d.sleep(6500);
+          this.view.setAutoRotate(false);
+        },
+      },
+      {
+        title: "Where it is safe to walk",
+        body: () => {
+          const b = this.plan?.budget;
+          const blocked = sum((m) => m.blockedM);
+          return b
+            ? `Colour shows walking effort × fall risk. ${blocked > 0 ? `The straight line crosses <b>${fmtDist(blocked)}</b> steeper than ${meta.model.slopeLimitDeg}°.` : "The straight line is walkable but costs more."} CAIRN's route: <b>${fmtDist(b.distanceM)}</b>, <b>${fmtDur(b.totalTimeS)}</b> outside, ${Math.round(b.o2UsedL)} L of oxygen.`
+            : "Colour shows walking effort × fall risk.";
+        },
+        run: async (d) => {
+          this.selectLayer("risk");
+          await d.sleep(7500);
+          this.selectLayer("none");
+        },
+      },
+      {
+        title: "The real Sun",
+        body: `CAIRN places the Sun for the actual sol (${meta.eva?.sol ?? "—"}) and casts shadows from the real terrain. At dawn, long shadows hide rocks and holes — so the plan leaves later.`,
+        run: async (d) => {
+          const keep = this.startLmst;
+          this.startLmst = 7.6;
+          this.renderRight();
+          await d.sleep(3500);
+          this.startLmst = 8.6;
+          this.renderRight();
+          await d.sleep(1500);
+          this.startLmst = keep;
+          this.renderRight();
+          await d.sleep(1500);
+        },
+      },
+      {
+        title: "Fly the route",
+        body: "The safe route, draped over the real ground.",
+        run: async (d) => {
+          this.setView("fly");
+          await d.sleep(800);
+          await d.until(() => !this.view.isAnimating(), 22000);
+        },
+      },
+      {
+        title: objective ? `Walk to ${objective.short}` : "Walk the route",
+        body: `The visor shows heading, oxygen, dose and the next stop. At each stop: what ${esc(this.roverName)} actually saw there.`,
+        run: async (d) => {
+          this.storm = true;
+          this.demoArrived = null;
+          this.startEva();
+          this.speed = 300;
+          await d.until(() => this.demoArrived !== null, 30000);
+          if (objective && this.site.panoramas?.panoramas[objective.id]) {
+            await d.sleep(2500);
+            d.say(`A real 360° view stitched from ${esc(this.roverName)}'s Navcam frames at this exact spot.`);
+            closePano = this.openPano(objective.id, true);
+            await d.sleep(8000);
+            closePano?.();
+            closePano = null;
+          } else {
+            await d.sleep(5500);
+          }
+          this.paused = false;
+          this.demoArrived = "done";
+        },
+      },
+      {
+        title: "20 May 2024: a real solar storm",
+        body: "Replaying the largest particle surge Curiosity's RAD has recorded. When the dose rate passes 3× background, CAIRN aborts the walk and routes to the rover.",
+        run: async (d) => {
+          this.speed = 300;
+          await d.until(() => !!this.mission && this.mission.alertS !== null, 60000);
+          this.speed = 120;
+          await d.sleep(4500);
+          this.speed = 300;
+          await d.until(() => this.phase === "summary", 60000);
+          lastAvoided = this.mission?.projection?.avoidedUGy ?? 0;
+          await d.sleep(3500);
+        },
+      },
+    ];
+    this.demo = new DemoRunner(steps, {
+      title: "Robots built the cairns. Humans will follow them.",
+      body: () =>
+        `${lastAvoided > 0 ? `Sheltering avoided <b>${fmtDose(lastAvoided)}</b> of radiation. ` : ""}Every layer here comes from NASA, USGS and JPL archives — open <b>Data sources</b> to check any of them.`,
+    });
+    this.demo.onPause = (p) => {
+      this.paused = p;
+      this.view.setAutoRotate(false);
+    };
+    this.demo.onEnd = () => {
+      closePano?.();
+      this.view.setAutoRotate(false);
+      this.demo = null;
+    };
+    await this.demo.start();
+  }
+
+  /** One-page printable plan: map, timeline, oxygen turn-back values, storm protocol. */
+  private openCueCard(): void {
+    if (!this.plan) return;
+    const P = this.P;
+    const b = this.plan.budget;
+    const rows: CueRow[] = [];
+    let t = 0;
+    let o2 = 0;
+    const add = (poi: Poi, arriveS: number, departS: number, leg: MeasuredPath | null) => {
+      const home = this.lookup(poi.x, poi.y);
+      const sun = this.sunAtEva(arriveS);
+      const cover = poi.kind === "shelter" ? null : this.naturalCover(poi.x, poi.y);
+      rows.push({
+        poi, arriveS, departS, leg,
+        o2LeftAtDepartL: P.o2SupplyL - o2,
+        homeTimeS: home.timeS,
+        homeO2L: o2Litres(home.energyJ, home.timeS, P.restingW, P),
+        bearingHome: (((Math.atan2(this.rover.x - poi.x, this.rover.y - poi.y) * 180) / Math.PI) + 360) % 360,
+        sunEl: sun.elevation,
+        lmst: fmtLmst(this.lmstAt(arriveS)),
+        cover: cover ? `${cover.pct}% less dose ${cover.dist} m ${cover.dir} of ${poi.short}` : "",
+      });
+    };
+    add(this.rover, 0, 0, null);
+    let pendingLeg: MeasuredPath | null = null;
+    for (const seg of b.segments) {
+      if (seg.kind === "walk") {
+        t += seg.path.time;
+        o2 += walkO2(seg.path, P);
+        pendingLeg = seg.path;
+        if (seg.to && seg.to.kind === "shelter") add(seg.to, t, t, pendingLeg);
+      } else {
+        const arrive = t;
+        t += seg.durationS;
+        o2 += o2Litres(0, seg.durationS, P.workingW, P);
+        add(seg.poi, arrive, t, pendingLeg);
+      }
+    }
+    const s0 = this.sunAtEva(0);
+    const s1 = this.sunAtEva(b.totalTimeS);
+    showCueCard({
+      site: this.site, params: P, budget: b, order: this.plan.order, legs: this.plan.legs, rows,
+      start: { lmst: fmtLmst(this.lmstAt(0)), sunEl: s0.elevation, sunAz: s0.azimuth },
+      end: { lmst: fmtLmst(this.lmstAt(b.totalTimeS)), sunEl: s1.elevation },
+      alertUGyH: this.rad.baseline * 3, rover: this.roverName, storm: this.storm, buddy: this.buddy,
+      doseUGy: this.rad.baseline * b.exposureH,
+    });
+  }
+
+  private resetForDemo(): void {
+    if (this.phase !== "planning") this.backToPlanning();
+    this.closeCard();
+    this.selected = this.site.pois.filter((p) => p.kind === "objective").map((p) => p.id);
+    this.pois = this.pois.filter((p) => !p.id.startsWith("custom-"));
+    this.startLmst = this.site.meta.eva?.startLmst ?? 10;
+    this.selectLayer("none");
+    void this.replan();
+  }
+
+  private selectLayer(id: LayerId): void {
+    this.layer = id;
+    this.view.setLayer(id, this.opacity);
+    this.renderLeft();
+  }
+
+  /** Open the stitched 360° panorama for a stop; other stops appear as bearings on the compass. */
+  openPano(id: string, autoRotate = false): (() => void) | null {
+    const poi = this.poi(id);
+    const info = this.site.panoramas?.panoramas[id];
+    if (!poi || !info) return null;
+    const wasPaused = this.paused;
+    this.paused = true;
+    const targets = this.pois
+      .filter((p) => p.id !== id && (p.kind === "shelter" || this.selected.includes(p.id)))
+      .map((p) => ({ name: p.short, bearing: (((Math.atan2(p.x - poi.x, p.y - poi.y) * 180) / Math.PI) + 360) % 360, distM: Math.hypot(p.x - poi.x, p.y - poi.y) }))
+      .sort((a, b) => a.distM - b.distM);
+    return openPanorama(this.site.base, poi, info, this.roverName, targets, { autoRotate, onClose: () => (this.paused = wasPaused) });
   }
 
   private closeCard(): void {
@@ -766,7 +1097,8 @@ export class App {
         t += dur;
       }
     }
-    this.mission = new Mission(segs, this.rad, this.P, this.lookup, onset);
+    const grid = this.site.grid;
+    this.mission = new Mission(segs, this.rad, this.P, this.lookup, onset, (x, y) => grid.shieldAt(x, y));
     this.phase = "eva";
     this.paused = false;
     this.shelterPath = null;
@@ -823,6 +1155,12 @@ export class App {
       this.view.setBuddy(this.buddy ? m.buddyPose() : null);
       if (this.viewMode === "orbit" && pose.moving && !this.paused) this.view.follow(pose.x, pose.y, dt);
     }
+    const sun = this.sunAtEva(m && this.phase !== "planning" ? m.t : 0);
+    const key = `${sun.elevation.toFixed(2)}/${sun.azimuth.toFixed(2)}`;
+    if (key !== this.lastSun) {
+      this.lastSun = key;
+      this.view.setSun(sun.elevation, sun.azimuth);
+    }
     this.liveTimer += dt;
     if (this.liveTimer > 0.1) {
       this.liveTimer = 0;
@@ -838,6 +1176,10 @@ export class App {
 
   private handleEvents(events: MissionEvent[]): void {
     for (const ev of events) {
+      if (ev.type === "arrive" && ev.poi.kind !== "shelter" && this.demo && this.demoArrived === null) {
+        this.demoArrived = ev.poi.id;
+        this.paused = true; // hold the walk until the demo has shown the stop
+      }
       if (ev.type === "arrive" && ev.poi.kind !== "shelter") {
         this.openCard(ev.poi.id, true);
         this.toast(`Arrived at ${ev.poi.short}. ${ev.poi.dwellMin} min of science.`);
@@ -865,9 +1207,15 @@ export class App {
     $("#stage").classList.add("storm");
     const alert = $("#alert");
     alert.className = "danger";
+    const cover = this.naturalCover(pose.x, pose.y);
     alert.innerHTML = `<div class="ico">${ic.rad}</div><div><b>Solar particle event — abort the EVA</b>
       <span>Dose rate ${(rate / this.rad.baseline).toFixed(0)}× background and rising.</span>
-      <span class="go">Shelter in the rover · ${fmtDist(path.distance)} · ${fmtDur(path.time)} · route found in ${Math.max(1, Math.round(res.ms))} ms</span></div>`;
+      <span class="go">Shelter in the rover · ${fmtDist(path.distance)} · ${fmtDur(path.time)} · route found in ${Math.max(1, Math.round(res.ms))} ms</span>
+      <span class="sub2">${
+        cover
+          ? `Nearest natural cover: ${cover.dir} ${fmtDist(cover.dist)} away, ${cover.pct}% less dose. The rover cuts ${Math.round((1 - this.P.shelterFactor) * 100)}%.`
+          : `No useful natural cover nearby: terrain here blocks under 3% of the dose.`
+      }</span></div>`;
     alert.hidden = false;
     const box = document.getElementById("stormbox");
     if (box) {
@@ -905,10 +1253,34 @@ export class App {
     $("#stage").classList.remove("storm");
   }
 
+  /** Best terrain shielding within ~150 m (cliffs and channel walls block part of the sky). */
+  private naturalCover(x: number, y: number): { dist: number; pct: number; dir: string } | null {
+    const grid = this.site.grid;
+    if (!grid.shield) return null;
+    let best: { dist: number; pct: number; dir: string } | null = null;
+    let bestScore = 0;
+    for (let r = 4; r <= 150; r += 4) {
+      for (let a = 0; a < 360; a += 10) {
+        const px = x + r * Math.sin((a * Math.PI) / 180);
+        const py = y + r * Math.cos((a * Math.PI) / 180);
+        if (!grid.inside(px, py)) continue;
+        const node = grid.nodeAt(px, py);
+        if (grid.isBlocked(node)) continue;
+        const cut = 1 - grid.shield[node] / 255;
+        const score = cut - r * 0.0002; // prefer close cover
+        if (cut >= 0.03 && score > bestScore) {
+          bestScore = score;
+          best = { dist: r, pct: Math.round(cut * 100), dir: App.compass(a) };
+        }
+      }
+    }
+    return best;
+  }
+
   // ================================================================ live readouts
   private weatherAt(tS: number): { lmst: string; air: number | null; ground: number | null; pressure: number | null } {
     const w = this.site.weather;
-    const hours = (EVA_START_LMST + tS / MARS_HOUR_S) % 24;
+    const hours = ((this.lmstAt(tS) % 24) + 24) % 24;
     const pick = (arr: (number | null)[]) => {
       const i = Math.floor(hours / w.stepH);
       for (let d = 0; d < arr.length; d++) {
@@ -965,6 +1337,7 @@ export class App {
     setText($("#lv-lmst"), `${w.lmst} LMST`);
     setText($("#lv-temp"), `${w.air !== null ? Math.round(w.air - 273.15) : "—"} °C / ${w.ground !== null ? Math.round(w.ground - 273.15) : "—"} °C`);
     setText($("#lv-pres"), w.pressure !== null ? `${Math.round(w.pressure)} Pa` : "—");
+    setText(document.getElementById("lv-sun"), this.sunText(this.sunAtEva(m.t)));
     if (this.buddy) {
       const b = m.buddyPose();
       const p = m.pose();
@@ -1117,15 +1490,20 @@ export class App {
     const node = grid.nodeAt(p.x, p.y);
     const home = this.field.time[node];
     const blocked = grid.isBlocked(node);
-    const cold = 1 - this.site.thermalGrid[node] / 255;
+    const thermal = this.site.thermalGrid;
+    const cold = thermal ? 1 - thermal[node] / 255 : null;
+    const minerals = this.mineralsAt(node);
+    const shieldCut = grid.shield ? Math.round((1 - grid.shield[node] / 255) * 100) : 0;
     const rect = $("#stage").getBoundingClientRect();
     probe.innerHTML = `
       <b>${grid.heightAt(p.x, p.y).toFixed(1)} m</b> elevation
       <dl>
         <dt>Slope</dt><dd class="${blocked ? "bad" : ""}">${grid.slope[node]}°${blocked ? " — impassable" : ""}</dd>
         <dt>Loose sand</dt><dd>${Math.round((grid.sand[node] / 255) * 100)}%</dd>
-        <dt>Night IR</dt><dd>${cold > 0.6 ? "cold" : cold < 0.35 ? "warm" : "mid"}</dd>
-        <dt>Rock unit</dt><dd>${esc(this.unitAt(p.x, p.y) ?? "unmapped")}</dd>
+        ${cold !== null ? `<dt>Night IR</dt><dd>${cold > 0.6 ? "cold" : cold < 0.35 ? "warm" : "mid"}</dd>` : ""}
+        ${this.site.geology ? `<dt>Rock unit</dt><dd>${esc(this.unitAt(p.x, p.y) ?? "unmapped")}</dd>` : ""}
+        ${minerals ? `<dt>CRISM</dt><dd>${esc(minerals)}</dd>` : ""}
+        ${shieldCut >= 2 ? `<dt>Sky shielding</dt><dd>−${shieldCut}% dose</dd>` : ""}
         <dt>To shelter</dt><dd>${Number.isFinite(home) ? fmtDur(home) : "cut off"}</dd>
       </dl>`;
     probe.hidden = false;

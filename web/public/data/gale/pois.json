@@ -1,0 +1,282 @@
+{
+ "source": "Positions from the Mars Science Laboratory MMGIS waypoint layer; images from the Mars Science Laboratory raw-image feed",
+ "pois": [
+  {
+   "id": "rover",
+   "kind": "shelter",
+   "name": "Pressurised rover",
+   "short": "Rover",
+   "x": 1168,
+   "y": 1456,
+   "rmc": "116_2214",
+   "sols": "4571",
+   "lon": 137.382987,
+   "lat": -4.800407,
+   "description": "EVA start, end and radiation shelter. Parked on the gentle slope north of the boxwork, where Curiosity stopped on sol 4571 before climbing in.",
+   "science": "From here the crew sees the whole boxwork network: a mesh of pale ridges rising above darker hollows.",
+   "whyHumans": "A crewed rover can reposition in minutes when the plan changes — no overnight command cycle from Earth.",
+   "dwellMin": 0,
+   "images": [
+    {
+     "id": "NLB_803291861EDR_S1162214NCAM00269M_",
+     "file": "images/NLB_803291861EDR_S1162214NCAM00269M_.jpg",
+     "sol": 4571,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-04571M15:33:58.287",
+     "utc": "2025-06-15T21:43:39.000Z",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/raw_images/1476944"
+    },
+    {
+     "id": "NLB_803291799EDR_S1162214NCAM00269M_",
+     "file": "images/NLB_803291799EDR_S1162214NCAM00269M_.jpg",
+     "sol": 4571,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-04571M15:32:57.977",
+     "utc": "2025-06-15T21:42:37.000Z",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/raw_images/1476939"
+    },
+    {
+     "id": "4571MH0002270001604096R00_DXXX",
+     "file": "images/4571MH0002270001604096R00_DXXX.jpg",
+     "sol": 4571,
+     "camera": "MAHLI",
+     "cameraName": "Mars Hand Lens Imager (MAHLI)",
+     "lmst": null,
+     "utc": "2025-06-15T20:08:44.000Z",
+     "credit": "NASA/JPL-Caltech/MSSS",
+     "link": "https://mars.nasa.gov/raw_images/1477055"
+    }
+   ]
+  },
+  {
+   "id": "ridge",
+   "kind": "objective",
+   "name": "Boxwork ridge · main exposure",
+   "short": "Boxwork ridge",
+   "x": 967.8,
+   "y": 1205.7,
+   "rmc": "117_2538",
+   "sols": "4602–4606",
+   "lon": 137.379557,
+   "lat": -4.804433,
+   "description": "Curiosity climbed an 11 m slope on sols 4602–4603 to reach the top of the ridge that opens onto the boxwork, and reached the main exposure by sols 4604–4606 (July 2025).",
+   "science": "Boxwork ridges formed where groundwater seeped through cracks and left minerals that hardened the rock. The softer rock around them eroded away. They show water was still moving under Mount Sharp as Mars dried out.",
+   "whyHumans": "A geologist can walk the ridge crest, trace the central fracture by hand and compare it with the hollow beside it in one afternoon.",
+   "dwellMin": 30,
+   "images": [
+    {
+     "id": "NLB_806305920EDR_S1172538NCAM00265M_",
+     "file": "images/NLB_806305920EDR_S1172538NCAM00265M_.jpg",
+     "sol": 4605,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-04605M14:24:41.806",
+     "utc": "2025-07-20T18:58:26.000Z",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/raw_images/1491617"
+    },
+    {
+     "id": "NLB_806305865EDR_S1172538NCAM00265M_",
+     "file": "images/NLB_806305865EDR_S1172538NCAM00265M_.jpg",
+     "sol": 4605,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-04605M14:23:48.161",
+     "utc": "2025-07-20T18:57:31.000Z",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/raw_images/1491613"
+    },
+    {
+     "id": "4604MH0002240021700141C00_DXXX",
+     "file": "images/4604MH0002240021700141C00_DXXX.jpg",
+     "sol": 4604,
+     "camera": "MAHLI",
+     "cameraName": "Mars Hand Lens Imager (MAHLI)",
+     "lmst": null,
+     "utc": "2025-07-19T19:13:14.000Z",
+     "credit": "NASA/JPL-Caltech/MSSS",
+     "link": "https://mars.nasa.gov/raw_images/1491367"
+    },
+    {
+     "id": "NLB_806306182EDR_F1172538NCAM00264M_",
+     "file": "images/NLB_806306182EDR_F1172538NCAM00264M_.jpg",
+     "sol": 4605,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-04605M14:28:57.136",
+     "utc": "2025-07-20T19:02:49.000Z",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/raw_images/1491689"
+    }
+   ]
+  },
+  {
+   "id": "sajama",
+   "kind": "objective",
+   "name": "Nevado Sajama drill site",
+   "short": "Nevado Sajama",
+   "x": 1052.8,
+   "y": 993.9,
+   "rmc": "120_574",
+   "sols": "4752–4804",
+   "lon": 137.380992,
+   "lat": -4.808005,
+   "description": "Curiosity's long stay in the middle of the boxwork. The rover finished its 'Nevado Sajama 2' drill sample here before starting the final phase of the boxwork campaign (sols 4804–4811).",
+   "science": "Drill powder lets the rover's labs measure the minerals and chemistry locked inside the boxwork rock, not just its dusty surface.",
+   "whyHumans": "On site, a person can choose a drill spot in minutes, take several cores and bring the best ones home for laboratories on Earth.",
+   "dwellMin": 30,
+   "images": [
+    {
+     "id": "NLB_822633005EDR_D1200574TRAV01464M_",
+     "file": "images/NLB_822633005EDR_D1200574TRAV01464M_.jpg",
+     "sol": 4789,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-04789M12:24:35.190",
+     "utc": "2026-01-25T18:19:06.000Z",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/raw_images/1546911"
+    },
+    {
+     "id": "NLB_822634066EDR_F1200574NCAM00278M_",
+     "file": "images/NLB_822634066EDR_F1200574NCAM00278M_.jpg",
+     "sol": 4789,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-04789M12:41:48.558",
+     "utc": "2026-01-25T18:36:48.000Z",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/raw_images/1547064"
+    },
+    {
+     "id": "NLB_822633932EDR_S1200574NCAM00279M_",
+     "file": "images/NLB_822633932EDR_S1200574NCAM00279M_.jpg",
+     "sol": 4789,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-04789M12:39:37.592",
+     "utc": "2026-01-25T18:34:34.000Z",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/raw_images/1547046"
+    },
+    {
+     "id": "4791MH0008640011703751C00_DXXX",
+     "file": "images/4791MH0008640011703751C00_DXXX.jpg",
+     "sol": 4791,
+     "camera": "MAHLI",
+     "cameraName": "Mars Hand Lens Imager (MAHLI)",
+     "lmst": null,
+     "utc": "2026-01-27T18:15:13.000Z",
+     "credit": "NASA/JPL-Caltech/MSSS",
+     "link": "https://mars.nasa.gov/raw_images/1547397"
+    }
+   ]
+  },
+  {
+   "id": "ridgetop",
+   "kind": "optional",
+   "name": "Ridge-top route",
+   "short": "Ridge top",
+   "x": 965.1,
+   "y": 1147.5,
+   "rmc": "118_372",
+   "sols": "4614–4621",
+   "lon": 137.379513,
+   "lat": -4.805414,
+   "description": "Curiosity drove along the crest of a boxwork ridge here. The ridge is about 5 m wide — wide enough for the car-sized rover.",
+   "science": "Ridge crests expose the hardened, mineral-filled cores of the old fractures.",
+   "whyHumans": "Walking a narrow crest is easy for a person; the rover had to plan every drive across it from Earth.",
+   "dwellMin": 20,
+   "images": [
+    {
+     "id": "NLB_807730909EDR_F1180372NCAM00283M_",
+     "file": "images/NLB_807730909EDR_F1180372NCAM00283M_.jpg",
+     "sol": 4621,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-04621M15:39:17.169",
+     "utc": "2025-08-06T06:48:29.000Z",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/raw_images/1497328"
+    },
+    {
+     "id": "NLB_807730725EDR_F1180372NCAM00283M_",
+     "file": "images/NLB_807730725EDR_F1180372NCAM00283M_.jpg",
+     "sol": 4621,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-04621M15:36:17.939",
+     "utc": "2025-08-06T06:45:24.000Z",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/raw_images/1497271"
+    },
+    {
+     "id": "4616MH0001680011700415C00_DXXX",
+     "file": "images/4616MH0001680011700415C00_DXXX.jpg",
+     "sol": 4616,
+     "camera": "MAHLI",
+     "cameraName": "Mars Hand Lens Imager (MAHLI)",
+     "lmst": null,
+     "utc": "2025-08-01T01:41:33.000Z",
+     "credit": "NASA/JPL-Caltech/MSSS",
+     "link": "https://mars.nasa.gov/raw_images/1495603"
+    }
+   ]
+  },
+  {
+   "id": "midbox",
+   "kind": "optional",
+   "name": "Inside the boxwork",
+   "short": "Mid boxwork",
+   "x": 982.9,
+   "y": 1060.0,
+   "rmc": "118_2268",
+   "sols": "4647–4650",
+   "lon": 137.379812,
+   "lat": -4.806891,
+   "description": "A stop deep inside the ridge network, between the ridge-top route and the drill site.",
+   "science": "Comparing several stations shows whether the cement changes from one ridge to the next.",
+   "whyHumans": "A crew can sample many ridges in one walk; the rover needed weeks.",
+   "dwellMin": 15,
+   "images": [
+    {
+     "id": "NLB_810034800EDR_F1182268NCAM00267M_",
+     "file": "images/NLB_810034800EDR_F1182268NCAM00267M_.jpg",
+     "sol": 4647,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-04647M14:30:27.601",
+     "utc": "2025-09-01T22:47:02.000Z",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/raw_images/1508305"
+    },
+    {
+     "id": "NLB_810035968EDR_F1182268NCAM00268M_",
+     "file": "images/NLB_810035968EDR_F1182268NCAM00268M_.jpg",
+     "sol": 4647,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-04647M14:49:24.788",
+     "utc": "2025-09-01T23:06:30.000Z",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/raw_images/1508506"
+    },
+    {
+     "id": "4649MH0001680021701496C00_DXXX",
+     "file": "images/4649MH0001680021701496C00_DXXX.jpg",
+     "sol": 4649,
+     "camera": "MAHLI",
+     "cameraName": "Mars Hand Lens Imager (MAHLI)",
+     "lmst": null,
+     "utc": "2025-09-04T00:48:11.000Z",
+     "credit": "NASA/JPL-Caltech/MSSS",
+     "link": "https://mars.nasa.gov/raw_images/1511091"
+    }
+   ]
+  }
+ ]
+}

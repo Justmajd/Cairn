@@ -58,12 +58,31 @@ export function showAssumptions(site: SiteData, p: EvaParams): void {
      </ul>
      <h3>Radiation and the storm replay</h3>
      <ul>
-       <li><b>Measured:</b> Curiosity RAD dose rates from the PDS archive. Background before the storm: ${r.rad.baselineUGyH} µGy/h. Curiosity is in Gale crater, about 3,700 km from Jezero.</li>
+       <li><b>Measured:</b> Curiosity RAD dose rates from the PDS archive. Background before the storm: ${r.rad.baselineUGyH} µGy/h. ${site.id === "gale" ? "Curiosity measured them about 2.3 km from this walk area." : "Curiosity is in Gale crater, about 3,700 km from Jezero."}</li>
        <li><b>Gap:</b> the archive holds 2–4 hours of dosimetry per sol, so the first ~13 hours of the 20 May 2024 storm are not recorded there.</li>
        <li><b>Model:</b> ${esc(r.model.description)} Modelled peak: ${Math.round(r.model.peakUGyH).toLocaleString()} µGy/h. Assumed onset at Mars: ${esc(r.event.assumedOnsetUtc.replace("T", " ").replace(":00Z", " UTC"))}.</li>
        <li><b>Alert:</b> CAIRN raises the alarm when the outdoor dose rate exceeds ${ALERT_FACTOR}× background. The real DONKI notification (${esc(r.donki.alert.messageID)}) was issued ${r.donki.alert.delayAfterCmeStartH.toFixed(1)} hours after the eruption and did not list Mars — a crew needs on-site detection.</li>
        <li><b>Shelter:</b> dose rate inside the rover is ${p.shelterFactor}× outdoors (assumption).</li>
      </ul>
+     <h3>Sun, shadows and terrain shielding</h3>
+     <ul>
+       <li><b>Sun:</b> Mars24 algorithm (Allison & McEwen 2000, NASA GISS) for sol ${site.meta.eva?.sol ?? "—"}. Checked against rover clocks: local solar time within a minute.</li>
+       <li><b>Shadows:</b> cast from the real elevation grids (walk area and surroundings) by marching each pixel toward the Sun.</li>
+       <li><b>Terrain shielding:</b> share of the sky blocked by terrain within ${site.meta.shielding?.radiusM ?? 260} m, weighting each direction by cos${"\u00b2"} of its zenith angle (the dose falls toward the horizon; the exponent is an assumption). ${(() => {
+         const sh = site.grid.shield;
+         if (!sh) return "";
+         let min = 255;
+         for (let i = 0; i < sh.length; i++) if (sh[i] < min) min = sh[i];
+         return `At this site terrain cuts the dose by at most ${Math.round((1 - min / 255) * 100)}%, and only right against cliff walls — the rover remains the real shelter.`;
+       })()}</li>
+     </ul>
+     ${site.meta.minerals ? `<h3>Minerals (CRISM)</h3>
+     <ul>
+       <li>Summary parameters from ${esc(site.meta.minerals.product)} at ${site.meta.minerals.mPerPx} m/px: OLINDEX3 (olivine), D2300 (Fe/Mg clay), MIN2295_2480 (carbonate).</li>
+       <li>Strength is scaled to these observations; CRISM imaged ${Math.round(site.meta.minerals.coveragePct ?? 0)}% of the walk area. Band depths indicate likely minerals, not certainties.</li>
+     </ul>` : ""}
+     ${site.panoramas ? `<h3>360° panoramas</h3>
+     <ul><li>${esc(site.panoramas.source)}. Each pixel's viewing ray is projected through every frame's published camera model; frames are feathered and exposure-matched. Unimaged sky and the ground under the rover are filled smoothly.</li></ul>` : ""}
      <h3>Display</h3>
      <ul>
        <li>HiRISE is a grey image; the Mars colour is a display tint. Fine grain near the camera in the Visor view is a rendering effect.</li>
@@ -72,23 +91,27 @@ export function showAssumptions(site: SiteData, p: EvaParams): void {
   );
 }
 
-/** Stop card: what Perseverance saw there, why it matters, and what a human adds. */
-export function stopCardHtml(poi: Poi, base: string, unitName: string | null, arrived: boolean): string {
+/** Stop card: what the rover saw there, why it matters, and what a human adds. */
+export function stopCardHtml(poi: Poi, base: string, unitName: string | null, arrived: boolean, rover = "Perseverance", panorama = false): string {
   const imgs = poi.images
     .map(
       (im, i) => `<figure class="${i === 0 ? "on" : ""}" data-i="${i}">
         <img src="${base}${im.file}" alt="${esc(poi.name)} — ${esc(im.cameraName)}, sol ${im.sol}"/>
-        <figcaption>Perseverance · ${esc(im.cameraName)} · sol ${im.sol} · ${esc(im.credit)} · <a href="${esc(im.link)}" target="_blank" rel="noopener">source ↗</a></figcaption>
+        <figcaption>${esc(rover)} · ${esc(im.cameraName)} · sol ${im.sol} · ${esc(im.credit)} · <a href="${esc(im.link)}" target="_blank" rel="noopener">source ↗</a></figcaption>
       </figure>`,
     )
     .join("");
   const dots = poi.images.length > 1 ? `<div class="dots">${poi.images.map((_, i) => `<button data-i="${i}" class="${i === 0 ? "on" : ""}" aria-label="Photo ${i + 1}"></button>`).join("")}</div>` : "";
+  const look = panorama
+    ? `<button class="look" data-pano="${esc(poi.id)}">${ic.visor}<span>Look around 360°</span><small>${esc(rover)} Navcam</small></button>`
+    : "";
   return `
     <header><span class="kicker">${arrived ? "Arrived — this is what you see" : poi.kind === "shelter" ? "Rover and shelter" : "What you will see"}</span>
       <h3>${esc(poi.name)}</h3><button class="close icon" aria-label="Close">${ic.close}</button></header>
     ${poi.images.length ? `<div class="gallery">${imgs}${dots}</div>` : ""}
+    ${look}
     <p>${esc(poi.description)}</p>
     ${poi.science ? `<p class="sci"><b>Science</b>${esc(poi.science)}</p>` : ""}
     ${poi.whyHumans ? `<p class="why"><b>Why send a human</b>${esc(poi.whyHumans)}</p>` : ""}
-    <p class="meta">${poi.rmc ? `Perseverance stood here on sols ${esc(poi.sols)} (rover position ${esc(poi.rmc)}).` : "Custom stop added on the map."}${unitName ? ` USGS map unit: ${esc(unitName)}.` : ""}</p>`;
+    <p class="meta">${poi.rmc ? `${esc(rover)} stood here on sols ${esc(poi.sols)} (rover position ${esc(poi.rmc)}).` : "Custom stop added on the map."}${unitName ? ` USGS map unit: ${esc(unitName)}.` : ""}</p>`;
 }

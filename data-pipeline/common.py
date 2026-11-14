@@ -1,8 +1,8 @@
 """Shared helpers for the CAIRN data pipeline: config, paths and coordinate conversion.
 
 Coordinate systems
-  eqc    : Equirectangular on the Mars 2000 sphere (R = 3,396,190 m), lat_ts = 0, lon0 = 0, meters.
-           This is the native projection of the USGS Mars 2020 TRN mosaics.  x = R*lon, y = R*lat.
+  eqc    : Equirectangular on the Mars 2000 sphere (R = 3,396,190 m), lat_ts = 0, metres; x = R*(lon - lon0), y = R*lat.
+           lon0 = 0 for Jezero (USGS Mars 2020 TRN mosaics), 137.38 for Gale (HiRISE DTM DTEEC_019698_1750_019988_1750).
   local  : meters from the AOI south-west corner.  x = east, y = north.
   grid   : node (col, row) on the (N x N) routing/mesh grid.  row 0 is the NORTH edge.
 """
@@ -11,8 +11,11 @@ import math
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-RAW = os.path.join(HERE, "raw")
-CFG = json.load(open(os.path.join(HERE, "config", "jezero.json")))
+SITE = os.environ.get("CAIRN_SITE", "jezero")          # which site to build: config/<site>.json
+CFG = json.load(open(os.path.join(HERE, "config", f"{SITE}.json")))
+RAW = os.path.join(HERE, CFG.get("raw", "raw"))        # site-specific downloads
+SHARED = os.path.join(HERE, "raw")                     # downloads shared by all sites (RAD, DONKI, Mars Trek)
+LON0 = CFG.get("proj", {}).get("lon0", 0.0)            # central meridian of the site's equirectangular projection
 OUT = os.path.normpath(os.path.join(HERE, "..", "web", "public", "data", CFG["id"]))
 
 R_MARS = CFG["mars_radius_m"]
@@ -24,11 +27,11 @@ N = SIZE // CELL + 1  # nodes per side
 
 
 def lonlat_to_eqc(lon_deg, lat_deg):
-    return R_MARS * math.radians(lon_deg), R_MARS * math.radians(lat_deg)
+    return R_MARS * math.radians(lon_deg - LON0), R_MARS * math.radians(lat_deg)
 
 
 def eqc_to_lonlat(x, y):
-    return math.degrees(x / R_MARS), math.degrees(y / R_MARS)
+    return math.degrees(x / R_MARS) + LON0, math.degrees(y / R_MARS)
 
 
 def eqc_to_local(x, y):

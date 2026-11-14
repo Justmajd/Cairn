@@ -1,7 +1,7 @@
 # CAIRN data pipeline.  `make all` rebuilds every file in web/public/data/jezero from official sources.
 PY = .venv/bin/python
 
-.PHONY: all setup fetch build clean
+.PHONY: all setup fetch build gale clean
 all: fetch build
 
 setup:
@@ -15,6 +15,7 @@ fetch:
 	$(PY) fetch_rover_images.py
 
 build:
+	$(PY) build_minerals.py
 	$(PY) build_site.py
 	$(PY) build_region.py
 	$(PY) build_rover.py
@@ -22,6 +23,20 @@ build:
 	$(PY) build_weather.py
 	$(PY) build_context.py
 	$(PY) build_provenance.py
+	$(PY) build_panoramas.py
+
+# Gale Crater (Curiosity): download the HiRISE DTM + orthoimages listed in config/gale.json into raw/gale first
+gale:
+	CAIRN_SITE=gale $(PY) prepare_hirise.py
+	CAIRN_SITE=gale $(PY) fetch_rover_images_msl.py
+	CAIRN_SITE=gale $(PY) build_site.py
+	CAIRN_SITE=gale $(PY) build_region.py
+	CAIRN_SITE=gale $(PY) build_rover.py
+	CAIRN_SITE=gale $(PY) build_replay.py
+	CAIRN_SITE=gale $(PY) build_weather.py
+	CAIRN_SITE=gale $(PY) build_context.py
+	CAIRN_SITE=gale $(PY) build_provenance.py
+	CAIRN_SITE=gale $(PY) build_panoramas.py
 
 clean:
 	rm -rf ../web/public/data/jezero

@@ -53,6 +53,19 @@
    "note": "Mapped at 1:75,000, so unit boundaries are approximate at walking scale."
   },
   {
+   "id": "crism",
+   "layer": "Minerals (olivine, Fe/Mg clay, carbonate)",
+   "dataType": "Spectral",
+   "mission": "Mars Reconnaissance Orbiter",
+   "instrument": "CRISM",
+   "product": "MTRDR summary parameters FRT00005C5E_07_SU166J_MTR3 (18 m/px) + HRL000040FF_07_SU183J_MTR3 (36 m/px): OLINDEX3, D2300, MIN2295_2480",
+   "provider": "NASA Planetary Data System, Geosciences Node",
+   "url": "https://pds-geosciences.wustl.edu/mro/mro-m-crism-5-rdr-mptargeted-v1/mrocr_4001/mtrdr/",
+   "credit": "NASA/JPL-Caltech/JHU-APL",
+   "usedFor": "Mineral layer and the CRISM line in the map probe",
+   "note": "CRISM imaged the north-east quarter of the walk area. Strength is scaled to these observations (Viviano-Beck et al. 2014 parameters)."
+  },
+  {
    "id": "sand",
    "layer": "Loose sand hazard",
    "dataType": "Derived (optical + topographic + thermal)",
@@ -64,6 +77,19 @@
    "credit": "Derived from NASA/JPL-Caltech/University of Arizona/ASU/USGS data",
    "usedFor": "Extra walking energy on sand (×2.1 at full strength) and slower walking speed",
    "note": "This is our own analysis, not an official NASA product."
+  },
+  {
+   "id": "shield",
+   "layer": "Terrain shielding (sky view)",
+   "dataType": "Derived (topographic)",
+   "mission": "Mars Reconnaissance Orbiter",
+   "instrument": "HiRISE DTM",
+   "product": "Computed by CAIRN: share of the sky blocked by terrain within 260 m of each point (HiRISE DTM), weighted by a cos² zenith dependence of the surface dose",
+   "provider": "CAIRN team (derived product)",
+   "url": "https://github.com/Justmajd/cairn-demo/blob/main/data-pipeline/build_site.py",
+   "credit": "Derived from NASA/JPL-Caltech/University of Arizona/USGS data",
+   "usedFor": "Sky shielding layer, dose along the route, nearest natural cover during the storm",
+   "note": "Model, not a measurement: the zenith exponent is an assumption."
   },
   {
    "id": "ctx",

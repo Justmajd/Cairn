@@ -7,7 +7,7 @@ import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRe
 import type { SiteData } from "../data/loaders";
 import type { MeasuredPath, PathSample, Poi, RegionMeta, XY } from "../types";
 import { ic } from "../ui/icons";
-import { buildRegion, buildSky, buildTerrain, byteTexture, geologyLut, LAYER_IDS, LayerId, SKY_HORIZON, Terrain } from "./terrain";
+import { buildRegion, buildSky, buildTerrain, byteTexture, geologyLut, heightTexture, rgbaTexture, LAYER_IDS, LayerId, makeShadowUniforms, ShadowUniforms, SKY_HORIZON, Terrain } from "./terrain";
 
 export interface SceneTextures {
   map: THREE.Texture; // HiRISE image of the walk area
@@ -68,6 +68,7 @@ export class SceneView {
   private readonly region: Terrain | null;
   private readonly sky: ReturnType<typeof buildSky>;
   private readonly regionHalf: number;
+  private readonly shared: ShadowUniforms = makeShadowUniforms();
   private readonly fog: THREE.FogExp2;
   private readonly half: number;
   private readonly zRef: number;
@@ -129,14 +130,30 @@ export class SceneView {
       sand: byteTexture(grid.sand, n),
       effort: byteTexture(grid.effort, n),
       risk: byteTexture(grid.risk, n),
-      thermal: byteTexture(site.thermalGrid, n),
-      geology: byteTexture(site.geologyGrid, n, THREE.NearestFilter),
-      geoLut: geologyLut(site.geology.units),
+      thermal: byteTexture(site.thermalGrid ?? new Uint8Array(n * n), n),
+      geology: byteTexture(site.geologyGrid ?? new Uint8Array(n * n), n, THREE.NearestFilter),
+      geoLut: geologyLut(site.geology?.units ?? []),
+      minerals: rgbaTexture(site.mineralGrid, n),
+      shield: byteTexture(grid.shield ?? new Uint8Array(n * n).fill(255), n),
     };
+    // elevation textures for cast shadows
+    const sh = this.shared;
+    sh.uAoiHeight.value = heightTexture(grid.height, n, this.zRef);
+    sh.uAoiN.value = n;
+    sh.uAoiCell.value = grid.cell;
+    sh.uAoiHalf.value = this.half;
+    if (tex.region) {
+      const r = tex.region.meta;
+      sh.uRegHeight.value = heightTexture(tex.region.heights, r.n, this.zRef);
+      sh.uRegN.value = r.n;
+      sh.uRegCell.value = r.cellM;
+      sh.uRegOrigin.value.set(r.originLocal.x - this.half, this.half - (r.originLocal.y + r.sizeM));
+      sh.uHasRegion.value = 1;
+    }
     const reliefRange = site.meta.relief?.range ?? 1.5;
-    this.terrain = buildTerrain(grid, this.zRef, tex.map, tex.relief, reliefRange, layers, quality === "low" ? 2 : 1);
+    this.terrain = buildTerrain(grid, this.zRef, tex.map, tex.relief, reliefRange, layers, quality === "low" ? 2 : 1, sh);
     this.scene.add(this.terrain.mesh);
-    this.region = tex.region ? buildRegion(tex.region.meta, tex.region.heights, this.zRef, tex.region.map, grid.size, quality === "low" ? 2 : 1) : null;
+    this.region = tex.region ? buildRegion(tex.region.meta, tex.region.heights, this.zRef, tex.region.map, grid.size, quality === "low" ? 2 : 1, sh) : null;
     if (this.region) this.scene.add(this.region.mesh);
     this.regionHalf = tex.region ? tex.region.meta.sizeM / 2 : this.half;
     this.addAreaOutline();
@@ -248,6 +265,19 @@ export class SceneView {
     }
     const walking = this.mode === "walk";
     for (const beam of this.beams) beam.visible = walking;
+    // the resolution note sits at the walk area's corner: hide it while that corner is under a panel
+    if (this.outline) {
+      const tag = this.outline.children.find((c) => c instanceof CSS2DObject) as CSS2DObject | undefined;
+      if (tag) {
+        const p = tag.position.clone().project(this.camera);
+        const h = this.host.clientHeight;
+        const w = this.host.clientWidth;
+        const sx = ((p.x + 1) / 2) * w;
+        const sy = ((1 - p.y) / 2) * h;
+        const free = sy > this.insets.top + 8 && sy < h - this.insets.bottom - 30 && sx > this.insets.left + 8 && sx < w - this.insets.right - 200;
+        tag.visible = free && p.z < 1;
+      }
+    }
     // standing at a stop in the visor: hide its marker so the camera is not inside it
     for (const holder of this.poiGroup.children) {
       holder.visible = !(walking && holder.position.distanceTo(this.camera.position) < 9);
@@ -429,6 +459,44 @@ export class SceneView {
     });
   }
 
+  /** Slow turntable rotation in the 3D view (used by the guided demo). */
+  setAutoRotate(on: boolean, speed = 0.5): void {
+    this.controls.autoRotate = on && this.mode === "orbit";
+    this.controls.autoRotateSpeed = speed;
+  }
+
+  /** Start far above the region, then descend to the planning view of the walk area. */
+  overview(): Promise<void> {
+    if (this.mode === "walk") this.leaveWalk();
+    this.mode = "plan";
+    this.host.dataset.mode = "plan";
+    this.styleFor("plan");
+    const target = new THREE.Vector3(0, (this.site.meta.height.zMax - this.zRef) * 0.35 * this.exag, 0);
+    const pose = this.planPose(target);
+    this.tween = null;
+    this.fly = null;
+    this.camera.position.set(target.x, target.y + (pose.pos.y - target.y) * 4.2, target.z + 1);
+    this.controls.target.copy(target);
+    this.camera.fov = pose.fov;
+    this.camera.updateProjectionMatrix();
+    this.camera.lookAt(target);
+    return new Promise((resolve) => {
+      this.startTween(pose.pos, target, pose.fov, 4.5, () => {
+        this.controls.enabled = true;
+        this.controls.enableRotate = false;
+        this.controls.minPolarAngle = 0;
+        this.controls.maxPolarAngle = 0.002;
+        this.useMapGestures();
+        this.controls.update();
+        resolve();
+      });
+    });
+  }
+
+  isAnimating(): boolean {
+    return !!this.tween || !!this.fly || this.mode === "fly";
+  }
+
   /** Centre the view on a ground point (double-click). */
   focusOn(p: XY): void {
     if (this.tween || this.fly || this.mode === "walk" || this.mode === "fly") return;
@@ -593,8 +661,7 @@ export class SceneView {
   // ---------------------------------------------------------------- layers
   setExaggeration(value: number): void {
     this.exag = value;
-    this.terrain.uniforms.uExag.value = value;
-    if (this.region) this.region.uniforms.uExag.value = value;
+    this.shared.uExag.value = value;
     if (this.routes) this.setRoutes(this.routes);
     this.rebuildTrack();
     this.addAreaOutline();
@@ -602,6 +669,18 @@ export class SceneView {
       const p = child.userData.poi as Poi;
       child.position.copy(this.ground(p.x, p.y));
     }
+  }
+
+  /** Light the terrain with the Sun at this elevation / azimuth (degrees, azimuth clockwise from north). */
+  setSun(elevationDeg: number, azimuthDeg: number): void {
+    const el = THREE.MathUtils.degToRad(elevationDeg);
+    const az = THREE.MathUtils.degToRad(azimuthDeg);
+    this.shared.uSunDir.value.set(Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
+    this.sky.setSunElevation(elevationDeg);
+  }
+
+  setShadows(on: boolean): void {
+    this.shared.uShadows.value = on ? 1 : 0;
   }
 
   /** Colour the walk area with a data layer (computed on the GPU from the data grids). */

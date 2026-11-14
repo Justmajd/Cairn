@@ -2,7 +2,7 @@
 
 > **The rocks Perseverance found. The path humans will walk.**
 
-A Marswalk route planner for the first human explorers at Jezero Crater, built on official NASA, USGS and JPL data.
+A Marswalk route planner for the first human explorers on Mars, built on official NASA, USGS and JPL data — at two real rover sites: **Jezero Crater** (Perseverance, Cheyava Falls) and **Gale Crater** (Curiosity, the Mount Sharp boxwork).
 
 Built for the **2026 NASA Space Apps Challenge** — *Interplanetary Survival Guide: Martian Map*.
 
@@ -14,16 +14,18 @@ Built for the **2026 NASA Space Apps Challenge** — *Interplanetary Survival Gu
 
 ## What it does
 
-The crew parks a pressurised rover on the south bank of Neretva Vallis, an ancient river channel on the western edge of Jezero Crater. CAIRN plans the walk to **Cheyava Falls** — the rock where Perseverance found a potential biosignature — and back.
+Pick a site, pick the stops, and CAIRN plans the walk from the pressurised rover and back.
 
-1. **Layers real mission data** on a 2 × 2 km walk area: HiRISE elevation (1 m) and imagery (25 cm), THEMIS night-time thermal, the USGS geologic map, a derived loose-sand hazard, and a "minutes to shelter" layer — set inside 16 km of surrounding CTX terrain.
-2. **Finds the safest walking route** between the stops you pick (or any point you click), and shows it against the straight line. On the default plan the straight line crosses 76 m of ground steeper than 25°; CAIRN goes around it.
-3. **Budgets the EVA**: distance, time, oxygen, the walk-back margin, and background radiation dose.
-4. **Shows what you will see**: real Perseverance photos taken at each stop.
+1. **Layers real mission data** on a 2 × 2 km walk area set in up to 16 km of surrounding terrain: HiRISE elevation (1 m) and imagery (25 cm), CRISM minerals, THEMIS night-time thermal, the USGS geologic map, loose sand, terrain sky-shielding and minutes to shelter.
+2. **Finds the safest walking route** (walking energy × fall risk) between the stops you pick or any point you click, and shows it against the straight line — which crosses ground too steep to walk at both sites.
+3. **Budgets the EVA**: distance, time, oxygen, walk-back margin and radiation dose — with the **real Sun** for the chosen sol and start time, casting shadows from the real terrain.
+4. **Shows what you will see**: rover photos taken at each stop, and at Gale a **360° panorama** CAIRN stitched from Curiosity's Navcam frames.
 5. **Walks the route** in a first-person visor view with compass, oxygen, dose, weather and a minimap.
-6. **Replays a real solar storm** (20 May 2024). When the dose rate rises, CAIRN finds the way back to the rover in a few milliseconds and reports the dose avoided.
+6. **Replays a real solar storm** (20 May 2024, measured by Curiosity's RAD). CAIRN finds the way back to the rover in milliseconds, names the nearest natural cover, and reports the dose avoided.
+7. **Prints a one-page EVA cue card**: map, timeline, turn-back oxygen per stop, storm protocol.
+8. **Plays a two-minute guided demo** of all of the above (Demo button or the briefing).
 
-Every layer, photo and reading names its mission, instrument and product in the **Data sources** panel.
+Every layer, photo and reading names its mission, instrument and product in the **Data sources** panel and in [docs/data-sources.md](docs/data-sources.md).
 
 ## Run it
 
@@ -44,7 +46,9 @@ Open the address Vite prints (normally http://localhost:5173).
 | `npm run build` | Type-check and build to `web/dist/` |
 | `npm run preview` | Serve the built app |
 
-URL options: `?skip=1` skips the briefing, `?q=low` uses a lighter mesh and the 50 cm texture for slow GPUs, `?tex=4k` forces the 50 cm texture.
+URL options: `?site=gale` opens Gale Crater (default `jezero`), `?skip=1` skips the briefing, `?q=low` uses a lighter mesh and the 50 cm texture for slow GPUs, `?tex=4k` forces the 50 cm texture.
+
+Works on desktop and tablets: below 1180 px the route and layers panel becomes a drawer (layers button, top right); in portrait the plan becomes a bottom sheet.
 
 ## Controls
 
@@ -56,14 +60,9 @@ URL options: `?skip=1` skips the briefing, `?q=low` uses a lighter mesh and the 
 
 The buttons at the bottom-right of the map do the same things.
 
-## A five-minute demo
+## The demo
 
-1. **Briefing** — the story, the regional map with Perseverance's real traverse, and the EVA area.
-2. **Map** — tick the objectives. Compare the white straight line (red where impassable) with the cyan CAIRN route. Try the *Traversability*, *Geologic units* and *Minutes to shelter* layers.
-3. **3D** and **Fly route** — the same plan on real HiRISE terrain.
-4. **Start EVA** — the visor view walks the route. At Cheyava Falls the photo card shows what Perseverance saw there.
-5. **The storm** — shortly after leaving the first stop the alert fires. Watch the amber route back to the rover, the dose-rate chart, and the dose avoided.
-6. **Later sol** — re-plan the remaining stop.
+Press **Demo** (top right) or **Watch the 2-minute demo** in the briefing. It walks through: the site → real terrain in 3D → traversability and the deadly straight line → the real Sun and shadows → a flyover → the walk, arriving at the first objective (with the 360° view at Gale) → the 20 May 2024 storm, the re-route and the dose avoided. Pause, skip or exit at any time.
 
 ## How it works
 
@@ -83,6 +82,9 @@ data-pipeline/  (Python)                     web/  (TypeScript + Three.js, fully
 
 - **Sharp at every distance.** The 25 cm HiRISE image is sampled with Catmull-Rom filtering, lighting uses the full 1 m elevation gradient per pixel, and map layers are coloured on the GPU from the raw data grids, so they stay smooth instead of pixelated.
 - **No edge of the world.** The walk area sits in 16 km of CTX terrain (20 m elevation, 6 m image). The two datasets differ by +0.3 m on average along the seam; that difference is blended out over 900 m and the images are tone-matched.
+- **Real Sun, real shadows.** Mars24 (Allison & McEwen 2000) places the Sun for the chosen sol and local time — checked against rover clocks to within a minute. Each pixel marches toward the Sun across the elevation grids for cast shadows.
+- **Terrain shielding.** For every grid point, CAIRN measures how much of the sky the surrounding terrain blocks, weighted toward the zenith where most of the dose comes from. Cliffs cut the dose by at most ~15–40% — the rover stays the real shelter, and the storm alert says so.
+- **Stitched panoramas.** For every panorama pixel, the viewing ray is rotated into the rover frame (attitude quaternion) and projected through each Navcam frame's published CAHVOR camera model; frames are feathered and exposure-matched. Published only where the frames cover at least 85% of the horizon — all five Gale stops.
 - **One renderer for 2D and 3D.** The map is the 3D terrain seen from straight above through a narrow lens, so routes and layers always line up and switching to 3D is a camera move.
 - **Routing.** A\* over a 1025 × 1025 grid (2 m cells) minimises *walking energy × fall risk*. Energy uses the Minetti (2002) cost of walking on slopes with the real elevation of every step; loose sand and rough ground cost more; slopes above 25° are impassable.
 - **The way home.** One Dijkstra pass from the rover stores the best route home from every grid point. The emergency re-route is then a lookup, and the same data draws the *Minutes to shelter* layer and the walk-back margin.
@@ -105,6 +107,8 @@ make build     # writes web/public/data/jezero/
 
 | Real mission data | Assumptions and derived products |
 |---|---|
+| CRISM mineral band depths (Jezero; 25% of the walk area imaged) | Mineral strengths scaled to the observations; terrain-shielding zenith exponent |
+| Rover Navcam frames and camera models | The stitched panoramas (filled sky and ground under the rover are marked as filled) |
 | Terrain, imagery, thermal image, geologic units | Spacesuit and physiology numbers (mass, oxygen supply, speeds) — demo values, listed in *Model assumptions* |
 | Stop positions and Perseverance's traverse | Loose-sand hazard — our own analysis of HiRISE and THEMIS data |
 | Photos at each stop | Mars colour in the 3D view — a display tint; HiRISE is a grey image |
@@ -114,10 +118,21 @@ make build     # writes web/public/data/jezero/
 
 **The storm replay.** Curiosity's archived RAD data holds 2–4 hours of dosimetry per sol, so the start of the 20 May 2024 storm is not recorded. CAIRN shows the real readings as dots (background 5.4 µGy/h before the storm, 34.7 µGy/h at 19:08 UTC on 20 May) and fills the gap with a model: the tail is fitted to those readings and the peak is scaled so the total equals the 8,100 micrograys NASA reported. The chart labels measured and modelled values separately. Curiosity is in Gale crater, about 3,700 km from Jezero.
 
+## Sites
+
+| | Jezero Crater | Gale Crater |
+|---|---|---|
+| Rover | Perseverance | Curiosity |
+| Objectives | Cheyava Falls (potential biosignature), Serpentine Rapids | Boxwork ridge (main exposure), Nevado Sajama drill site |
+| Terrain | USGS Mars 2020 TRN HiRISE mosaics + 16 km CTX surroundings | HiRISE DTM DTEEC_019698_1750_019988_1750 + 6.8 km of the same strip |
+| Weather | MEDA, sol 1215 | REMS, sol 4605 |
+| Extra layers | THEMIS, USGS geology, CRISM minerals | — |
+| 360° panoramas | — (the public Navcam frames cover under 85% of the horizon) | All five stops |
+| Storm | Curiosity RAD, 3,700 km away | Curiosity RAD, 2.3 km away |
+
 ## Differences from the plan
 
 - **Second target.** Three Forks is 6.7 km from Cheyava Falls — a rover drive, shown on the regional map. The second walking objective is Serpentine Rapids.
-- **No CRISM mineral layer.** The layers are elevation, imagery, thermal, geology, sand and time-to-shelter.
 - **THEMIS is displayed and used for sand detection**, not as a routing cost on its own: at ~100 m per pixel it is too coarse for a walking route.
 - **Regional map** uses the USGS CTX mosaic bundled with the app; Mars Trek tiles supply the global locator.
 - **After the storm** the EVA ends at the rover and the remaining stops are re-planned for a later sol, because RAD measured elevated dose rates for about two sols.

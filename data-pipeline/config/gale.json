@@ -1,0 +1,74 @@
+{
+  "id": "gale",
+  "name": "Gale Crater — Mount Sharp boxwork",
+  "mars_radius_m": 3396190.0,
+  "proj": {
+    "lon0": 137.38
+  },
+  "raw": "raw/gale",
+  "aoi": {
+    "x0": -994,
+    "y0": -285987,
+    "size_m": 2048
+  },
+  "cell_m": 2,
+  "texture_px": 4096,
+  "sources": {
+    "hirise_dtm": "DTEEC_019698_1750_019988_1750_U01.IMG",
+    "hirise_ortho": "ESP_019698_1750_RED_A_01_ORTHO.JP2",
+    "hirise_ortho_1m": "ESP_019698_1750_RED_C_01_ORTHO.JP2",
+    "pds_dir": "https://hirise-pds.lpl.arizona.edu/PDS/DTM/ESP/ORB_019600_019699/ESP_019698_1750_ESP_019988_1750/",
+    "waypoints": "https://mars.nasa.gov/mmgis-maps/MSL/Layers/json/MSL_waypoints.json"
+  },
+  "region": {
+    "dtm": "DTEEC_019698_1750_019988_1750_U01.IMG",
+    "ortho": "ESP_019698_1750_RED_C_01_ORTHO.JP2",
+    "margin_cells": 115
+  },
+  "layers": {
+    "themis": false,
+    "geology": false
+  },
+  "rover": {
+    "name": "Curiosity",
+    "mission": "Mars Science Laboratory"
+  },
+  "eva": {
+    "sol": 4605,
+    "utc": "2025-07-20T19:43:56Z",
+    "note": "Sol Curiosity reached the main boxwork exposure",
+    "startLmst": 10.0
+  },
+  "context": {
+    "ortho": "ESP_019698_1750_RED_C_01_ORTHO.JP2",
+    "halfKm": 2.6,
+    "source": "HiRISE orthoimage ESP_019698_1750 (1 m/px), the image under the Gale DTM",
+    "places": [
+      {
+        "id": "storm",
+        "name": "Curiosity during the 20 May 2024 storm",
+        "sol": 4190,
+        "note": "Gediz Vallis area, sol 4190: RAD recorded the largest particle surge since landing here."
+      },
+      {
+        "id": "ridge",
+        "name": "Boxwork · main exposure",
+        "sol": 4605,
+        "note": "Reached on sols 4604-4606 (July 2025)."
+      },
+      {
+        "id": "latest",
+        "name": "Rover position in this dataset",
+        "sol": -1,
+        "note": "Last waypoint in the MMGIS layer used here."
+      }
+    ]
+  },
+  "story": {
+    "headline": "The ridges groundwater built. The path a geologist will walk.",
+    "paragraphs": [
+      "High on Mount Sharp, Curiosity spent 2025 inside a <b>boxwork</b>: a mesh of rock ridges, metres tall, left behind where groundwater filled cracks with minerals that hardened before the surrounding rock wore away. It shows water still moved underground as Mars dried out.",
+      "<b>Your mission:</b> walk the boxwork. CAIRN layers HiRISE terrain and imagery, Curiosity's own photos and weather and the radiation it measured just 2.3 km away during the May 2024 storm, then finds the safest way along the ridges and back to the rover."
+    ]
+  }
+}

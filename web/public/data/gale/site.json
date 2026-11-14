@@ -1,0 +1,88 @@
+{
+ "id": "gale",
+ "name": "Gale Crater — Mount Sharp boxwork",
+ "crs": "Equirectangular, Mars 2000 sphere (R = 3,396,190 m), lat_ts = 0, lon0 = 137.38",
+ "originEqc": {
+  "x": -994,
+  "y": -285987
+ },
+ "boundsLonLat": {
+  "west": 137.363231,
+  "south": -4.824774,
+  "east": 137.397782,
+  "north": -4.790223
+ },
+ "sizeM": 2048,
+ "grid": {
+  "n": 1025,
+  "cellM": 2
+ },
+ "height": {
+  "file": "height.u16",
+  "zMin": -3862.0,
+  "zMax": -3362.0
+ },
+ "texture": {
+  "file": "texture.jpg",
+  "px": 4096,
+  "mPerPx": 0.5,
+  "hi": {
+   "file": "texture_8k.jpg",
+   "px": 8192,
+   "mPerPx": 0.25
+  }
+ },
+ "relief": {
+  "file": "relief.png",
+  "range": 1.5
+ },
+ "eva": {
+  "sol": 4605,
+  "utc": "2025-07-20T19:43:56Z",
+  "note": "Sol Curiosity reached the main boxwork exposure",
+  "startLmst": 10.0
+ },
+ "rover": {
+  "name": "Curiosity",
+  "mission": "Mars Science Laboratory"
+ },
+ "story": {
+  "headline": "The ridges groundwater built. The path a geologist will walk.",
+  "paragraphs": [
+   "High on Mount Sharp, Curiosity spent 2025 inside a <b>boxwork</b>: a mesh of rock ridges, metres tall, left behind where groundwater filled cracks with minerals that hardened before the surrounding rock wore away. It shows water still moved underground as Mars dried out.",
+   "<b>Your mission:</b> walk the boxwork. CAIRN layers HiRISE terrain and imagery, Curiosity's own photos and weather and the radiation it measured just 2.3 km away during the May 2024 storm, then finds the safest way along the ridges and back to the rover."
+  ]
+ },
+ "centerLonLat": {
+  "lon": 137.380506,
+  "lat": -4.807498
+ },
+ "shielding": {
+  "file": "shield.u8",
+  "exponent": 2.0,
+  "azimuths": 24,
+  "radiusM": 260
+ },
+ "grids": {
+  "slope": "slope.u8",
+  "sand": "sand.u8",
+  "effort": "effort.u8",
+  "risk": "risk.u8"
+ },
+ "model": {
+  "slopeLimitDeg": 25.0,
+  "slopeRiskStartDeg": 8.0,
+  "slopeRiskMax": 3.0,
+  "sandEffort": 1.1,
+  "roughEffort": 0.4,
+  "effortScale": 50,
+  "riskScale": 50,
+  "themisNativeResM": null
+ },
+ "stats": {
+  "slopeMedianDeg": 13.0,
+  "blockedPct": 17.9,
+  "sandPct": 0.4,
+  "reliefM": 500.0
+ }
+}

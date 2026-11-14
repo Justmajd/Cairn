@@ -21,10 +21,10 @@ from rasterio.transform import from_origin
 from rasterio.warp import Resampling, reproject
 from scipy import ndimage as ndi
 
-from common import OUT, RAW, SIZE, X0, Y0, write_json
+from common import CFG, OUT, RAW, SIZE, X0, Y0, write_json
 
 INNER_CELLS = 100            # cells across the walk area
-MARGIN_CELLS = 340           # cells from the walk-area edge to the region edge
+MARGIN_CELLS = CFG["region"]["margin_cells"]  # cells from the walk-area edge to the region edge
 TEX_PX = 2688                # region image size (~6 m per pixel, CTX native)
 FEATHER_M = 900.0
 
@@ -37,13 +37,20 @@ def main():
     rsize = (n - 1) * cell
 
     # --- heights: CTX DTM sampled at the region nodes (node-registered grid, row 0 = north)
-    with rasterio.open(os.path.join(RAW, "ctx_dtm.tif")) as ds:
+    with rasterio.open(os.path.join(RAW, CFG["region"]["dtm"])) as ds:
         crs = ds.crs
-        heights = np.zeros((n, n), dtype=np.float32)
+        heights = np.full((n, n), np.nan, dtype=np.float32)
+        fine = ds.res[0] < cell / 3
         reproject(rasterio.band(ds, 1), heights,
                   dst_transform=from_origin(rx0 - cell / 2, ry0 + rsize + cell / 2, cell, cell),
-                  dst_crs=crs, resampling=Resampling.bilinear)
-    assert (heights > -1e30).all(), "CTX DTM has gaps in the region"
+                  dst_crs=crs, resampling=Resampling.average if fine else Resampling.bilinear,
+                  src_nodata=ds.nodata, dst_nodata=np.nan)
+    heights[heights < -1e30] = np.nan
+    gaps = ~np.isfinite(heights)
+    if gaps.any():                                         # e.g. the ragged edge of a HiRISE strip
+        print(f"filling {gaps.mean() * 100:.1f}% of the region outside the source DTM")
+        idx = ndi.distance_transform_edt(gaps, return_distances=False, return_indices=True)
+        heights = heights[tuple(idx)]
 
     # --- HiRISE heights along the walk-area border, at the region's border nodes
     dtm = np.load(os.path.join(RAW, "aoi_dtm_1m.npy")).astype(np.float64)
@@ -90,10 +97,14 @@ def main():
     ((heights - z_min) / (z_max - z_min) * 65535).round().astype("<u2").tofile(os.path.join(OUT, "region.u16"))
 
     # --- image: CTX orthomosaic over the region, tone-matched to the HiRISE texture
-    with rasterio.open(os.path.join(RAW, "ctx_ortho.tif")) as ds:
+    with rasterio.open(os.path.join(RAW, CFG["region"]["ortho"])) as ds:
         img = np.zeros((TEX_PX, TEX_PX), dtype=np.float32)
         reproject(rasterio.band(ds, 1), img, dst_transform=from_origin(rx0, ry0 + rsize, rsize / TEX_PX, rsize / TEX_PX),
-                  dst_crs=crs, resampling=Resampling.cubic)
+                  dst_crs=crs, resampling=Resampling.average if ds.res[0] < rsize / TEX_PX / 2 else Resampling.cubic,
+                  src_nodata=0, dst_nodata=0)
+    if (img <= 0).any():                                   # outside the image footprint: nearest valid tone
+        idx = ndi.distance_transform_edt(img <= 0, return_distances=False, return_indices=True)
+        img = img[tuple(idx)]
     hi = np.asarray(Image.open(os.path.join(OUT, "texture.jpg")), dtype=np.float32)   # 4096 px over the walk area
     px = rsize / TEX_PX
     a0 = int(round(MARGIN_CELLS * cell / px))

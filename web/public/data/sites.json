@@ -1,0 +1,18 @@
+{
+ "sites": [
+  {
+   "id": "jezero",
+   "name": "Jezero Crater",
+   "place": "Cheyava Falls · Neretva Vallis",
+   "rover": "Perseverance",
+   "tagline": "Potential biosignature"
+  },
+  {
+   "id": "gale",
+   "name": "Gale Crater",
+   "place": "Mount Sharp boxwork",
+   "rover": "Curiosity",
+   "tagline": "Groundwater ridges"
+  }
+ ]
+}

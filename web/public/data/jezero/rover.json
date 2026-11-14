@@ -1,5 +1,6 @@
 {
- "source": "Mars 2020 MMGIS waypoint layer (mars.nasa.gov/mmgis-maps/M20)",
+ "source": "Mars 2020 MMGIS waypoint layer (mars.nasa.gov/mmgis-maps)",
+ "rover": "Perseverance",
  "traverse": [
   [
    2034.0,

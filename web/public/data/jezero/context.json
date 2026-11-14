@@ -1946,11 +1946,11 @@
    "id": "landing",
    "name": "Octavia E. Butler Landing",
    "sol": 13,
+   "note": "Perseverance touched down here on 18 Feb 2021.",
    "uv": [
     0.5391,
     0.54211
    ],
-   "note": "Perseverance touched down here on 18 Feb 2021.",
    "lon": 77.45089,
    "lat": 18.44463
   },
@@ -1958,11 +1958,11 @@
    "id": "threeforks",
    "name": "Three Forks sample depot",
    "sol": 670,
+   "note": "Ten sealed sample tubes left on the surface, sols 653-690.",
    "uv": [
     0.45996,
     0.52623
    ],
-   "note": "Ten sealed sample tubes left on the surface, sols 653-690.",
    "lon": 77.40825,
    "lat": 18.45273
   },
@@ -1970,11 +1970,11 @@
    "id": "cheyava",
    "name": "Cheyava Falls · Bright Angel",
    "sol": 1219,
+   "note": "Potential biosignature rock, sampled as 'Sapphire Canyon' on sol 1215.",
    "uv": [
     0.26588,
     0.44144
    ],
-   "note": "Potential biosignature rock, sampled as 'Sapphire Canyon' on sol 1215.",
    "lon": 77.3037,
    "lat": 18.49599
   },
@@ -1982,16 +1982,35 @@
    "id": "latest",
    "name": "Rover position in this dataset",
    "sol": 2022,
+   "note": "Last waypoint in the MMGIS layer used here.",
    "uv": [
     0.13489,
     0.5598
    ],
-   "note": "Last waypoint in the MMGIS layer used here.",
    "lon": 77.23313,
    "lat": 18.4356
   }
  ],
- "depotToCheyavaKm": 6.71,
+ "facts": [
+  {
+   "value": "6.71 km",
+   "label": "from the Three Forks sample depot to Cheyava Falls — a rover drive, not a walk"
+  },
+  {
+   "value": "2.0 × 2.0 km",
+   "label": "EVA area mapped at 1 m elevation and 25 cm imagery"
+  },
+  {
+   "value": "45.25 km",
+   "label": "driven by Perseverance up to sol 2022 — the trail we follow"
+  }
+ ],
+ "links": [
+  {
+   "from": "threeforks",
+   "to": "cheyava"
+  }
+ ],
  "global": {
   "image": "global.jpg",
   "source": "NASA/JPL Mars Trek WMTS — Mars_Viking_MDIM21_ClrMosaic_global_232m",

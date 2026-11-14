@@ -33,6 +33,7 @@ export interface EvaBudget {
   stopTimeS: number;
   totalTimeS: number;
   walkEnergyJ: number;
+  exposureH: number; // open-sky-equivalent hours outside (time x terrain shielding factor)
   o2UsedL: number;
   o2UsableL: number; // supply minus reserve
   o2Fraction: number; // used / supply
@@ -57,7 +58,7 @@ export function returnO2(x: number, y: number, lookup: ReturnLookup, p: EvaParam
   return o2Litres(r.energyJ, r.timeS, p.restingW, p);
 }
 
-export function buildBudget(segments: Segment[], p: EvaParams, lookup: ReturnLookup): EvaBudget {
+export function buildBudget(segments: Segment[], p: EvaParams, lookup: ReturnLookup, shieldOf: (poi: Poi) => number = () => 1): EvaBudget {
   let distanceM = 0;
   let walkTimeS = 0;
   let stopTimeS = 0;
@@ -67,6 +68,7 @@ export function buildBudget(segments: Segment[], p: EvaParams, lookup: ReturnLoo
   let maxSlopeDeg = 0;
   let sandM = 0;
   let blockedM = 0;
+  let exposure = 0;
   let t = 0;
   const walkBack: WalkBack = { minMarginL: Infinity, atTimeS: 0, maxReturnMin: 0 };
   const usable = p.o2SupplyL * (1 - p.reserveFraction);
@@ -89,6 +91,11 @@ export function buildBudget(segments: Segment[], p: EvaParams, lookup: ReturnLoo
         const s = path.samples[i];
         check(s.x, s.y, o2 + o2Litres(s.energy, s.time, p.restingW, p), t + s.time);
       }
+      for (let i = 1; i < path.samples.length; i++) {
+        const a = path.samples[i - 1];
+        const b = path.samples[i];
+        exposure += ((a.shield + b.shield) / 2) * (b.time - a.time);
+      }
       distanceM += path.distance;
       walkTimeS += path.time;
       walkEnergyJ += path.energy;
@@ -100,6 +107,7 @@ export function buildBudget(segments: Segment[], p: EvaParams, lookup: ReturnLoo
       t += path.time;
     } else {
       o2 += o2Litres(0, seg.durationS, p.workingW, p);
+      exposure += (seg.sheltered ? p.shelterFactor : shieldOf(seg.poi)) * seg.durationS;
       stopTimeS += seg.durationS;
       t += seg.durationS;
       check(seg.poi.x, seg.poi.y, o2, t);
@@ -110,7 +118,7 @@ export function buildBudget(segments: Segment[], p: EvaParams, lookup: ReturnLoo
   const withinO2 = o2 <= usable && walkBack.minMarginL >= 0;
   const withinTime = t <= p.maxEvaH * 3600;
   return {
-    segments, distanceM, walkTimeS, stopTimeS, totalTimeS: t, walkEnergyJ,
+    segments, distanceM, walkTimeS, stopTimeS, totalTimeS: t, walkEnergyJ, exposureH: exposure / 3600,
     o2UsedL: o2, o2UsableL: usable, o2Fraction: o2 / p.o2SupplyL,
     climbM, maxSlopeDeg, sandM, blockedM, walkBack, withinO2, withinTime,
     feasible: withinO2 && withinTime && blockedM === 0,
@@ -137,6 +145,7 @@ export function sampleAtTime(path: MeasuredPath, tS: number): PathSample & { hea
     x: mix(a.x, b.x), y: mix(a.y, b.y), z: mix(a.z, b.z),
     dist: mix(a.dist, b.dist), energy: mix(a.energy, b.energy), time: tS,
     slopeDeg: b.slopeDeg, gradeDeg: b.gradeDeg, sand: b.sand, blocked: b.blocked,
+    shield: a.shield + (b.shield - a.shield) * f,
     headingRad: heading(s, lo),
   };
 }

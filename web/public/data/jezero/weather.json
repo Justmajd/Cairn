@@ -1,5 +1,6 @@
 {
  "source": "Mars 2020 MEDA, PDS Atmospheres node (derived PS, calibrated TIRS)",
+ "instrument": "Perseverance MEDA",
  "sol": 1215,
  "site": "Bright Angel, Neretva Vallis (rover parked at Cheyava Falls)",
  "stepH": 0.25,
