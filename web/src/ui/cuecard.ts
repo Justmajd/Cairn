@@ -41,6 +41,7 @@ export interface CueCardInput {
     coverage: RadioCoverage;
     lostAt: (x: number, y: number, leg: number, sample: number) => boolean;
     relay: { at: { x: number; y: number }; alongM: number; mastM: number; toward: string | null } | null;
+    silentStops: string[]; // stops out of contact while the crew works there
   };
 }
 
@@ -178,7 +179,7 @@ export function showCueCard(input: CueCardInput): void {
               <li>Slopes over ${site.meta.model.slopeLimitDeg}° are off-limits; the planned route stays under ${b.maxSlopeDeg}°.</li>
               <li>Keep ${Math.round(P.reserveFraction * 100)}% oxygen (${Math.round(reserve)} L) in reserve. Turn back at the value in the table.</li>
               <li>Maximum EVA ${P.maxEvaH} h. ${input.buddy ? `EV1 and EV2 stay within ${P.buddyMaxSeparationM} m.` : "Report position at every stop."}</li>
-              ${input.radio ? `<li>${radioLine(input.radio.coverage)}</li>` : ""}
+              ${input.radio ? `<li>${radioLine(input.radio.coverage)}${input.radio.silentStops.length ? ` <b>No contact at ${input.radio.silentStops.map(esc).join(" or ")}:</b> agree a check-in time before going there.` : ""}</li>` : ""}
               ${input.radio?.relay ? `<li>Relay: stand the ${input.radio.relay.mastM} m mast up after ${fmtDist(input.radio.relay.alongM)}${input.radio.relay.toward ? ` (on the way to ${esc(input.radio.relay.toward)})` : ""}, at ◆ on the map. Check the link to the rover before walking on.</li>` : ""}
               <li>Sun ${Math.round(input.start.sunEl)}° at departure, ${Math.round(input.end.sunEl)}° at return${input.start.sunEl < 15 || input.end.sunEl < 15 ? " — low sun: shadows hide holes and rocks." : "."}</li>
             </ul>

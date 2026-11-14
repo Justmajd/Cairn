@@ -161,9 +161,17 @@ export interface RelaySuggestion {
  * and it only helps once it is up, so the search counts the blackout time it covers after that point
  * of the walk.  Candidates every ~8 m along the route; returns null when a relay would not help much.
  */
-export function bestRelay(shadow: Uint8Array, grid: TerrainGrid, legs: MeasuredPath[], mastM = RELAY_MAST_M): RelaySuggestion | null {
+export function bestRelay(
+  shadow: Uint8Array,
+  grid: TerrainGrid,
+  legs: MeasuredPath[],
+  mastM = RELAY_MAST_M,
+  stops: { x: number; y: number; seconds: number; afterLeg: number }[] = [],
+): RelaySuggestion | null {
   const before = radioCoverage(shadow, grid, legs);
-  if (before.lostS < 30) return null;
+  // time spent working at stops with no contact counts too (stop k is reached at the end of leg afterLeg)
+  const silent = stops.filter((st) => !inContact(shadow, grid, st.x, st.y));
+  if (before.lostS < 30 && !silent.some((st) => st.seconds >= 60)) return null;
   // blackout steps of the walk, in walking order; candidates at least every `spacing` metres.  Both are
   // capped (about 160 candidates, 400 blackout points) so a long plan still searches in well under a second.
   const totalM = legs.reduce((sum, l) => sum + l.distance, 0);
@@ -188,6 +196,15 @@ export function bestRelay(shadow: Uint8Array, grid: TerrainGrid, legs: MeasuredP
       }
     }
   });
+  // stops out of contact: one point each, carrying the whole dwell time, in walking order
+  const legEnd: number[] = [];
+  let acc = 0;
+  for (const leg of legs) {
+    acc += Math.max(0, leg.samples.length - 1);
+    legEnd.push(acc);
+  }
+  for (const st of silent) lostAll.push({ x: st.x, y: st.y, dt: st.seconds, order: legEnd[st.afterLeg] ?? acc });
+  lostAll.sort((a, b) => a.order - b.order);
   // thin the blackout points evenly, carrying the time of the ones skipped
   const stride = Math.max(1, Math.ceil(lostAll.length / 400));
   const lost: typeof lostAll = [];
@@ -212,10 +229,12 @@ export function bestRelay(shadow: Uint8Array, grid: TerrainGrid, legs: MeasuredP
       best = c;
     }
   }
-  if (!best || bestS < Math.max(30, before.lostS * 0.2)) return null;
+  const silentS = silent.reduce((sum, st) => sum + st.seconds, 0);
+  if (!best || bestS < Math.max(30, (before.lostS + silentS) * 0.2)) return null;
   const at = { x: best.x, y: best.y };
   const reaches = (x: number, y: number) => lineOfSight(grid, at, mastM, { x, y }, SUIT_ANTENNA_M);
   const after = radioCoverage(shadow, grid, legs, { reaches, leg: best.leg, sample: best.sample });
-  if (after.coveredFraction - before.coveredFraction < 0.03) return null;
+  const freed = silent.filter((st) => (legEnd[st.afterLeg] ?? acc) >= best!.order && reaches(st.x, st.y));
+  if (after.coveredFraction - before.coveredFraction < 0.03 && !freed.length) return null;
   return { at, leg: best.leg, sample: best.sample, alongM: best.alongM, before, after };
 }

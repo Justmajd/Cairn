@@ -4,7 +4,7 @@ import type { SiteData, SiteEntry } from "./data/loaders";
 import { buildBudget, EvaBudget, o2Litres, ReturnLookup, sampleAtTime, Segment, walkO2 } from "./eva/budget";
 import { DEFAULT_PARAMS, EvaParams } from "./eva/params";
 import { RadiationModel } from "./eva/radiation";
-import { bestRelay, inContact, RadioCoverage, radioCoverage, radioShadow, relayFromShadow, RelaySuggestion, RELAY_MAST_M } from "./eva/radio";
+import { bestRelay, inContact, lineOfSight, RadioCoverage, radioCoverage, radioShadow, relayFromShadow, RelaySuggestion, RELAY_MAST_M, SUIT_ANTENNA_M } from "./eva/radio";
 import { inTerrainShadow } from "./eva/shade";
 import { fmtLmst, MARS_HOUR_S, SolarGeometry, solarGeometry, sunAt, SunPosition } from "./eva/sun";
 import { EmergencyKind, Mission, MissionEvent } from "./replay/mission";
@@ -626,7 +626,8 @@ export class App {
       segments.push({ kind: "walk", path, to, label: to.short });
       if (to.kind !== "shelter") segments.push({ kind: "dwell", poi: to, durationS: to.dwellMin * 60, sheltered: false });
     });
-    const relay = bestRelay(this.radio, grid, legs);
+    const relay = bestRelay(this.radio, grid, legs, RELAY_MAST_M,
+      order.slice(1, -1).map((p, k) => ({ x: p.x, y: p.y, seconds: p.dwellMin * 60, afterLeg: k })));
     let relayAtS = 0;
     if (relay) {
       // walk and dwell times up to the relay spot
@@ -1510,6 +1511,7 @@ export class App {
         coverage: this.plan.radio,
         lostAt: (x, y, leg, i) => this.lostOnPlan(x, y, leg, i),
         relay: this.useRelay && this.plan.relay ? { at: this.plan.relay.at, alongM: this.plan.relay.alongM, mastM: RELAY_MAST_M, toward: this.relayLeg(this.plan.relay) } : null,
+        silentStops: this.silentStops().map((p) => p.short),
       },
     });
   }
@@ -1789,15 +1791,20 @@ export class App {
     const relay = plan.relay;
     const toward = relay ? this.relayLeg(relay) : null;
     const where = relay ? `after ${fmtDist(relay.alongM)}${toward ? ` (on the way to ${esc(toward)})` : ""}` : "";
+    const silent = this.silentStops();
+    const silentText = silent.length
+      ? ` <b class="warnc">No contact at ${silent.map((p) => esc(p.short)).join(" or ")}</b> (${silent.map((p) => `${p.dwellMin} min`).join(", ")} of science).`
+      : "";
     if (relay && this.useRelay) {
-      return `<div class="radio-line">${ic.radio}<span>In radio contact for <b>${Math.floor(rc.coveredFraction * 100)}%</b> of the walk, with a relay stood up ${where}.</span><button class="link" data-act="relay-off">Remove</button></div>`;
+      return `<div class="radio-line${silent.length ? " warn" : ""}">${ic.radio}<span>In radio contact for <b>${Math.floor(rc.coveredFraction * 100)}%</b> of the walk, with a relay stood up ${where}.${silentText}</span><button class="link" data-act="relay-off">Remove</button></div>`;
     }
-    const whole = rc.lostS < 20;
+    const whole = rc.lostS < 20 && !silent.length;
     const text = whole
       ? "In radio contact with the rover the whole way."
-      : `In radio contact for <b>${Math.floor(rc.coveredFraction * 100)}%</b> of the walk · ${rc.gaps} blackout${rc.gaps > 1 ? "s" : ""}, longest ${fmtDur(Math.max(60, rc.longestGapS))}`;
+      : `In radio contact for <b>${Math.floor(rc.coveredFraction * 100)}%</b> of the walk${rc.gaps ? ` · ${rc.gaps} blackout${rc.gaps > 1 ? "s" : ""}, longest ${fmtDur(Math.max(60, rc.longestGapS))}` : ""}.${silentText}`;
+    const freed = relay ? silent.filter((p) => plan.order.indexOf(p) >= relay.leg + 1 && lineOfSight(this.site.grid, relay.at, RELAY_MAST_M, p, SUIT_ANTENNA_M)) : [];
     const tip = relay
-      ? `<div class="relay-tip"><span>A ${RELAY_MAST_M} m relay mast stood up ${where} gives contact for <b>${Math.floor(relay.after.coveredFraction * 100)}%</b> of the walk.</span><button class="secondary" data-act="relay-on">${ic.radio}<span>Plan with relay</span></button></div>`
+      ? `<div class="relay-tip"><span>A ${RELAY_MAST_M} m relay mast stood up ${where} gives contact for <b>${Math.floor(relay.after.coveredFraction * 100)}%</b> of the walk${freed.length ? ` and at ${freed.map((p) => esc(p.short)).join(" and ")}` : ""}.</span><button class="secondary" data-act="relay-on">${ic.radio}<span>Plan with relay</span></button></div>`
       : "";
     return `<div class="radio-line${whole ? "" : " warn"}${tip ? " has-tip" : ""}">${ic.radio}<span>${text}</span><button class="link" data-act="show-radio">Show</button></div>${tip}`;
   }
@@ -1875,6 +1882,18 @@ export class App {
     const r = this.useRelay ? this.plan?.relay : null;
     const up = !!r && (leg > r.leg || (leg === r.leg && i > r.sample));
     return !inContact(this.radio, this.site.grid, x, y, up ? this.relayShadowAt(r!.at) : null);
+  }
+
+  /** Stops of the plan where the crew does its science out of radio contact (counting the relay once it is up). */
+  private silentStops(): Poi[] {
+    const plan = this.plan;
+    if (!plan) return [];
+    const r = this.useRelay ? plan.relay : null;
+    return plan.order.filter((p, k) => {
+      if (p.kind === "shelter") return false;
+      const relayUp = !!r && k >= r.leg + 1;
+      return !inContact(this.radio, this.site.grid, p.x, p.y, relayUp ? this.relayShadowAt(r!.at) : null);
+    });
   }
 
   /** Name of the stop the crew is walking to when it reaches the relay spot. */
