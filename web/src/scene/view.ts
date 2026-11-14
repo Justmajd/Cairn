@@ -8,6 +8,7 @@ import type { SiteData } from "../data/loaders";
 import type { MeasuredPath, PathSample, Poi, RegionMeta, XY } from "../types";
 import { esc } from "../ui/dom";
 import { ic } from "../ui/icons";
+import { Rocks } from "./rocks";
 import { buildRegion, buildSky, buildTerrain, byteTexture, geologyLut, heightTexture, rgbaTexture, LAYER_IDS, LayerId, makeShadowUniforms, ShadowBaker, ShadowUniforms, SKY_HORIZON, Terrain } from "./terrain";
 
 export interface SceneTextures {
@@ -87,6 +88,8 @@ export class SceneView {
   private dirty = true;
   private shadowDirty = true;
   private bakedFast = false;
+  private readonly rocks: Rocks;
+  private readonly rocksOn: boolean;
   private fogBase = new THREE.Color();
   private dayK = 1;
   private sunChangedAt = 0;
@@ -190,6 +193,9 @@ export class SceneView {
     const reliefRange = site.meta.relief?.range ?? 1.5;
     this.terrain = buildTerrain(grid, this.zRef, tex.map, tex.relief, reliefRange, layers, quality === "low" ? 2 : 1, sh);
     this.scene.add(this.terrain.mesh);
+    this.rocks = new Rocks(grid, this.half, (x, y) => (grid.heightAt(x, y) - this.zRef) * this.exag, this.terrain.uniforms.uMap as THREE.IUniform<THREE.Texture>, sh);
+    this.rocksOn = quality === "high";
+    this.scene.add(this.rocks.group);
     this.region = tex.region ? buildRegion(tex.region.meta, tex.region.heights, this.zRef, tex.region.map, grid.size, quality === "low" ? 2 : 1, sh) : null;
     if (this.region) this.scene.add(this.region.mesh);
     this.regionHalf = tex.region ? tex.region.meta.sizeM / 2 : this.half;
@@ -570,6 +576,8 @@ export class SceneView {
 
     this.updateClip();
     this.updateDetail();
+    const cp = this.camera.position;
+    this.rocks.update(this.camera, cp.y - this.groundYBelow(cp.x, cp.z), this.rocksOn && this.mode !== "plan" && this.exag === 1);
     this.fog.density += (this.fogTarget - this.fog.density) * Math.min(1, dt * 3);
     if (Math.abs(this.fogTarget - this.fog.density) < 1e-7) this.fog.density = this.fogTarget;
     this.sky.mesh.position.copy(this.camera.position);

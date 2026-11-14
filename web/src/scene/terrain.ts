@@ -12,7 +12,7 @@ export const MAP_BG = 0x0f0d0c;
 export const LAYER_IDS = { none: 0, risk: 1, slope: 2, sand: 3, thermal: 4, geology: 5, shelter: 6, shield: 7, minerals: 8, radio: 9 } as const;
 export type LayerId = keyof typeof LAYER_IDS;
 
-const COMMON = /* glsl */ `
+export const COMMON = /* glsl */ `
   // HiRISE / CTX are single grey bands: tint with a Mars ramp (display colour, not measured colour).
   vec3 marsTint(float g) {
     vec3 c = mix(vec3(0.13, 0.075, 0.05), vec3(0.66, 0.40, 0.255), smoothstep(0.0, 0.55, g));
@@ -74,13 +74,41 @@ const SHADOW = /* glsl */ `
 `;
 
 /** Sun light for the terrain shaders; the visibility comes from the baked shadow texture. */
-const LIGHT = /* glsl */ `
+export const LIGHT = /* glsl */ `
   uniform vec3 uSunDir;
   // daylight: dim towards twilight, warm low sun
   vec3 sunLight(float nl, float vis) {
     float day = smoothstep(-2.0, 12.0, degrees(asin(clamp(uSunDir.y, -1.0, 1.0))));
     float direct = max(nl, 0.0) * vis;
     return vec3(0.36 + 0.86 * direct) * mix(0.25, 1.0, day);
+  }
+
+  // Physically motivated light for dusty regolith (rendering model, not data):
+  //  - direct: part Lambert, part Lommel-Seeliger (dusty soils stay bright at grazing view, a flatter look),
+  //    with the opposition surge (ground brightens around the shadow of your own head, Sun behind you);
+  //  - sky: the Martian sky lights the ground from above, less in hollows (skyVis = terrain sky-view factor);
+  //  - bounce: sunlit ground lights the faces turned toward it, warm.
+  vec3 marsLight(vec3 n, vec3 v, float vis, float skyVis) {
+    float day = smoothstep(-2.0, 12.0, degrees(asin(clamp(uSunDir.y, -1.0, 1.0))));
+    float mu0 = max(dot(n, uSunDir), 0.0);
+    float mu = max(dot(n, v), 0.05);
+    float ls = 2.0 * mu0 / (mu0 + mu);
+    float direct = mix(mu0, ls, 0.35);
+    direct *= 1.0 + 0.35 * smoothstep(0.975, 1.0, dot(uSunDir, v));
+    direct *= vis;
+    float sky = 0.36 * mix(0.5, 1.0, skyVis) * (0.72 + 0.28 * n.y);
+    vec3 bounce = vec3(0.075, 0.045, 0.025) * (1.0 - n.y) * max(uSunDir.y, 0.0);
+    vec3 light = sky * vec3(1.0, 0.95, 0.9) + 0.88 * direct * vec3(1.0, 0.985, 0.96) + bounce;
+    return light * mix(0.25, 1.0, day);
+  }
+
+  // gentle filmic response: a soft shoulder for highlights and a little more contrast in the midtones
+  vec3 filmic(vec3 c) {
+    vec3 x = max(c, 0.0) * 0.94;
+    vec3 t = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14);
+    vec3 g = mix(c, t, 0.55);
+    float l = dot(g, vec3(0.2126, 0.7152, 0.0722));
+    return mix(vec3(l), g, 0.9);   // Mars is butterscotch, not neon orange
   }
 `;
 
@@ -222,27 +250,7 @@ const AOI_FRAG = /* glsl */ `
       f *= 2.7;
       amp *= 0.42;
     }
-    // scattered pebbles, 2-8 cm, irregular, some lighter and some darker than the soil
-    float wp = 1.0 - smoothstep(0.012, 0.03, pw);
-    if (wp > 0.0) {
-      vec2 cell = floor(p * 3.0);
-      for (int j = -1; j <= 1; j++) {
-        for (int i = -1; i <= 1; i++) {
-          vec2 c = cell + vec2(float(i), float(j));
-          if (hash2(c) > 0.25) continue;
-          vec2 ctr = (c + 0.15 + 0.7 * vec2(hash2(c + 3.1), hash2(c + 7.7))) / 3.0;
-          vec2 v = p - ctr;
-          float ang = atan(v.y, v.x);
-          float r = (0.02 + 0.06 * hash2(c + 11.3) * hash2(c + 5.2)) * (1.0 + 0.22 * sin(3.0 * ang + 6.3 * hash2(c + 1.7)) + 0.12 * sin(5.0 * ang));
-          float q = dot(v, v) / (r * r);
-          if (q < 1.0) {
-            float sq = sqrt(max(1.0 - q, 0.08));
-            acc.xy -= wp * 0.45 * v / (r * sq); // low dome, 0.45 r high
-            acc.z += wp * (hash2(c + 2.9) - 0.6) * 0.16 * smoothstep(1.0, 0.6, q);
-          }
-        }
-      }
-    }
+    // (pebbles and cobbles are real 3D rocks now: scene/rocks.ts)
     return acc;
   }
 
@@ -388,8 +396,10 @@ const AOI_FRAG = /* glsl */ `
       c *= 1.0 + rg.z;
     }
     n = normalize(n);
-    float nl = dot(n, uSunDir);
-    c *= sunLight(nl, texture2D(uShadowAoi, nodeUv(vUv, uShadowAoiN)).r);
+    vec3 view = normalize(cameraPosition - vWorld);
+    float skyVis = smoothstep(0.62, 0.99, texture2D(uShield, gridUv(vUv)).r); // terrain sky-view (AO, from the DTM)
+    c *= marsLight(n, view, texture2D(uShadowAoi, nodeUv(vUv, uShadowAoiN)).r, skyVis);
+    c = filmic(c);
 
     if (uLayer > 0) {
       vec4 o = layerColor(gridUv(vUv));
@@ -426,7 +436,8 @@ const REGION_FRAG = /* glsl */ `
     #include <logdepthbuf_fragment>
     vec3 c = marsTint(texture2D(uMap, vUv).r);
     vec3 n = normalize(vNormal);
-    c *= sunLight(dot(n, uSunDir), texture2D(uShadowReg, nodeUv(vUv, uShadowRegN)).r);
+    c *= marsLight(n, normalize(cameraPosition - vWorld), texture2D(uShadowReg, nodeUv(vUv, uShadowRegN)).r, 1.0);
+    c = filmic(c);
     c *= 0.86; // slightly darker than the HiRISE walk area, which stays the focus
     vec2 e = uHalf - abs(vWorld.xz);
     c = mix(uEdgeColor, c, smoothstep(0.0, uFade, min(e.x, e.y)));
