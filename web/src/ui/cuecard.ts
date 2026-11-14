@@ -17,6 +17,7 @@ export interface CueRow {
   homeO2L: number;
   bearingHome: number;
   sunEl: number;
+  shade: boolean; // in the shadow of the terrain on arrival
   lmst: string;
   cover: string;
 }
@@ -141,7 +142,7 @@ export function showCueCard(input: CueCardInput): void {
         <td class="m">${Math.round(r.o2LeftAtDepartL)} L</td>
         <td class="m">${r.poi.kind === "shelter" ? "—" : `${fmtDur(r.homeTimeS)}<small>${compass(r.bearingHome)} ${Math.round(r.bearingHome)}°</small>`}</td>
         <td class="m warn">${r.poi.kind === "shelter" ? "—" : `${turnBack} L`}</td>
-        <td class="m">${Math.round(r.sunEl)}°</td>
+        <td class="m">${Math.round(r.sunEl)}°${r.shade ? `<br><small>in shade</small>` : ""}</td>
       </tr>`;
     })
     .join("");

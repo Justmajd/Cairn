@@ -5,6 +5,7 @@ import { buildBudget, EvaBudget, o2Litres, ReturnLookup, sampleAtTime, Segment, 
 import { DEFAULT_PARAMS, EvaParams } from "./eva/params";
 import { RadiationModel } from "./eva/radiation";
 import { bestRelay, inContact, RadioCoverage, radioCoverage, radioShadow, RelaySuggestion, RELAY_MAST_M } from "./eva/radio";
+import { inTerrainShadow } from "./eva/shade";
 import { fmtLmst, MARS_HOUR_S, SolarGeometry, solarGeometry, sunAt, SunPosition } from "./eva/sun";
 import { EmergencyKind, Mission, MissionEvent } from "./replay/mission";
 import type { FieldResult, Router } from "./routing/client";
@@ -1401,6 +1402,7 @@ export class App {
         homeO2L: o2Litres(home.energyJ, home.timeS, P.restingW, P),
         bearingHome: (((Math.atan2(this.rover.x - poi.x, this.rover.y - poi.y) * 180) / Math.PI) + 360) % 360,
         sunEl: sun.elevation,
+        shade: inTerrainShadow(this.site.grid, poi.x, poi.y, sun.elevation, sun.azimuth),
         lmst: fmtLmst(this.lmstAt(arriveS)),
         cover: cover ? `${cover.pct}% less dose ${cover.dist} m ${cover.dir} of ${poi.short}` : "",
       });
@@ -2048,7 +2050,10 @@ export class App {
     setText($("#lv-lmst"), `${w.lmst} LMST`);
     setText($("#lv-temp"), `${w.air !== null ? Math.round(w.air - 273.15) : "—"} °C / ${w.ground !== null ? Math.round(w.ground - 273.15) : "—"} °C`);
     setText($("#lv-pres"), w.pressure !== null ? `${Math.round(w.pressure)} Pa` : "—");
-    setText(document.getElementById("lv-sun"), this.sunText(this.sunAtEva(m.t)));
+    const sunNow = this.sunAtEva(m.t);
+    const pose = m.pose();
+    const shaded = sunNow.elevation > 0 && inTerrainShadow(this.site.grid, pose.x, pose.y, sunNow.elevation, sunNow.azimuth);
+    setText(document.getElementById("lv-sun"), `${this.sunText(sunNow)}${shaded ? " · in shade" : ""}`);
     if (this.buddy) {
       const b = m.buddyPose();
       const p = m.pose();
