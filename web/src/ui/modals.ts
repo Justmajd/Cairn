@@ -119,6 +119,7 @@ export function showAssumptions(site: SiteData, p: EvaParams): void {
      <ul>
        <li>HiRISE is a grey image; the Mars colour is a display tint. Fine grain near the camera in the Visor view is a rendering effect.</li>
        <li>Close up, the ground and the small rocks use photo-scanned Earth materials (CC0, Poly Haven: Red Sand, Dry Ground Rocks, Cracked Red Ground, Rock Boulder Dry) chosen per spot from the sand map and HiRISE brightness. The 3D rocks under 70 cm are scattered from the terrain data, not mapped. Colour and brightness stay HiRISE's; this is rendering detail, not Mars data.</li>
+       <li>Earth, Phobos and Deimos in the sky and the radio delay to Earth are computed for the EVA's date and time: planet positions from JPL's approximate Keplerian elements (Standish), Mars' rotation from the IAU (WGCCRE 2009), the moons from JPL's mean orbital elements. Good to about a degree in the sky, enough to look up and find them, not to time an eclipse. The delay is the one-way light time; real traffic through relay orbiters waits longer.</li>
        <li>THEMIS is ~${m.themisNativeResM} m per pixel and the USGS geologic map is 1:75,000 — both are coarse at walking scale.</li>
      </ul>`,
   );

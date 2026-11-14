@@ -76,6 +76,9 @@ export class SceneView {
   private readonly terrain: Terrain;
   private readonly region: Terrain | null;
   private readonly sky: ReturnType<typeof buildSky>;
+  /** Labels for Earth, Phobos and Deimos in the visor view (they follow the camera, like the sky). */
+  private readonly skyLabels = new THREE.Group();
+  private readonly skyTags = new Map<string, { obj: CSS2DObject; text: HTMLElement; up: boolean }>();
   private readonly regionHalf: number;
   private readonly shared: ShadowUniforms = makeShadowUniforms();
   private readonly fog: THREE.FogExp2;
@@ -164,6 +167,17 @@ export class SceneView {
     this.sky = buildSky(this.shared.uSunDir, this.shared.uLinearOut);
     this.sky.mesh.scale.setScalar(40000);
     this.scene.add(this.sky.mesh);
+    for (const [id, name] of [["earth", "Earth"], ["phobos", "Phobos"], ["deimos", "Deimos"]]) {
+      const el = document.createElement("div");
+      el.className = `sky-tag ${id}`;
+      el.innerHTML = `<i></i><span><b>${name}</b><small></small></span>`;
+      const obj = new CSS2DObject(el);
+      obj.center.set(-0.02, 0.5);
+      obj.visible = false;
+      this.skyLabels.add(obj);
+      this.skyTags.set(id, { obj, text: el.querySelector("small")!, up: false });
+    }
+    this.scene.add(this.skyLabels);
 
     const n = grid.n;
     const layers = {
@@ -605,6 +619,8 @@ export class SceneView {
     this.fog.density += (this.fogTarget - this.fog.density) * Math.min(1, dt * 3);
     if (Math.abs(this.fogTarget - this.fog.density) < 1e-7) this.fog.density = this.fogTarget;
     this.sky.mesh.position.copy(this.camera.position);
+    this.skyLabels.position.copy(this.camera.position);
+    for (const t of this.skyTags.values()) t.obj.visible = t.up && this.mode === "walk";
 
     const perPixel = (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2))) / Math.max(1, this.host.clientHeight);
     for (const s of this.scaled) {
@@ -1063,6 +1079,22 @@ export class SceneView {
       this.shadowDirty = true;
       this.sunChangedAt = performance.now();
     }
+  }
+
+  /**
+   * Earth, Phobos and Deimos: world directions (X east, Y up, Z south), angular diameters (deg) and the
+   * caption under each label in the visor view.
+   */
+  setSkyBodies(bodies: Record<"earth" | "phobos" | "deimos", { dir: [number, number, number]; sizeDeg: number; caption: string }>): void {
+    const r = (b: { sizeDeg: number }) => THREE.MathUtils.degToRad(b.sizeDeg / 2);
+    this.sky.setBodies({ dir: bodies.earth.dir, radius: r(bodies.earth) }, { dir: bodies.phobos.dir, radius: r(bodies.phobos) }, { dir: bodies.deimos.dir, radius: r(bodies.deimos) });
+    for (const [id, b] of Object.entries(bodies)) {
+      const t = this.skyTags.get(id)!;
+      t.up = b.dir[1] > 0.005;
+      t.obj.position.set(b.dir[0], b.dir[1], b.dir[2]).multiplyScalar(500);
+      if (t.text.textContent !== b.caption) t.text.textContent = b.caption;
+    }
+    this.dirty = true;
   }
 
   setShadows(on: boolean): void {

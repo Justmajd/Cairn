@@ -1001,7 +1001,16 @@ export function buildRegion(region: RegionMeta, heights: Float32Array, zRef: num
 }
 
 /** Sky dome: butterscotch haze at the horizon, darker overhead; a flat dark backdrop in the map view. */
-export function buildSky(sunDir: THREE.IUniform<THREE.Vector3>, linearOut: THREE.IUniform<number>): { mesh: THREE.Mesh; setMapMode: (k: number) => void; setSunElevation: (deg: number) => void } {
+/** A body for the sky shader: world direction and angular radius (rad); phase only matters for Phobos. */
+export interface SkyBodyDir {
+  dir: [number, number, number];
+  radius: number;
+}
+
+export function buildSky(
+  sunDir: THREE.IUniform<THREE.Vector3>,
+  linearOut: THREE.IUniform<number>,
+): { mesh: THREE.Mesh; setMapMode: (k: number) => void; setSunElevation: (deg: number) => void; setBodies: (earth: SkyBodyDir, phobos: SkyBodyDir, deimos: SkyBodyDir) => void } {
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
@@ -1016,14 +1025,23 @@ export function buildSky(sunDir: THREE.IUniform<THREE.Vector3>, linearOut: THREE
       uDay: { value: 1 },
       uSunDir: sunDir,
       uLinearOut: linearOut,
+      uEarth: { value: new THREE.Vector3(0, -1, 0) },
+      uDeimos: { value: new THREE.Vector3(0, -1, 0) },
+      uPhobos: { value: new THREE.Vector4(0, -1, 0, 0.0017) },
     },
     vertexShader: /* glsl */ `varying vec3 vDir; void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */ `
       uniform vec3 uHorizon; uniform vec3 uZenith; uniform vec3 uMapBg; uniform float uMap; uniform float uDay; uniform vec3 uSunDir;
-      uniform float uLinearOut;
+      uniform float uLinearOut; uniform vec3 uEarth; uniform vec3 uDeimos; uniform vec4 uPhobos;
       varying vec3 vDir;
+      // a point of light about a pixel across, wherever the camera's zoom puts it
+      float star(vec3 d, vec3 at, float px) {
+        float a = length(cross(d, at));
+        return dot(d, at) > 0.0 ? exp(-a * a / (px * px)) : 0.0;
+      }
       void main() {
         vec3 d = normalize(vDir);
+        float px = max(length(fwidth(d)), 1e-5);
         float t = pow(clamp(d.y, 0.0, 1.0), 0.45);
         vec3 c = mix(uHorizon, uZenith, t);
         c = mix(c, uHorizon * 0.82, smoothstep(0.0, -0.25, d.y));
@@ -1037,6 +1055,22 @@ export function buildSky(sunDir: THREE.IUniform<THREE.Vector3>, linearOut: THREE
         float glow = (pow(m, 18.0) * (0.16 + 0.6 * low) + pow(m, 300.0) * 0.45) * up;
         c = mix(c, vec3(0.6, 0.72, 0.9) * mix(0.55, 1.0, uDay), clamp(glow, 0.0, 0.85));
         c = mix(c, vec3(1.0, 0.98, 0.94), smoothstep(0.9999893, 0.9999953, mu) * up);
+        // Earth (a bright blue evening or morning star, lost in the daylight) and Deimos (a faint star)
+        float dark = 1.0 - smoothstep(0.05, 0.6, uDay);
+        c += vec3(0.62, 0.78, 1.0) * star(d, uEarth, px * 1.1) * mix(0.18, 1.0, dark);
+        c += vec3(0.9, 0.86, 0.8) * star(d, uDeimos, px * 0.8) * 0.55 * dark;
+        // Phobos: a lumpy grey disc about a third of the Moon's size from Earth, lit by the Sun on one side
+        vec3 pc = uPhobos.xyz;
+        float pr = uPhobos.w;
+        vec3 off = d - pc * dot(d, pc);
+        float q = length(off) / pr;
+        if (dot(d, pc) > 0.0 && q < 1.0 + px / pr) {
+          vec3 n = off / pr + pc * -sqrt(max(0.0, 1.0 - q * q));
+          float lit = max(dot(n, uSunDir), 0.0);
+          float cover = 1.0 - smoothstep(1.0 - px / pr, 1.0 + px / pr, q);
+          vec3 body = c * mix(0.88, 0.5, dark) + vec3(0.62, 0.57, 0.52) * lit * mix(0.28, 0.9, dark);
+          c = mix(c, body, cover * step(-0.02, pc.y));
+        }
         c = mix(c, uMapBg, uMap);
         if (uLinearOut > 0.5) c = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
         gl_FragColor = vec4(c, 1.0);
@@ -1049,5 +1083,10 @@ export function buildSky(sunDir: THREE.IUniform<THREE.Vector3>, linearOut: THREE
     mesh,
     setMapMode: (k) => (material.uniforms.uMap.value = k),
     setSunElevation: (deg) => (material.uniforms.uDay.value = Math.min(1, Math.max(0, (deg + 2) / 14))),
+    setBodies: (earth, phobos, deimos) => {
+      (material.uniforms.uEarth.value as THREE.Vector3).fromArray(earth.dir);
+      (material.uniforms.uDeimos.value as THREE.Vector3).fromArray(deimos.dir);
+      (material.uniforms.uPhobos.value as THREE.Vector4).set(phobos.dir[0], phobos.dir[1], phobos.dir[2], phobos.radius);
+    },
   };
 }

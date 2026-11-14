@@ -856,3 +856,11 @@ svg.timeline .sunt { fill: #f0e442; font: 500 9px var(--mono); }
 .stop .dwell button { all: unset; box-sizing: border-box; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; background: var(--raise); color: var(--text-2); font: 600 13px var(--sans); cursor: pointer; }
 .stop .dwell button:hover { background: var(--line-2); color: var(--text); }
 .stop .dwell button:focus-visible { outline: 2px solid var(--accent); }
+
+/* Earth, Phobos and Deimos in the visor view: a hairline pointer and a quiet caption */
+.sky-tag { pointer-events: none; display: flex; align-items: center; gap: 6px; font: 500 11px var(--sans); color: rgba(255, 255, 255, 0.82); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); white-space: nowrap; }
+.sky-tag i { width: 16px; height: 1px; background: rgba(255, 255, 255, 0.55); margin-left: 6px; }
+.sky-tag span { display: grid; line-height: 1.25; }
+.sky-tag b { font-weight: 600; }
+.sky-tag small { font: 400 10px var(--mono); color: rgba(255, 255, 255, 0.62); }
+.sky-tag.earth b { color: #b9d6ff; }

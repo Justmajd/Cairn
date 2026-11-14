@@ -8,7 +8,8 @@ import { bestRelay, inContact, lineOfSight, RadioCoverage, radioCoverage, radioS
 import { inTerrainShadow } from "./eva/shade";
 import { geometricMedian } from "./routing/median";
 import { formatPlanLink, parsePlanLink } from "./state/planLink";
-import { fmtLmst, MARS_HOUR_S, SolarGeometry, solarGeometry, sunAt, SunPosition } from "./eva/sun";
+import { fmtLmst, lmstAt as lmstAtUtc, MARS_HOUR_S, SolarGeometry, solarGeometry, sunAt, SunPosition } from "./eva/sun";
+import { fmtLightTime, MarsSky, marsSky, utcAtLmst } from "./eva/sky";
 import { EmergencyKind, Mission, MissionEvent } from "./replay/mission";
 import type { FieldResult, Router } from "./routing/client";
 import type { SceneView } from "./scene/view";
@@ -154,6 +155,13 @@ export class App {
   /** What happened during the current EVA, for the summary (mission seconds, kind, text). */
   private log: { t: number; kind: "go" | "stop" | "radio" | "alert" | "home"; text: string }[] = [];
 
+  /** Messages on their way between the crew and Earth: the mission time each one arrives, and its log line. */
+  private earthQueue: { t: number; text: string }[] = [];
+  private lastSky = "";
+  private readonly lon: number;
+  /** A UTC instant on the EVA's sol (from the site's EVA date). */
+  private readonly solUtc: number;
+
   private note(kind: "go" | "stop" | "radio" | "alert" | "home", text: string): void {
     this.log.push({ t: this.mission?.t ?? 0, kind, text });
   }
@@ -172,8 +180,10 @@ export class App {
     this.roverName = site.meta.rover?.name ?? "";
     this.selected = site.pois.filter((p) => p.kind === "objective").map((p) => p.id);
     this.startLmst = site.meta.eva?.startLmst ?? 10;
-    this.solar = solarGeometry(Date.parse(site.meta.eva?.utc ?? "2024-07-21T02:10:26Z"));
+    this.solUtc = Date.parse(site.meta.eva?.utc ?? "2024-07-21T02:10:26Z");
+    this.solar = solarGeometry(this.solUtc);
     this.lat = site.meta.centerLonLat?.lat ?? (site.meta.boundsLonLat.south + site.meta.boundsLonLat.north) / 2;
+    this.lon = site.meta.centerLonLat?.lon ?? (site.meta.boundsLonLat.west + site.meta.boundsLonLat.east) / 2;
     this.pois = site.pois.slice();
     this.rover = this.pois.find((p) => p.kind === "shelter")!;
     this.roverHome = { x: this.rover.x, y: this.rover.y };
@@ -349,6 +359,7 @@ export class App {
       const b = this.plan.budget;
       setText($("#start-val"), `${fmtLmst(this.startLmst)} LMST`);
       setText($("#sun-val"), `Sun ${this.sunText(this.sunAtEva(0))} → ${this.sunText(this.sunAtEva(b.totalTimeS))} at ${fmtLmst(this.lmstAt(b.totalTimeS))}`);
+      setText(document.getElementById("earth-val"), this.earthText());
     });
     right.addEventListener("change", (ev) => {
       if ((ev.target as HTMLElement).id !== "start") return;
@@ -528,6 +539,29 @@ export class App {
     return sunAt(this.lat, this.lmstAt(tS), this.solar);
   }
 
+  /** Earth, Phobos and Deimos over the site at EVA time `tS` (the EVA's sol, leaving at the chosen time). */
+  private skyAt(tS: number): MarsSky {
+    const utc = utcAtLmst(this.solUtc, lmstAtUtc(this.solUtc, this.lon), this.startLmst) + tS * 1000;
+    return marsSky(utc, this.lat, this.lon);
+  }
+
+  /** Where Earth is at the start of the EVA, and how far away by radio. */
+  private earthText(): string {
+    const s = this.skyAt(0);
+    const where = s.earth.elevation > 0 ? `${Math.round(s.earth.elevation)}° up, ${App.compass(s.earth.azimuth)}` : "below the horizon";
+    return `Earth ${fmtLightTime(s.lightTimeS)} away by radio, one way · ${where} at the start`;
+  }
+
+  /** Report something to Mission Control: it arrives one light time later, a reply can come back after two. */
+  private tellEarth(what: string, reply: boolean): number {
+    const t = this.mission?.t ?? 0;
+    const lt = this.skyAt(t).lightTimeS;
+    this.earthQueue.push({ t: t + lt, text: `Mission Control receives: ${what}` });
+    if (reply) this.earthQueue.push({ t: t + 2 * lt, text: `Earliest possible answer from Earth on: ${what}` });
+    this.earthQueue.sort((a, b) => a.t - b.t);
+    return lt;
+  }
+
   /**
    * Start times (06:00–17:00 on the slider) that keep the Sun above 8° for the whole walk:
    * a gradient for the slider track and one line of text.
@@ -698,7 +732,7 @@ export class App {
     return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(az / 45) % 8];
   }
 
-  private sunText(sun: SunPosition): string {
+  private sunText(sun: { elevation: number; azimuth: number }): string {
     return sun.elevation <= 0 ? "below the horizon" : `${Math.round(sun.elevation)}° up, ${App.compass(sun.azimuth)}`;
   }
 
@@ -1211,7 +1245,8 @@ export class App {
             <input type="range" id="start" min="6" max="17" step="0.25" value="${this.startLmst}" style="--track:${this.daylightTrack(b.totalTimeS).gradient}"/>
             <small id="sun-val">Sun ${this.sunText(sunStart)} → ${this.sunText(sunEnd)} at ${fmtLmst(this.lmstAt(b.totalTimeS))}</small>
             <small class="daylight">${this.daylightTrack(b.totalTimeS).text}</small>
-            <small class="daylight">${this.seasonText()}</small></label>
+            <small class="daylight">${this.seasonText()}</small>
+            <small class="daylight" id="earth-val">${this.earthText()}</small></label>
           <div class="vs">
             <p>${vs}</p>
             <label class="switch"><span>Show the straight line on the map</span><input class="sr" type="checkbox" id="opt-straight" ${this.showStraight ? "checked" : ""}/><i></i></label>
@@ -1326,6 +1361,7 @@ export class App {
           <dl class="kv">
             <dt>Local time</dt><dd id="lv-lmst"></dd>
           <dt>Sun</dt><dd id="lv-sun"></dd>
+            <dt>Earth</dt><dd id="lv-earth"></dd>
             ${this.site.weather ? `<dt>Air · ground</dt><dd id="lv-temp"></dd><dt>Pressure</dt><dd id="lv-pres"></dd>` : ""}
           </dl>
           <p class="note">${
@@ -1935,6 +1971,8 @@ export class App {
     this.relayUp = false;
     this.lowSunWarned = this.sunAtEva(0).elevation < 8; // a plan that starts in low sun was warned about already
     this.log = [{ t: 0, kind: "go", text: "Left the rover" }];
+    this.earthQueue = [];
+    this.tellEarth("EVA started", false);
     this.view.setRelay(this.useRelay ? this.plan?.relay?.at ?? null : null);
     $("#pin-menu").hidden = true;
     this.closeCard();
@@ -2003,6 +2041,24 @@ export class App {
       this.lastSun = key;
       this.view.setSun(sun.elevation, sun.azimuth);
     }
+    const skyT = m && this.phase !== "planning" ? m.t : 0;
+    const skyKey = `${this.startLmst}/${Math.floor(skyT)}`;
+    if (skyKey !== this.lastSky) {
+      this.lastSky = skyKey;
+      const s = this.skyAt(skyT);
+      const km = (b: { distanceKm: number }) => `${Math.round(b.distanceKm).toLocaleString("en")} km`;
+      this.view.setSkyBodies({
+        earth: { dir: s.earth.dir, sizeDeg: s.earth.sizeDeg, caption: `${fmtLightTime(s.lightTimeS)} by radio` },
+        phobos: { dir: s.phobos.dir, sizeDeg: s.phobos.sizeDeg, caption: km(s.phobos) },
+        deimos: { dir: s.deimos.dir, sizeDeg: s.deimos.sizeDeg, caption: km(s.deimos) },
+      });
+    }
+    while (m && this.phase === "eva" && this.earthQueue.length && this.earthQueue[0].t <= m.t) {
+      const msg = this.earthQueue.shift()!;
+      this.log.push({ t: msg.t, kind: "radio", text: msg.text });
+      this.log.sort((x, y) => x.t - y.t); // a skip ahead can deliver it after later events
+      this.toast(msg.text, 3500);
+    }
     this.liveTimer += dt;
     if (this.liveTimer > 0.1) {
       this.liveTimer = 0;
@@ -2048,6 +2104,7 @@ export class App {
     this.buzz([300, 120, 300, 120, 300]);
     this.note("alert", `Storm alert: ${Math.round(rate)} µGy/h, turned back`);
     const m = this.mission!;
+    const lt = this.tellEarth("the storm alert", true);
     this.closeCard();
     const pose = m.pose();
     const res = await this.router.shelterPath({ x: pose.x, y: pose.y });
@@ -2070,7 +2127,8 @@ export class App {
         cover
           ? `Nearest natural cover: ${cover.dir} ${fmtDist(cover.dist)} away, ${cover.pct}% less dose. The rover cuts ${Math.round((1 - this.P.shelterFactor) * 100)}%.`
           : `No useful natural cover nearby: terrain here blocks under 3% of the dose.`
-      }</span></div>`;
+      }</span>
+      <span class="sub2 earth">Earth is ${fmtLightTime(lt)} away by radio: Mission Control hears this at ${fmtClock(m.t + lt)} and can answer at ${fmtClock(m.t + 2 * lt)} at the earliest. The crew decides now.</span></div>`;
     alert.hidden = false;
     this.voice.say(`Solar particle event. Dose rate ${Math.round(rate / this.rad.baseline)} times background. Abort the EVA. Return to the rover: ${spokenDist(path.distance)}, ${spokenTime(path.time)}.`, "urgent");
     const box = document.getElementById("stormbox");
@@ -2543,6 +2601,8 @@ export class App {
     const pose = m.pose();
     const shaded = sunNow.elevation > 0 && inTerrainShadow(this.site.grid, pose.x, pose.y, sunNow.elevation, sunNow.azimuth);
     setText(document.getElementById("lv-sun"), `${this.sunText(sunNow)}${shaded ? " · in shade" : ""}`);
+    const skyNow = this.skyAt(m.t);
+    setText(document.getElementById("lv-earth"), `${fmtLightTime(skyNow.lightTimeS)} by radio · ${this.sunText(skyNow.earth)}`);
     if (this.buddy) {
       const b = m.buddyPose();
       const p = m.pose();
@@ -2590,6 +2650,7 @@ export class App {
         <div class="hud-item"><span>Way home</span><b id="hud-home">—</b></div>
         <div class="hud-item" id="hud-radiobox"><span>Radio</span><b id="hud-radio">—</b></div>
         <div class="hud-item minor"><span>EVA clock</span><b id="hud-clock">00:00:00</b></div>
+        <div class="hud-item minor" title="One-way radio delay to Mission Control"><span>Earth delay</span><b id="hud-earth">—</b></div>
       </div>
       <div class="hud-side right">
         <div class="hud-item" id="hud-ratebox"><span>Dose rate</span><b><i id="hud-rate">—</i> µGy/h</b></div>
@@ -2661,6 +2722,7 @@ export class App {
     setText($("#hud-radio"), this.radioLost ? "No signal" : viaRelay ? "Relay ✓" : "Rover ✓");
     $("#hud-radiobox").className = `hud-item${this.radioLost ? " warn" : ""}`;
     setText($("#hud-clock"), fmtClock(m.t));
+    setText(document.getElementById("hud-earth"), fmtLightTime(this.skyAt(m.t).lightTimeS));
     setText($("#hud-rate"), fmtRate(m.doseRate));
     $("#hud-ratebox").className = `hud-item${m.outdoorRate > this.rad.baseline * 3 ? " bad" : ""}`;
     setText($("#hud-dose"), fmtDose(m.doseUGy));
