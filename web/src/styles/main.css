@@ -262,6 +262,10 @@ svg .shelter-band { fill: rgba(90, 212, 138, 0.12); }
 .poi-label.shelter { color: var(--text); border-color: rgba(245, 181, 68, 0.6); }
 .poi-label.shelter b { background: var(--warn); color: #2a1a00; }
 .poi-label:hover { background: rgba(40, 34, 30, 0.95); }
+.poi-label.relay { pointer-events: none; border-style: dashed; border-color: rgba(185, 166, 255, 0.6); color: var(--text-2); }
+.poi-label.relay b { background: rgba(185, 166, 255, 0.25); color: #d9ceff; }
+.poi-label.relay.up { border-style: solid; color: var(--text); }
+.poi-label.relay.up b { background: #b9a6ff; color: #1a1030; }
 /* labels that would land on a more important one (see declutterLabels in view.ts) */
 .poi-label.crowded { visibility: hidden; pointer-events: none; }
 .poi-label.active.crowded { visibility: visible; pointer-events: auto; padding: 0 3px; }
@@ -539,6 +543,7 @@ button.secondary { background: var(--raise-2); }
 .cc-map .ground { filter: sepia(0.45) saturate(1.3) brightness(1.05); }
 .cc-map .route-halo { fill: none; stroke: rgba(0,0,0,.6); stroke-width: 7; stroke-linejoin: round; }
 .cc-map .route { fill: none; stroke: #2fd5c2; stroke-width: 3.5; stroke-linejoin: round; }
+.cc-map .relay { fill: #c9b8ff; stroke: #1a1030; stroke-width: 2; }
 .cc-map .no-radio { fill: none; stroke: #1a1030; stroke-width: 3.5; stroke-dasharray: 5 4; stroke-linejoin: round; }
 .cc-map .stop { fill: #2fd5c2; stroke: #06231f; stroke-width: 2; }
 .cc-map .home { fill: #f5b544; stroke: #2a1a00; stroke-width: 2; }
@@ -728,6 +733,10 @@ details.more-layers > summary em { margin-left: auto; font: 11px var(--mono); fo
 .radio-line span { flex: 1; }
 .radio-line b { color: var(--text); font-weight: 600; }
 .radio-line .link { flex: none; }
+.radio-line.has-tip { margin-bottom: 0; border-radius: var(--r-md) var(--r-md) 0 0; }
+.relay-tip { display: flex; flex-direction: column; gap: 8px; margin: 0 0 14px; padding: 8px 10px 10px 32px; border-radius: 0 0 var(--r-md) var(--r-md); background: var(--raise); border-top: 1px solid var(--line); font-size: 12px; line-height: 1.4; color: var(--text-2); }
+.relay-tip b { color: var(--text); font-weight: 600; }
+.relay-tip button { align-self: flex-start; height: 30px; font-size: 12px; }
 
 /* practice emergencies */
 .drill .note { margin: -2px 0 10px; }

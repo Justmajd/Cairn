@@ -95,6 +95,7 @@ export class SceneView {
   private readonly routeGroup = new THREE.Group();
   private readonly trackGroup = new THREE.Group();
   private readonly poiGroup = new THREE.Group();
+  private readonly relayGroup = new THREE.Group();
   private readonly lineMaterials = new Set<LineMaterial>();
   private shelterTex: THREE.DataTexture | null = null;
   /** Objects kept at a readable size: `px` screen pixels per model unit, never smaller than real size. */
@@ -191,7 +192,7 @@ export class SceneView {
     sun.position.set(-720, 620, -120);
     this.scene.add(sun);
 
-    this.scene.add(this.trackGroup, this.routeGroup, this.poiGroup);
+    this.scene.add(this.trackGroup, this.routeGroup, this.poiGroup, this.relayGroup);
 
     this.astronaut = this.makeAstronaut(0x3fe8ff);
     this.buddy = this.makeAstronaut(0xffc247);
@@ -287,7 +288,7 @@ export class SceneView {
     const w = this.host.clientWidth;
     const h = this.host.clientHeight;
     const items: { el: HTMLElement; rank: number; x: number; y: number; size: [number, number] }[] = [];
-    for (const holder of this.poiGroup.children) {
+    for (const holder of [...this.poiGroup.children, ...this.relayGroup.children]) {
       const label = holder.children.find((c): c is CSS2DObject => c instanceof CSS2DObject);
       if (!label) continue;
       const el = label.element;
@@ -299,7 +300,7 @@ export class SceneView {
         this.labelSize.set(el, size);
       }
       labelPos.setFromMatrixPosition(label.matrixWorld).project(this.camera);
-      const rank = el.classList.contains("shelter") ? 0 : el.classList.contains("active") ? 1 : 2;
+      const rank = el.classList.contains("shelter") ? 0 : el.classList.contains("active") || el.classList.contains("relay") ? 1 : 2;
       items.push({ el, rank, x: (labelPos.x * 0.5 + 0.5) * w, y: (-labelPos.y * 0.5 + 0.5) * h, size });
     }
     items.sort((a, b) => a.rank - b.rank || a.y - b.y);
@@ -1172,6 +1173,40 @@ export class SceneView {
       prev = p;
     }
     flush();
+  }
+
+  // ---------------------------------------------------------------- relay
+  /** Portable radio relay on the route: planned (outlined) or up (filled), or none. */
+  setRelay(at: XY | null, up = false): void {
+    this.dirty = true;
+    for (const child of [...this.relayGroup.children]) {
+      this.relayGroup.remove(child);
+      child.traverse((o) => {
+        if (o instanceof CSS2DObject) o.element.remove();
+      });
+      const i = this.scaled.findIndex((s) => s.obj === child);
+      if (i >= 0) this.scaled.splice(i, 1);
+    }
+    if (!at) return;
+    const holder = new THREE.Group();
+    holder.position.copy(this.ground(at.x, at.y));
+    const metal = new THREE.MeshStandardMaterial({ color: 0xd8dde3, roughness: 0.5 });
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 2.5, 8), metal);
+    mast.position.y = 1.25;
+    const dish = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.32, 0.08), new THREE.MeshStandardMaterial({ color: up ? 0xb9a6ff : 0x8a86a0, roughness: 0.4 }));
+    dish.position.y = 2.45;
+    const legs = new THREE.Mesh(new THREE.ConeGeometry(0.6, 0.5, 3, 1, true), metal);
+    legs.position.y = 0.25;
+    holder.add(mast, dish, legs);
+    this.scaled.push({ obj: holder, px: 9 });
+    const el = document.createElement("div");
+    el.className = `poi-label relay${up ? " up" : ""}`;
+    el.innerHTML = `<b>${ic.radio}</b><span>${up ? "Relay up" : "Relay"}</span>`;
+    const label = new CSS2DObject(el);
+    label.position.set(0, 3.4, 0);
+    label.center.set(0.5, 1);
+    holder.add(label);
+    this.relayGroup.add(holder);
   }
 
   // ---------------------------------------------------------------- stops

@@ -15,6 +15,8 @@ export interface ExportPlan {
   timeS: number;
   o2UsedL: number;
   startLmst: string;
+  /** Portable radio relay the crew stands up on the way (local metres), if planned. */
+  relay?: { x: number; y: number; mastM: number } | null;
 }
 
 /**
@@ -68,6 +70,13 @@ export function routeGeoJson(plan: ExportPlan): string {
       },
       geometry: { type: "Point", coordinates: toLonLat(plan.site, s.poi.x, s.poi.y).map((v) => +v.toFixed(7)) },
     })),
+    ...(plan.relay
+      ? [{
+          type: "Feature",
+          properties: { name: "Radio relay", kind: "relay", mast_m: plan.relay.mastM },
+          geometry: { type: "Point", coordinates: toLonLat(plan.site, plan.relay.x, plan.relay.y).map((v) => +v.toFixed(7)) },
+        }]
+      : []),
   ];
   return JSON.stringify(
     {
@@ -104,6 +113,17 @@ export function routeKml(plan: ExportPlan): string {
     </Placemark>`;
     })
     .join("\n");
+  const relay = plan.relay
+    ? (() => {
+        const [lon, lat] = toLonLat(plan.site, plan.relay.x, plan.relay.y);
+        return `\n    <Placemark>
+      <name>Relay</name>
+      <description>Portable radio relay, ${plan.relay.mastM} m mast: the crew stands it up here on the way.</description>
+      <styleUrl>#relay</styleUrl>
+      <Point><coordinates>${lon.toFixed(7)},${lat.toFixed(7)},0</coordinates></Point>
+    </Placemark>`;
+      })()
+    : "";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2" hint="target=mars">
   <Document>
@@ -112,12 +132,13 @@ export function routeKml(plan: ExportPlan): string {
     <Style id="route"><LineStyle><color>ffe9b456</color><width>4</width></LineStyle></Style>
     <Style id="rover"><IconStyle><color>ff27b6f5</color><Icon><href>http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png</href></Icon></IconStyle></Style>
     <Style id="stop"><IconStyle><color>ffcfe145</color><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon></IconStyle></Style>
+    <Style id="relay"><IconStyle><color>ffffa6b9</color><Icon><href>http://maps.google.com/mapfiles/kml/shapes/target.png</href></Icon></IconStyle></Style>
     <Placemark>
       <name>Safe route</name>
       <styleUrl>#route</styleUrl>
       <LineString><tessellate>1</tessellate><altitudeMode>clampToGround</altitudeMode><coordinates>${line}</coordinates></LineString>
     </Placemark>
-${marks}
+${marks}${relay}
   </Document>
 </kml>
 `;

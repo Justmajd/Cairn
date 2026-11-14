@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { measurePath, TerrainGrid } from "../data/grid";
 import { DEFAULT_PARAMS } from "./params";
-import { radioCoverage, radioDepthAt, radioShadow } from "./radio";
+import { bestRelay, lineOfSight, radioCoverage, radioDepthAt, radioShadow } from "./radio";
 
 function grid(n: number, height: (col: number, row: number) => number): TerrainGrid {
   const h = new Float32Array(n * n);
@@ -36,5 +36,36 @@ describe("radioShadow", () => {
     const cov = radioCoverage(s, g, [behind]);
     expect(cov.coveredFraction).toBeLessThan(0.2);
     expect(cov.gaps).toBe(1);
+  });
+});
+
+describe("relay", () => {
+  // a 10 m wall at x = 120 m between the rover (x = 60 m) and the far side
+  const g = grid(101, (c) => (c === 60 ? 10 : 0));
+  const rover = { x: 60, y: 100 };
+
+  it("checks line of sight between two antennas", () => {
+    expect(lineOfSight(g, { x: 20, y: 100 }, 3, { x: 100, y: 100 }, 1.8)).toBe(true);
+    expect(lineOfSight(g, { x: 60, y: 100 }, 3, { x: 180, y: 100 }, 1.8)).toBe(false);
+    expect(lineOfSight(g, { x: 120, y: 100 }, 2.5, { x: 180, y: 100 }, 1.8)).toBe(true); // from the top of the wall
+  });
+
+  it("puts the relay where it covers the blackout, and only counts it once it is up", () => {
+    const s = radioShadow(g, rover);
+    // out over the wall and back along the far side
+    const out = measurePath(g, [rover, { x: 190, y: 100 }], DEFAULT_PARAMS);
+    const along = measurePath(g, [{ x: 190, y: 100 }, { x: 190, y: 30 }], DEFAULT_PARAMS);
+    const r = bestRelay(s, g, [out, along]);
+    expect(r).not.toBeNull();
+    expect(r!.before.coveredFraction).toBeLessThan(0.7);
+    expect(r!.after.coveredFraction).toBeGreaterThan(0.95);
+    expect(r!.at.x).toBeGreaterThan(100);
+    expect(r!.at.x).toBeLessThan(140); // on or near the wall top, the only spot that sees both sides
+  });
+
+  it("suggests nothing when the whole walk is in contact", () => {
+    const s = radioShadow(g, rover);
+    const near = measurePath(g, [{ x: 60, y: 30 }, { x: 60, y: 170 }], DEFAULT_PARAMS);
+    expect(bestRelay(s, g, [near])).toBeNull();
   });
 });

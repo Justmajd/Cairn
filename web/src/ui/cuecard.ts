@@ -36,7 +36,11 @@ export interface CueCardInput {
   buddy: boolean;
   doseUGy: number;
   /** Radio line of sight to the rover: coverage, and which route points are out of contact. */
-  radio?: { coverage: RadioCoverage; lostAt: (x: number, y: number) => boolean };
+  radio?: {
+    coverage: RadioCoverage;
+    lostAt: (x: number, y: number, leg: number, sample: number) => boolean;
+    relay: { at: { x: number; y: number }; alongM: number; mastM: number; toward: string | null } | null;
+  };
 }
 
 /** One line for the card: how much of the walk keeps radio contact with the rover. */
@@ -86,6 +90,7 @@ function mapSvg(input: CueCardInput, W: number, H: number): string {
     <image href="${input.site.base}${input.site.meta.texture.file}" x="${X(0)}" y="${Y(size)}" width="${size * sx}" height="${size * sx}" preserveAspectRatio="none" class="ground"/>
     ${input.legs.map((l) => `<polyline class="route-halo" points="${line(l)}"/><polyline class="route" points="${line(l)}"/>`).join("")}
     ${input.radio ? blackoutLines(input.legs, input.radio.lostAt, X, Y) : ""}
+    ${input.radio?.relay ? `<g transform="translate(${X(input.radio.relay.at.x).toFixed(1)},${Y(input.radio.relay.at.y).toFixed(1)})"><path d="M0,-9 L8,0 L0,9 L-8,0Z" class="relay"/><text class="lbl" x="12" dy="4">Relay</text></g>` : ""}
     ${stops.join("")}
     <g transform="translate(${W - 26},28)"><path d="M0,-16 L7,6 L0,1 L-7,6Z" class="north"/><text y="18" text-anchor="middle" class="nl">N</text></g>
     <g transform="translate(14,${H - 16})"><rect width="${nice * sx}" height="5" class="bar"/><text y="-5" class="nl">${nice} m</text></g>
@@ -93,20 +98,20 @@ function mapSvg(input: CueCardInput, W: number, H: number): string {
 }
 
 /** Stretches of the route with no line of sight to the rover, drawn over the route as dashes. */
-function blackoutLines(legs: MeasuredPath[], lostAt: (x: number, y: number) => boolean, X: (x: number) => number, Y: (y: number) => number): string {
+function blackoutLines(legs: MeasuredPath[], lostAt: (x: number, y: number, leg: number, sample: number) => boolean, X: (x: number) => number, Y: (y: number) => number): string {
   const out: string[] = [];
-  for (const leg of legs) {
+  legs.forEach((leg, li) => {
     let run: string[] = [];
     const flush = () => {
       if (run.length > 1) out.push(`<polyline class="no-radio" points="${run.join(" ")}"/>`);
       run = [];
     };
-    for (const s of leg.samples) {
-      if (lostAt(s.x, s.y)) run.push(`${X(s.x).toFixed(1)},${Y(s.y).toFixed(1)}`);
+    leg.samples.forEach((s, i) => {
+      if (lostAt(s.x, s.y, li, i)) run.push(`${X(s.x).toFixed(1)},${Y(s.y).toFixed(1)}`);
       else flush();
-    }
+    });
     flush();
-  }
+  });
   return out.join("");
 }
 
@@ -173,6 +178,7 @@ export function showCueCard(input: CueCardInput): void {
               <li>Keep ${Math.round(P.reserveFraction * 100)}% oxygen (${Math.round(reserve)} L) in reserve. Turn back at the value in the table.</li>
               <li>Maximum EVA ${P.maxEvaH} h. ${input.buddy ? `EV1 and EV2 stay within ${P.buddyMaxSeparationM} m.` : "Report position at every stop."}</li>
               ${input.radio ? `<li>${radioLine(input.radio.coverage)}</li>` : ""}
+              ${input.radio?.relay ? `<li>Relay: stand the ${input.radio.relay.mastM} m mast up after ${fmtDist(input.radio.relay.alongM)}${input.radio.relay.toward ? ` (on the way to ${esc(input.radio.relay.toward)})` : ""}, at ◆ on the map. Check the link to the rover before walking on.</li>` : ""}
               <li>Sun ${Math.round(input.start.sunEl)}° at departure, ${Math.round(input.end.sunEl)}° at return${input.start.sunEl < 15 || input.end.sunEl < 15 ? " — low sun: shadows hide holes and rocks." : "."}</li>
             </ul>
           </div>

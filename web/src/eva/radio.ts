@@ -11,6 +11,8 @@ export const SUIT_ANTENNA_M = 1.8;
 export const RADIO_STEP_M = 0.25;
 /** A suit antenna this far below the line of sight has lost the link. */
 export const RADIO_LOST_M = 0.5;
+/** Mast of a portable relay the crew can carry and stand up on the route (assumption). */
+export const RELAY_MAST_M = 2.5;
 
 /**
  * Radio shadow of a fixed antenna over the terrain grid.  EVA radios work on UHF, which needs a clear
@@ -71,8 +73,20 @@ export interface RadioCoverage {
   longestGapS: number;
 }
 
-/** How much of a set of walks keeps line of sight to the rover. */
-export function radioCoverage(shadow: Uint8Array, grid: TerrainGrid, legs: MeasuredPath[]): RadioCoverage {
+/** A relay stood up on the route: its own radio shadow, and where along the plan it goes up. */
+export interface RelayLink {
+  shadow: Uint8Array; // radioShadow from the relay's mast
+  leg: number; // leg index, and sample index within that leg, where the crew sets it up
+  sample: number;
+}
+
+/** In contact at a point: line of sight to the rover, or to a relay that is already up. */
+export function inContact(shadow: Uint8Array, grid: TerrainGrid, x: number, y: number, relay: Uint8Array | null = null): boolean {
+  return radioDepthAt(shadow, grid, x, y) <= RADIO_LOST_M || (relay !== null && radioDepthAt(relay, grid, x, y) <= RADIO_LOST_M);
+}
+
+/** How much of a set of walks keeps line of sight to the rover (or to the relay, once it is up). */
+export function radioCoverage(shadow: Uint8Array, grid: TerrainGrid, legs: MeasuredPath[], relay: RelayLink | null = null): RadioCoverage {
   let total = 0;
   let lostS = 0;
   let lostM = 0;
@@ -80,13 +94,14 @@ export function radioCoverage(shadow: Uint8Array, grid: TerrainGrid, legs: Measu
   let longest = 0;
   let run = 0;
   let inGap = false;
-  for (const leg of legs) {
+  legs.forEach((leg, li) => {
     for (let i = 1; i < leg.samples.length; i++) {
       const a = leg.samples[i - 1];
       const b = leg.samples[i];
       const dt = b.time - a.time;
       total += dt;
-      const lost = radioDepthAt(shadow, grid, (a.x + b.x) / 2, (a.y + b.y) / 2) > RADIO_LOST_M;
+      const up = relay !== null && (li > relay.leg || (li === relay.leg && i > relay.sample));
+      const lost = !inContact(shadow, grid, (a.x + b.x) / 2, (a.y + b.y) / 2, up ? relay!.shadow : null);
       if (lost) {
         if (!inGap) gaps++;
         inGap = true;
@@ -99,6 +114,89 @@ export function radioCoverage(shadow: Uint8Array, grid: TerrainGrid, legs: Measu
         run = 0;
       }
     }
-  }
+  });
   return { coveredFraction: total > 0 ? 1 - lostS / total : 1, lostS, lostM, gaps, longestGapS: longest };
+}
+
+/**
+ * Line of sight between two antennas (heights above their own ground), allowing the same RADIO_LOST_M
+ * slack at the far end as the radio shadow does; the ground between them bulges up with Mars' curvature.
+ */
+export function lineOfSight(grid: TerrainGrid, a: XY, aH: number, b: XY, bH: number): boolean {
+  const za = grid.heightAt(a.x, a.y) + aH;
+  const zb = grid.heightAt(b.x, b.y) + bH;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  const steps = Math.ceil(len / grid.cell);
+  for (let k = 1; k < steps; k++) {
+    const f = k / steps;
+    const d = len * f;
+    const ground = grid.heightAt(a.x + dx * f, a.y + dy * f) + (d * (len - d)) / (2 * MARS_RADIUS_M);
+    const above = ground - (za + (zb - za) * f);
+    if (above > 0 && above / f > RADIO_LOST_M) return false; // how far the far antenna sits below the grazing line
+  }
+  return true;
+}
+
+export interface RelaySuggestion {
+  at: XY;
+  leg: number;
+  sample: number;
+  alongM: number; // distance along the whole route where the crew sets it up
+  before: RadioCoverage;
+  after: RadioCoverage;
+  shadow: Uint8Array;
+}
+
+/**
+ * Best place on the planned route to stand up a portable relay: it must see the rover from its mast,
+ * and it only helps once it is up, so the search counts the blackout time it covers after that point
+ * of the walk.  Candidates every ~8 m along the route; returns null when a relay would not help much.
+ */
+export function bestRelay(shadow: Uint8Array, grid: TerrainGrid, legs: MeasuredPath[], mastM = RELAY_MAST_M): RelaySuggestion | null {
+  const before = radioCoverage(shadow, grid, legs);
+  if (before.lostS < 30) return null;
+  // blackout steps of the walk, in walking order
+  const lost: { x: number; y: number; dt: number; order: number }[] = [];
+  const cands: { x: number; y: number; leg: number; sample: number; order: number; alongM: number }[] = [];
+  let order = 0;
+  let along = 0;
+  let lastCand = -Infinity;
+  legs.forEach((leg, li) => {
+    for (let i = 1; i < leg.samples.length; i++, order++) {
+      const a = leg.samples[i - 1];
+      const b = leg.samples[i];
+      along += b.dist - a.dist;
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      if (!inContact(shadow, grid, mx, my)) lost.push({ x: mx, y: my, dt: b.time - a.time, order });
+      // the relay's mast sees the rover where a suit antenna would need to rise by less than the extra height
+      if (along - lastCand >= 8 && radioDepthAt(shadow, grid, b.x, b.y) <= mastM - SUIT_ANTENNA_M) {
+        cands.push({ x: b.x, y: b.y, leg: li, sample: i, order, alongM: along });
+        lastCand = along;
+      }
+    }
+  });
+  let best: (typeof cands)[number] | null = null;
+  let bestS = 0;
+  for (const c of cands) {
+    let covered = 0;
+    let possible = 0;
+    for (const s of lost) if (s.order >= c.order) possible += s.dt;
+    if (possible <= bestS) continue;
+    for (const s of lost) {
+      if (s.order < c.order) continue;
+      if (lineOfSight(grid, c, mastM, s, SUIT_ANTENNA_M)) covered += s.dt;
+    }
+    if (covered > bestS) {
+      bestS = covered;
+      best = c;
+    }
+  }
+  if (!best || bestS < Math.max(30, before.lostS * 0.2)) return null;
+  const relayShadow = radioShadow(grid, best, mastM);
+  const after = radioCoverage(shadow, grid, legs, { shadow: relayShadow, leg: best.leg, sample: best.sample });
+  if (after.coveredFraction - before.coveredFraction < 0.03) return null;
+  return { at: { x: best.x, y: best.y }, leg: best.leg, sample: best.sample, alongM: best.alongM, before, after, shadow: relayShadow };
 }

@@ -1,4 +1,4 @@
-import { ROVER_ANTENNA_M, SUIT_ANTENNA_M } from "../eva/radio";
+import { RELAY_MAST_M, ROVER_ANTENNA_M, SUIT_ANTENNA_M } from "../eva/radio";
 import type { SiteData } from "../data/loaders";
 import { ALERT_FACTOR } from "../replay/mission";
 import { EvaParams, PARAM_NOTES } from "../eva/params";
@@ -67,7 +67,8 @@ export function showAssumptions(site: SiteData, p: EvaParams): void {
      </ul>
      <h3>Radio contact and practice emergencies</h3>
      <ul>
-       <li><b>Radio:</b> suit radios work on UHF, which needs a clear line of sight on Mars. CAIRN sweeps rays from an antenna ${ROVER_ANTENNA_M} m up the rover's mast across the 1 m HiRISE terrain (and the curvature of Mars) and marks where a suit antenna ${SUIT_ANTENNA_M} m above the ground loses sight of it. No relay or reflections are assumed: a worst case.</li>
+       <li><b>Radio:</b> suit radios work on UHF, which needs a clear line of sight on Mars. CAIRN sweeps rays from an antenna ${ROVER_ANTENNA_M} m up the rover's mast across the 1 m HiRISE terrain (and the curvature of Mars) and marks where a suit antenna ${SUIT_ANTENNA_M} m above the ground loses sight of it. No reflections are assumed: a worst case.</li>
+       <li><b>Relay:</b> where the walk loses contact, CAIRN looks along the route for the spot where a portable relay on a ${RELAY_MAST_M} m mast (assumption) sees the rover and covers the most blackout time after the crew sets it up there. With the relay planned, contact during the EVA counts the relay from the moment the crew reaches it.</li>
        <li><b>Suit leak:</b> oxygen use doubles from that moment. <b>Twisted ankle:</b> walking takes twice as long. In both, CAIRN routes the quickest safe way home from the current position and compares the oxygen needed with what is left (both assumptions for practice, not suit data).</li>
      </ul>
      <h3>Sun, shadows and terrain shielding</h3>
