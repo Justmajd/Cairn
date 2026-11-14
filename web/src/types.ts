@@ -73,6 +73,8 @@ export interface Poi {
   whyHumans: string;
   dwellMin: number;
   images: PoiImage[];
+  /** The stop is on buried ice (Deuteronilus): the hab map scores closeness to it. */
+  ice?: boolean;
 }
 
 export interface RoverData {

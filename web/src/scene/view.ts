@@ -1121,6 +1121,7 @@ export class SceneView {
     if (id === "shelter" && u.uLayer.value !== LAYER_IDS.shelter && !reducedMotion.matches) this.revealT = 0;
     else if (id !== "shelter") this.revealT = null;
     if (id === "radio" && this.radioTex) u.uRadio.value = this.radioTex;
+    if (id === "hab" && this.habTex) u.uRadio.value = this.habTex;
     u.uLayer.value = LAYER_IDS[id];
     u.uLayerMix.value = opacity;
     this.dirty = true;
@@ -1138,6 +1139,17 @@ export class SceneView {
     this.radioTex = byteTexture(depth, this.site.grid.n);
     if (this.terrain.uniforms.uLayer.value === LAYER_IDS.radio) {
       this.terrain.uniforms.uRadio.value = this.radioTex;
+      this.dirty = true;
+    }
+  }
+
+  /** Hab site score per coarse node (eva/hab.ts), drawn by the "hab" layer. */
+  private habTex: THREE.DataTexture | null = null;
+  setHabMap(score: Uint8Array, n: number): void {
+    this.habTex?.dispose();
+    this.habTex = byteTexture(score, n);
+    if (this.terrain.uniforms.uLayer.value === LAYER_IDS.hab) {
+      this.terrain.uniforms.uRadio.value = this.habTex;
       this.dirty = true;
     }
   }

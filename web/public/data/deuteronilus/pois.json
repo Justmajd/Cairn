@@ -33,7 +33,8 @@
    "science": "Radar on NASA's Mars Reconnaissance Orbiter (SHARAD) showed that lobate debris aprons in this region are glaciers: water ice under a cover of rock debris (Plaut et al. 2009). At the toe the apron is thinnest and meets the ground the crew landed on.",
    "whyHumans": "A crew can dig through the debris cover and measure how deep the ice starts: the number that decides whether a base can mine it for water.",
    "dwellMin": 30,
-   "images": []
+   "images": [],
+   "ice": true
   },
   {
    "id": "brain",
@@ -50,7 +51,8 @@
    "science": "Brain terrain forms on ice-rich ground. One explanation is that ice under the debris sublimates unevenly, so the surface sags into cells. Where the cells are open or closed may show where the ice lies closest to the surface.",
    "whyHumans": "A geologist can trench one ridge and one trough in an hour — the quickest test of whether ice lies under a thin layer of rubble.",
    "dwellMin": 30,
-   "images": []
+   "images": [],
+   "ice": true
   },
   {
    "id": "ring",
@@ -67,7 +69,8 @@
    "science": "Craters on ice-rich aprons often take this ring shape ('ring-mold craters'), thought to form when an impact strikes ice just below the debris (Kress & Head 2008). If this is one, the ice was shallow here when it formed.",
    "whyHumans": "A short walk across the ring with ground-penetrating radar would test the idea on the spot.",
    "dwellMin": 20,
-   "images": []
+   "images": [],
+   "ice": true
   },
   {
    "id": "rim",

@@ -101,6 +101,11 @@ export function showAssumptions(site: SiteData, p: EvaParams): void {
          return `At this site terrain cuts the dose by at most ${Math.round((1 - min / 255) * 100)}%, and only right against cliff walls — the rover remains the real shelter.`;
        })()}</li>
      </ul>
+     <h3>Hab site map</h3>
+     <ul>
+       <li>Every 8 m spot is scored as the site of the crew's base (habitat, landing pad, parked rover). Flat ground is required: the mean slope of a ~24 m footprint (full marks at 3° or less, none at 10°), less for steep or impassable patches and loose sand. It multiplies a weighted mean of: walking time to the stops in the plan (weight 50), stops in direct radio line of sight from a 3 m mast (30), terrain radiation shielding (20) and, at Deuteronilus, walking time to the stops on buried ice (35).</li>
+       <li>The weights are CAIRN's choice for a short surface stay, not NASA criteria. Landing safety at the scale of a real lander (rocks under 1 m, plume debris, approach paths) is not modelled.</li>
+     </ul>
      ${site.meta.minerals ? `<h3>Minerals (CRISM)</h3>
      <ul>
        <li>Summary parameters from ${esc(site.meta.minerals.product)} at ${site.meta.minerals.mPerPx} m/px: OLINDEX3 (olivine), D2300 (Fe/Mg clay), MIN2295_2480 (carbonate).</li>

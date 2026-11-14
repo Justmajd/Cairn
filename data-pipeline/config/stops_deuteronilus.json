@@ -28,7 +28,8 @@
    "dwellMin": 30,
    "description": "Where the lobate debris apron ends on the plain. To the south the ground starts to rise and the surface turns into a maze of ridges.",
    "science": "Radar on NASA's Mars Reconnaissance Orbiter (SHARAD) showed that lobate debris aprons in this region are glaciers: water ice under a cover of rock debris (Plaut et al. 2009). At the toe the apron is thinnest and meets the ground the crew landed on.",
-   "whyHumans": "A crew can dig through the debris cover and measure how deep the ice starts: the number that decides whether a base can mine it for water."
+   "whyHumans": "A crew can dig through the debris cover and measure how deep the ice starts: the number that decides whether a base can mine it for water.",
+   "ice": true
   },
   "brain": {
    "kind": "objective",
@@ -39,7 +40,8 @@
    "dwellMin": 30,
    "description": "A maze of ridges and troughs, metres across, covering the apron. It is named for its likeness to brain coral.",
    "science": "Brain terrain forms on ice-rich ground. One explanation is that ice under the debris sublimates unevenly, so the surface sags into cells. Where the cells are open or closed may show where the ice lies closest to the surface.",
-   "whyHumans": "A geologist can trench one ridge and one trough in an hour — the quickest test of whether ice lies under a thin layer of rubble."
+   "whyHumans": "A geologist can trench one ridge and one trough in an hour — the quickest test of whether ice lies under a thin layer of rubble.",
+   "ice": true
   },
   "ring": {
    "kind": "optional",
@@ -50,7 +52,8 @@
    "dwellMin": 20,
    "description": "A small rounded crater, about 60 m across, with a raised centre and a ring-shaped trough, among the brain terrain.",
    "science": "Craters on ice-rich aprons often take this ring shape ('ring-mold craters'), thought to form when an impact strikes ice just below the debris (Kress & Head 2008). If this is one, the ice was shallow here when it formed.",
-   "whyHumans": "A short walk across the ring with ground-penetrating radar would test the idea on the spot."
+   "whyHumans": "A short walk across the ring with ground-penetrating radar would test the idea on the spot.",
+   "ice": true
   },
   "rim": {
    "kind": "optional",

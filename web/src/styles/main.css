@@ -864,3 +864,16 @@ svg.timeline .sunt { fill: #f0e442; font: 500 9px var(--mono); }
 .sky-tag b { font-weight: 600; }
 .sky-tag small { font: 400 10px var(--mono); color: rgba(255, 255, 255, 0.62); }
 .sky-tag.earth b { color: #b9d6ff; }
+
+/* "Where do we put the hab?" — the best spot and what makes it best */
+.hab { display: grid; gap: 10px; margin-top: 10px; }
+.hab-best { display: flex; gap: 12px; align-items: center; margin: 0; font-size: 12px; color: var(--text-2); }
+.hab-best b { font: 600 26px var(--mono); color: #fae659; line-height: 1; white-space: nowrap; }
+.hab-best b small { font-size: 12px; color: var(--text-3, var(--text-2)); }
+.hab-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.hab-bars li { display: grid; grid-template-columns: 1fr 72px; gap: 2px 10px; align-items: center; font-size: 12px; color: var(--text); }
+.hab-bars li span em { font-style: normal; margin-left: 6px; font: 10px var(--mono); color: var(--text-2); }
+.hab-bars li i { height: 5px; border-radius: 3px; background: var(--line-2); overflow: hidden; }
+.hab-bars li i b { display: block; height: 100%; background: linear-gradient(90deg, #3359b3, #66d18c, #fae659); }
+.hab-bars li small { grid-column: 1 / -1; font-size: 11px; color: var(--text-2); }
+.hab-act { display: grid; grid-template-columns: auto 1fr; gap: 8px; }

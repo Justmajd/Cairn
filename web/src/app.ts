@@ -4,6 +4,7 @@ import type { SiteData, SiteEntry } from "./data/loaders";
 import { buildBudget, EvaBudget, o2Litres, ReturnLookup, sampleAtTime, Segment, walkO2 } from "./eva/budget";
 import { DEFAULT_PARAMS, EvaParams } from "./eva/params";
 import { RadiationModel } from "./eva/radiation";
+import { HAB_WEIGHTS, HabMap, habSuitability } from "./eva/hab";
 import { bestRelay, inContact, lineOfSight, RadioCoverage, radioCoverage, radioShadow, relayFromShadow, RelaySuggestion, RELAY_MAST_M, SUIT_ANTENNA_M } from "./eva/radio";
 import { inTerrainShadow } from "./eva/shade";
 import { geometricMedian } from "./routing/median";
@@ -78,6 +79,7 @@ const LAYERS: Layer[] = [
   { id: "geology", name: "Geology", source: "geology", swatch: "linear-gradient(90deg,#e69f00 0 25%,#56b4e9 25% 50%,#009e73 50% 75%,#f0e442 75%)", legend: null },
   { id: "shield", name: "Sky shielding", source: "hirise_dtm", swatch: "linear-gradient(90deg,rgba(64,140,255,.2),#4d9bff,#d9f5ff)", legend: ["open sky", "−15 % dose"] },
   { id: "radio", name: "Radio contact", source: "hirise_dtm", swatch: "radial-gradient(circle at 30% 50%,rgba(158,168,230,.25) 0 30%,#141633 31%)", legend: ["line of sight to the rover", "no signal"] },
+  { id: "hab", name: "Hab site", source: "hirise_dtm", swatch: "linear-gradient(90deg,#120a1c,#381f80,#1f61eb,#14bdcc,#52e661,#ffdb2e)", legend: ["unsuitable", "best"] },
   { id: "shelter", name: "To shelter", source: "hirise_dtm", swatch: "linear-gradient(90deg,#56b4e9,#f0e442,#e69f00,#d55e00,#8c2973)", legend: ["0 min", "24+ min"] },
 ];
 
@@ -107,6 +109,10 @@ export class App {
   private readonly roverName: string;
 
   private layer: LayerId = "none";
+  /** "Where do we put the hab?" scores, for the stops they were worked out from. */
+  private hab: HabMap | null = null;
+  private habKey = "";
+  private habBusy = false;
   private opacity = 0.8;
   private showTrack = false;
   private showStraight = true;
@@ -323,9 +329,12 @@ export class App {
       if (t.id === "more-layers") this.moreLayersOpen = t.open;
     }, true); // toggle does not bubble
     left.addEventListener("click", (ev) => {
-      const t = (ev.target as HTMLElement).closest<HTMLElement>("[data-info],[data-src],[data-remove],[data-rover-reset],[data-rover-closer],[data-dwell]");
+      const t = (ev.target as HTMLElement).closest<HTMLElement>("[data-info],[data-src],[data-remove],[data-rover-reset],[data-rover-closer],[data-dwell],[data-hab]");
       if (!t) return;
-      if (t.dataset.info) this.openCard(t.dataset.info, false);
+      if (t.dataset.hab && this.hab) {
+        if (t.dataset.hab === "park") void this.moveRover(this.hab.best);
+        else this.showHabBest();
+      } else if (t.dataset.info) this.openCard(t.dataset.info, false);
       else if (t.dataset.src) showSources(this.site, t.dataset.src);
       else if (t.dataset.remove) this.removeCustom(t.dataset.remove);
       else if (t.dataset.roverReset) void this.moveRover(this.roverHome);
@@ -1082,7 +1091,7 @@ export class App {
           <i class="swatch" style="background:${l.swatch}"></i><span>${esc(l.name)}</span>
         </label>`;
     const primary = primaryIds.map((id) => chip(avail.find((l) => l.id === id)!)).join("");
-    const groups: [string, LayerId[]][] = [["Safety", ["risk", "shelter", "radio", "slope", "sand"]], ["Science", ["minerals", "geology", "thermal"]], ["Radiation", ["shield"]]];
+    const groups: [string, LayerId[]][] = [["Safety", ["risk", "shelter", "radio", "slope", "sand"]], ["Science", ["minerals", "geology", "thermal"]], ["Radiation", ["shield"]], ["Base", ["hab"]]];
     const more = groups
       .map(([name, ids]) => {
         const ls = rest.filter((l) => ids.includes(l.id));
@@ -1105,6 +1114,7 @@ export class App {
     } else if (active.legend) {
       legend = `<div class="legend"><i class="ramp" style="background:${active.swatch}"></i><span>${active.legend[0]}</span><span>${active.legend[1]}</span></div>`;
     }
+    if (this.layer === "hab") legend += this.habHtml(locked);
 
     $("#left").innerHTML = `
       <section>
@@ -1913,6 +1923,70 @@ export class App {
     this.layer = id;
     this.view.setLayer(id, this.opacity);
     this.renderLeft();
+    if (id === "hab") this.showHabBest();
+  }
+
+  /** The stops the hab is scored against: the ones in the plan (all science stops if none is ticked). */
+  private habStops(): Poi[] {
+    const chosen = this.pois.filter((p) => p.kind !== "shelter" && this.selected.includes(p.id));
+    return chosen.length ? chosen : this.pois.filter((p) => p.kind !== "shelter");
+  }
+
+  /** Work the hab map out again when the stops have changed (a few hundred ms, after the panel paints). */
+  private refreshHab(): void {
+    const stops = this.habStops();
+    const key = stops.map((p) => `${p.id}@${Math.round(p.x)},${Math.round(p.y)}`).join("|");
+    if (key === this.habKey || this.habBusy) return;
+    this.habBusy = true;
+    window.setTimeout(() => {
+      this.hab = habSuitability(this.site.grid, stops, this.pois.filter((p) => p.ice), this.P);
+      this.habKey = key;
+      this.habBusy = false;
+      this.view.setHabMap(this.hab.score, this.hab.n);
+      if (this.layer === "hab") {
+        this.renderLeft();
+        this.showHabBest(false);
+      }
+    }, 30);
+  }
+
+  /** Mark the best hab site on the map (and fly to it). */
+  private showHabBest(fly = true): void {
+    if (!this.hab) return;
+    this.view.setSpot(this.hab.best, `Best hab site · ${Math.round(this.hab.bestFactors.score * 100)}/100`);
+    if (fly) this.view.focusOn(this.hab.best);
+    window.clearTimeout(this.spotTimer);
+    this.spotTimer = window.setTimeout(() => this.view.setSpot(null), 12000);
+  }
+
+  /** The hab layer's panel: what makes the best spot best, and what to do with it. */
+  private habHtml(locked: boolean): string {
+    this.refreshHab();
+    const h = this.hab;
+    if (!h || this.habBusy) return `<p class="note">Scoring every spot of the area…</p>`;
+    const f = h.bestFactors;
+    const pct = (v: number) => `${Math.round(v * 100)}`;
+    const bar = (label: string, v: number, detail: string, w: number) =>
+      `<li><span>${label}<em>${w}%</em></span><i><b style="width:${pct(v)}%"></b></i><small>${detail}</small></li>`;
+    const W = HAB_WEIGHTS;
+    const wsum = W.shelter + W.radio + W.walk + (f.ice === null ? 0 : W.ice);
+    const share = (w: number) => Math.round((w / wsum) * 100);
+    const here = h.at(this.rover.x, this.rover.y);
+    return `<div class="hab">
+        <p class="hab-best"><b>${pct(f.score)}<small>/100</small></b><span>Best spot for the base, marked on the map. The rover is parked where the score is ${pct(here.score)}.</span></p>
+        <ul class="hab-bars">
+          ${bar("Flat ground", f.flat, `${f.slopeDeg.toFixed(1)}° mean slope · must-have`, 100)}
+          ${bar("Walk to stops", f.walk, `${fmtDur(f.meanWalkS)} on average to ${h.stops} stop${h.stops === 1 ? "" : "s"}`, share(W.walk))}
+          ${bar("Radio", f.radio, `${f.stopsInSight} of ${h.stops} stops in line of sight`, share(W.radio))}
+          ${f.ice !== null ? bar("Buried ice", f.ice, `${fmtDur(f.iceWalkS ?? 0)} walk to the ice`, share(W.ice)) : ""}
+          ${bar("Radiation cover", f.shelter, `terrain blocks ${f.shieldPct.toFixed(1)}% of the dose`, share(W.shelter))}
+        </ul>
+        <div class="hab-act">
+          <button class="secondary" data-hab="show">${ic.locate}<span>Show</span></button>
+          <button class="secondary" data-hab="park" ${locked ? "disabled" : ""} title="Park the rover (the crew's base) at the best spot and re-plan">${ic.home}<span>Park the rover here</span></button>
+        </div>
+        <p class="note">Scored for the stops in your plan: tick other stops and the map changes. Flat ground multiplies the score; the rest is a weighted mean. Worked out at ${h.cell} m in ${Math.max(1, Math.round(h.ms))} ms from the HiRISE terrain.</p>
+      </div>`;
   }
 
   /** Who made a stop's 360° view, for its button (null: none). */

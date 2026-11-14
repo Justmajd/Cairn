@@ -9,7 +9,7 @@ export const SKY_HORIZON = 0xd9a878;
 export const MAP_BG = 0x0f0d0c;
 
 /** Map layers coloured on the GPU from the data grids. */
-export const LAYER_IDS = { none: 0, risk: 1, slope: 2, sand: 3, thermal: 4, geology: 5, shelter: 6, shield: 7, minerals: 8, radio: 9 } as const;
+export const LAYER_IDS = { none: 0, risk: 1, slope: 2, sand: 3, thermal: 4, geology: 5, shelter: 6, shield: 7, minerals: 8, radio: 9, hab: 10 } as const;
 export type LayerId = keyof typeof LAYER_IDS;
 
 export const COMMON = /* glsl */ `
@@ -370,6 +370,19 @@ const AOI_FRAG = /* glsl */ `
       vec2 cellUv = fract(vWorld.xz / 7.0) - 0.5;
       float pip = 1.0 - smoothstep(0.12, 0.12 + fwidth(vWorld.x) / 7.0 * 1.5, length(cellUv));
       return mix(c, vec4(0.85, 0.88, 1.0, c.a), pip * 0.55 * step(2.0, depth));
+    }
+    if (uLayer == 10) {
+      // hab site suitability (eva/hab.ts; shares the radio layer's texture slot): dim where a base
+      // cannot go, then blue -> green -> warm yellow for the best ground, with a line around the top tier
+      float sc = texture2D(uRadio, g).r;
+      if (sc < 0.02) return vec4(0.05, 0.03, 0.07, 0.62);
+      vec4 c = ramp(sc, 0.02, 0.3, 0.55, 0.75, 0.9,
+        vec4(0.22, 0.12, 0.5, 0.62), vec4(0.12, 0.38, 0.92, 0.62), vec4(0.08, 0.74, 0.8, 0.64),
+        vec4(0.32, 0.9, 0.38, 0.7), vec4(1.0, 0.86, 0.18, 0.88));
+      float k = sc / 0.85;
+      float w = fwidth(k) * 1.2;
+      float line = (1.0 - smoothstep(0.0, w, abs(k - 1.0))) * step(0.0, w);
+      return mix(c, vec4(1.0, 0.97, 0.8, 0.95), line * 0.85);
     }
     if (uLayer == 6) {
       float raw = texture2D(uShelter, g).r * 255.0;

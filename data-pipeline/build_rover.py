@@ -64,7 +64,7 @@ def main_no_rover():
                      "x": round(x, 1), "y": round(y, 1), "rmc": "", "sols": "",
                      "lon": round(lon, 6), "lat": round(lat, 6),
                      "description": s["description"], "science": s["science"], "whyHumans": s["whyHumans"],
-                     "dwellMin": s["dwellMin"], "images": []})
+                     "dwellMin": s["dwellMin"], "images": [], **({"ice": True} if s.get("ice") else {})})
         c, r = local_to_node(x, y)
         print(f"{sid:11s} x {x:7.1f} y {y:7.1f} slope {slope[r, c]:2d} deg")
     write_json("pois.json", {"source": cfg.get("source", "Stops chosen by CAIRN on the HiRISE terrain"), "pois": pois})
@@ -102,7 +102,7 @@ def main():
                      "x": round(x, 1), "y": round(y, 1), "rmc": s["rmc"], "sols": s["sols"],
                      "lon": round(p["lon"], 6), "lat": round(p["lat"], 6),
                      "description": s["description"], "science": s["science"], "whyHumans": s["whyHumans"],
-                     "dwellMin": s["dwellMin"], "images": images})
+                     "dwellMin": s["dwellMin"], "images": images, **({"ice": True} if s.get("ice") else {})})
         c, r = local_to_node(x, y)
         print(f"{sid:11s} x {x:7.1f} y {y:7.1f} slope {slope[r, c]:2d} deg  images {len(images)}")
     mission = CFG["rover"]["mission"]
