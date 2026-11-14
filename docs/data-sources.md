@@ -45,10 +45,10 @@ Rover: **Perseverance** (Mars 2020). EVA date: sol 1215 (Sol Perseverance cored 
 | Stop | Rover position (RMC) | Sols | Lon °E | Lat °N | Photos | 360° |
 |---|---|---|---|---|---|---|
 | Pressurised rover | 52_2638 | 1150–1154 | 77.31359 | 18.490711 | 3 | — |
-| Cheyava Falls · Bright Angel | 56_0 | 1210–1219 | 77.305191 | 18.497484 | 4 | yes |
-| Serpentine Rapids | 56_3368 | 1230–1244 | 77.30104 | 18.491903 | 3 | yes |
+| Cheyava Falls · Bright Angel | 56_0 | 1210–1219 | 77.305191 | 18.497484 | 4 | — |
+| Serpentine Rapids | 56_3368 | 1230–1244 | 77.30104 | 18.491903 | 3 | — |
 | Mount Washburn boulder field | 52_5032 | 1168–1169 | 77.313807 | 18.496073 | 2 | — |
-| Neretva Vallis floor | 52_6980 | 1171–1173 | 77.308325 | 18.495201 | 3 | yes |
+| Neretva Vallis floor | 52_6980 | 1171–1173 | 77.308325 | 18.495201 | 3 | — |
 
 ### Photos
 
@@ -69,18 +69,6 @@ Rover: **Perseverance** (Mars 2020). EVA date: sol 1215 (Sol Perseverance cored 
 | Channel floor | Navigation Camera (left) | 1172 | [NLF_1172_0770979129_113ECM_N0526980NCAM14171_01_195J](https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_1172_0770979129_113ECM_N0526980NCAM14171_01_195J) |
 | Channel floor | Mastcam-Z (left) | 1171 | [ZL0_1171_0770903225_928EBY_N0526980ZCAM09210_0630LMJ](https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_1171_0770903225_928EBY_N0526980ZCAM09210_0630LMJ) |
 | Channel floor | Mastcam-Z (left) | 1171 | [ZL0_1171_0770903573_928EBY_N0526980ZCAM09210_0630LMJ](https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_1171_0770903573_928EBY_N0526980ZCAM09210_0630LMJ) |
-
-### 360° panoramas
-
-Stitched by CAIRN from Perseverance Navcam raw images using their CAHVOR(E) camera models.
-
-Where the frames cover less than 90% of the horizon only the imaged part is shown (feathered mask), over a view the app renders from the HiRISE terrain. Stops not listed have no 360° view.
-
-| Stop | Frames | Sols | Imaged | Horizon |
-|---|---|---|---|---|
-| cheyava | 9 | 1210–1215 | 40% | 42% |
-| serpentine | 5 | 1230–1231 | 46% | 62% |
-| channel | 7 | 1171–1172 | 60% | 82% |
 
 ## Gale Crater — Mount Sharp boxwork
 

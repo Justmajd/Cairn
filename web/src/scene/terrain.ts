@@ -480,8 +480,7 @@ export interface Terrain {
    * Choose each tile's mesh detail from the on-screen size of one grid cell (pixels; below
    * thresholds[0] every 2nd node, below thresholds[1] every 4th) and skip tiles outside the view.
    */
-  /** `cull = false` keeps tiles outside the camera's frustum (a 360° capture sees every direction). */
-  updateLod?: (camera: THREE.PerspectiveCamera, viewPx: number, thresholds: [number, number], cull?: boolean) => void;
+  updateLod?: (camera: THREE.PerspectiveCamera, viewPx: number, thresholds: [number, number]) => void;
 }
 
 /** Uniforms shared by both terrain materials (one object, so a change applies to both). */
@@ -784,7 +783,7 @@ export function buildTerrain(
   const pv = new THREE.Matrix4();
   const tileSize = T * step * grid.cell;
   let signature = "";
-  const updateLod = (camera: THREE.PerspectiveCamera, viewPx: number, thresholds: [number, number], cull = true) => {
+  const updateLod = (camera: THREE.PerspectiveCamera, viewPx: number, thresholds: [number, number]) => {
     camera.updateMatrixWorld();
     frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     const exag = shared.uExag.value;
@@ -796,7 +795,7 @@ export function buildTerrain(
       const ty = Math.floor(t / TILES);
       box.min.set(tx * tileSize - half, tileH[t].lo * exag - 1, ty * tileSize - half);
       box.max.set((tx + 1) * tileSize - half, tileH[t].hi * exag + 1, (ty + 1) * tileSize - half);
-      if (cull && !frustum.intersectsBox(box)) {
+      if (!frustum.intersectsBox(box)) {
         choice.push(-1);
         continue;
       }

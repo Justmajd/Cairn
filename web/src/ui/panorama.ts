@@ -15,10 +15,6 @@ export interface PanoramaInfo {
   sols: number[];
   camera: string;
   rmc: string;
-  /** Imaging mask (alpha = imaged): the stitched photos are laid over a rendered view through it. */
-  mask?: string;
-  /** Photos composited over the rendered terrain view. */
-  composite?: boolean;
 }
 
 export interface PanoramaSet {
@@ -75,17 +71,12 @@ export function openPanorama(
       <b class="pano-head">000°</b>
     </div>
     <header class="pano-bar">
-      <div><span class="kicker">${info.composite ? `360° · ${esc(rover)} Navcam + HiRISE terrain` : `360° · ${esc(rover)} Navcam`}</span><h3>${esc(poi.name)}</h3></div>
+      <div><span class="kicker">360° · ${esc(rover)} Navcam</span><h3>${esc(poi.name)}</h3></div>
       <button class="close icon" aria-label="Close panorama">${ic.close}</button>
     </header>
     <footer class="pano-foot">
-      <span>${ic.info}${
-        info.composite
-          ? `Stitched by CAIRN from ${info.frames} ${esc(rover)} ${esc(info.camera)} frames, ${sols}, using each frame's camera model.
-      The rover imaged ${Math.round(info.coverage * 100)}% of the view; the rest is rendered from the HiRISE elevation model and image (no rocks under a metre).`
-          : `Stitched by CAIRN from ${info.frames} ${esc(rover)} ${esc(info.camera)} frames, ${sols}, using each frame's camera model.
-      ${Math.round(info.coverage * 100)}% of the view was imaged; the high sky and the ground under the rover are filled.`
-      }</span>
+      <span>${ic.info}Stitched by CAIRN from ${info.frames} ${esc(rover)} ${esc(info.camera)} frames, ${sols}, using each frame's camera model.
+      ${Math.round(info.coverage * 100)}% of the view was imaged; the high sky and the ground under the rover are filled.</span>
       <span class="hint-k"><b>Drag</b> look around · <b>Scroll</b> zoom · <b>Esc</b> close</span>
     </footer>`;
   host.hidden = false;
