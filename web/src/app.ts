@@ -1148,7 +1148,9 @@ export class App {
     const poi = this.poi(id);
     if (!poi) return;
     const card = $("#card");
-    card.innerHTML = stopCardHtml(poi, this.site.base, this.unitAt(poi.x, poi.y), arrived, this.roverName, !!this.site.panoramas?.panoramas[poi.id]);
+    const tex = this.site.meta.texture;
+    const orbital = tex.hi ? { url: this.site.base + tex.hi.file, sizeM: this.site.meta.sizeM, mPerPx: tex.hi.mPerPx } : { url: this.site.base + tex.file, sizeM: this.site.meta.sizeM, mPerPx: tex.mPerPx };
+    card.innerHTML = stopCardHtml(poi, this.site.base, this.unitAt(poi.x, poi.y), arrived, this.roverName, !!this.site.panoramas?.panoramas[poi.id], orbital);
     card.hidden = false;
     card.classList.toggle("arrived", arrived);
     this.cardPoi = id;
