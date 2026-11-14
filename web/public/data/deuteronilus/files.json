@@ -1,6 +1,42 @@
 {
 "files": [
 {
+"path": "../materials/cracked_red_ground_1k.webp",
+"bytes": 373326
+},
+{
+"path": "../materials/cracked_red_ground_2k.webp",
+"bytes": 1290950
+},
+{
+"path": "../materials/dry_ground_rocks_1k.webp",
+"bytes": 554558
+},
+{
+"path": "../materials/dry_ground_rocks_2k.webp",
+"bytes": 2216974
+},
+{
+"path": "../materials/materials.json",
+"bytes": 1382
+},
+{
+"path": "../materials/red_sand_1k.webp",
+"bytes": 396544
+},
+{
+"path": "../materials/red_sand_2k.webp",
+"bytes": 1481304
+},
+{
+"path": "../materials/rock_boulder_dry_1k.webp",
+"bytes": 230134
+},
+{
+"path": "../materials/rock_boulder_dry_2k.webp",
+"bytes": 935980
+},
+{
 "path": "context.json",
 "bytes": 1996
 },
@@ -85,5 +121,5 @@
 "bytes": 97192
 }
 ],
-"totalBytes": 18275551
+"totalBytes": 25756703
 }

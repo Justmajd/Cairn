@@ -9,7 +9,7 @@ import type { MeasuredPath, PathSample, Poi, RegionMeta, XY } from "../types";
 import { esc } from "../ui/dom";
 import { ic } from "../ui/icons";
 import { Rocks } from "./rocks";
-import { buildRegion, buildSky, buildTerrain, byteTexture, geologyLut, heightTexture, rgbaTexture, LAYER_IDS, LayerId, makeShadowUniforms, ShadowBaker, ShadowUniforms, SKY_HORIZON, Terrain } from "./terrain";
+import { buildRegion, buildSky, buildTerrain, byteTexture, packedGridTexture, geologyLut, heightTexture, rgbaTexture, LAYER_IDS, LayerId, makeShadowUniforms, ShadowBaker, ShadowUniforms, SKY_HORIZON, Terrain } from "./terrain";
 
 export interface SceneTextures {
   map: THREE.Texture; // HiRISE image of the walk area
@@ -164,10 +164,7 @@ export class SceneView {
 
     const n = grid.n;
     const layers = {
-      slope: byteTexture(grid.slope, n),
-      sand: byteTexture(grid.sand, n),
-      effort: byteTexture(grid.effort, n),
-      risk: byteTexture(grid.risk, n),
+      terrain4: packedGridTexture(grid.slope, grid.sand, grid.effort, grid.risk, n),
       thermal: byteTexture(site.thermalGrid ?? new Uint8Array(n * n), n),
       geology: byteTexture(site.geologyGrid ?? new Uint8Array(n * n), n, THREE.NearestFilter),
       geoLut: geologyLut(site.geology?.units ?? []),
@@ -239,6 +236,18 @@ export class SceneView {
     this.bindPointer();
     new ResizeObserver(() => this.resize()).observe(host);
     this.resize();
+  }
+
+  /** Photo-scanned close-up materials for the ground and the rocks (loaded after the planner is up). */
+  setMaterials(m: Record<"sand" | "gravel" | "bedrock" | "rock", { texture: THREE.Texture; sizeM: number }>): void {
+    const u = this.terrain.uniforms;
+    u.uMatSand.value = m.sand.texture;
+    u.uMatGravel.value = m.gravel.texture;
+    u.uMatBed.value = m.bedrock.texture;
+    (u.uMatSize.value as THREE.Vector3).set(m.sand.sizeM, m.gravel.sizeM, m.bedrock.sizeM);
+    u.uMatOn.value = 1;
+    this.rocks.setMaterial(m.rock.texture, m.rock.sizeM);
+    this.dirty = true;
   }
 
   /** Compile every shader without blocking (KHR_parallel_shader_compile where available). */

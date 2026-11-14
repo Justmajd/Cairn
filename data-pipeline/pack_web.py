@@ -161,6 +161,12 @@ def main() -> None:
                 continue
             p = os.path.join(root, n)
             files.append({"path": os.path.relpath(p, OUT).replace(os.sep, "/"), "bytes": os.path.getsize(p)})
+    # the close-up ground materials are shared by every site (data/materials, build_materials.py)
+    shared = os.path.normpath(os.path.join(OUT, "..", "materials"))
+    if os.path.isdir(shared):
+        for n in sorted(os.listdir(shared)):
+            if not n.startswith("."):
+                files.append({"path": "../materials/" + n, "bytes": os.path.getsize(os.path.join(shared, n))})
     files.sort(key=lambda f: f["path"])
     with open(os.path.join(OUT, "files.json"), "w") as f:
         json.dump({"files": files, "totalBytes": sum(f["bytes"] for f in files)}, f, indent=0)

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { TerrainGrid } from "../data/grid";
-import { COMMON, LIGHT, type ShadowUniforms } from "./terrain";
+import { COMMON, LIGHT, NEUTRAL_MATERIAL, type ShadowUniforms } from "./terrain";
 
 /**
  * Rocks smaller than the HiRISE resolution (5–70 cm), scattered around the camera so the ground has
@@ -44,15 +44,33 @@ const FRAG = /* glsl */ `
   uniform sampler2D uShadowAoi;
   uniform float uShadowAoiN;
   uniform float uHalf;
+  uniform sampler2D uMatRock; // photo-scanned rock (CC0): R = brightness ratio x0.5, GB = normal xy
+  uniform float uMatRockSize;
   varying vec3 vN;
   varying vec3 vW;
   varying float vTone;
+  // triplanar: rocks have no texture coordinates, so project the material along the three world axes
+  float rockMat(vec3 p, vec3 n, out vec3 bump) {
+    vec3 w = pow(abs(n), vec3(4.0));
+    w /= w.x + w.y + w.z;
+    float s = 1.0 / uMatRockSize;
+    vec3 x = texture2D(uMatRock, p.zy * s).rgb;
+    vec3 y = texture2D(uMatRock, p.xz * s).rgb;
+    vec3 z = texture2D(uMatRock, p.xy * s).rgb;
+    float d = x.r * w.x + y.r * w.y + z.r * w.z;
+    vec2 nx = x.gb * 2.0 - 1.0, ny = y.gb * 2.0 - 1.0, nz = z.gb * 2.0 - 1.0;
+    bump = vec3(0.0, nx.y, nx.x) * w.x + vec3(ny.x, 0.0, ny.y) * w.y + vec3(nz.x, nz.y, 0.0) * w.z;
+    return d * 2.0;
+  }
   void main() {
     vec2 uv = vec2((vW.x + uHalf) / (2.0 * uHalf), (uHalf - vW.z) / (2.0 * uHalf));
     float g = texture2D(uMap, uv).r;
     vec3 c = marsTint(clamp(g * 0.82 + vTone, 0.0, 1.0));
     c = mix(c, vec3(dot(c, vec3(0.3333))), 0.3);          // rock is greyer than the dust around it
     vec3 n = normalize(vN);
+    vec3 bump;
+    c *= rockMat(vW * 3.0, n, bump);      // x3: rocks are small, show the scan's grain at its own scale
+    n = normalize(n + bump * 0.9);
     float vis = texture2D(uShadowAoi, nodeUv(uv, uShadowAoiN)).r;
     float base = smoothstep(-0.6, 0.4, n.y);              // underside darker: it faces the ground
     c *= marsLight(n, normalize(cameraPosition - vW), vis, mix(0.35, 1.0, base));
@@ -135,6 +153,8 @@ export class Rocks {
   private readonly strength = { value: 0.0 };
   private readonly sunDir: THREE.Vector3;
   private readonly sunAt = new THREE.Vector3();
+  private readonly matRock = { value: NEUTRAL_MATERIAL as THREE.Texture };
+  private readonly matRockSize = { value: 1.8 };
 
   constructor(
     private readonly grid: TerrainGrid,
@@ -144,7 +164,7 @@ export class Rocks {
     shared: ShadowUniforms,
   ) {
     const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog]);
-    Object.assign(uniforms, { uMap: map, uShadowAoi: shared.uShadowAoi, uShadowAoiN: shared.uShadowAoiN, uSunDir: shared.uSunDir, uHalf: { value: half } });
+    Object.assign(uniforms, { uMap: map, uShadowAoi: shared.uShadowAoi, uShadowAoiN: shared.uShadowAoiN, uSunDir: shared.uSunDir, uHalf: { value: half }, uMatRock: this.matRock, uMatRockSize: this.matRockSize });
     const material = new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG, fog: true });
     this.meshes = [11, 23, 37].map((seed) => {
       const mesh = new THREE.InstancedMesh(rockGeometry(seed), material, MAX_PER_SHAPE);
@@ -164,6 +184,11 @@ export class Rocks {
     this.shadows.renderOrder = 1;
     this.group.add(this.shadows);
     this.group.visible = false;
+  }
+
+  setMaterial(texture: THREE.Texture, sizeM: number): void {
+    this.matRock.value = texture;
+    this.matRockSize.value = sizeM;
   }
 
   /** Scatter rocks around the camera (world position) when it is low enough to see them. */

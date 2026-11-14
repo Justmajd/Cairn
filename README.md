@@ -142,6 +142,7 @@ make build     # writes web/public/data/jezero/  (make gale, make deuteronilus f
 |---|---|
 | CRISM mineral band depths (Jezero; 25% of the walk area imaged) | Mineral strengths scaled to the observations; terrain-shielding zenith exponent |
 | Rover Navcam frames and camera models | The stitched panoramas (filled sky and ground under the rover are marked as filled) |
+| Poly Haven CC0 photo-scanned materials (Red Sand, Dry Ground Rocks, Cracked Red Ground, Rock Boulder Dry) | Close-up ground and rock texture in the 3D view only (rendering detail; colour stays HiRISE) |
 | NASA/JPL-Caltech Photojournal PIA26369, PIA26696 | 360° colour panoramas at Bright Angel and Nevado Sajama |
 | Terrain, imagery, thermal image, geologic units | Spacesuit and physiology numbers (mass, oxygen supply, speeds) — demo values, listed in *Model assumptions* |
 | Stop positions and Perseverance's traverse | Loose-sand hazard — our own analysis of HiRISE and THEMIS data |

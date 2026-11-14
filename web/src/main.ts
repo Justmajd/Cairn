@@ -130,6 +130,33 @@ async function boot(): Promise<void> {
   if (query.get("demo") === "1") void app.startDemo();
   else if (query.get("skip") !== "1" && !sharedPlan) showBriefing(site, () => {}, sites);
 
+  // close-up ground materials (CC0 photo scans, shared by all sites): after the planner is up
+  void (async () => {
+    try {
+      const root = `${import.meta.env.BASE_URL}data/`;
+      const meta = (await (await fetch(`${root}materials/materials.json`)).json()) as {
+        materials: Record<"sand" | "gravel" | "bedrock" | "rock", { sizeM: number; files: Record<string, string> }>;
+      };
+      const res = quality === "high" && maxTex >= 4096 ? "2k" : "1k";
+      const aniso = view.renderer.capabilities.getMaxAnisotropy();
+      const entries = await Promise.all(
+        (Object.keys(meta.materials) as ("sand" | "gravel" | "bedrock" | "rock")[]).map(async (role) => {
+          const t = await loadTexture(root + meta.materials[role].files[res]);
+          t.wrapS = t.wrapT = THREE.RepeatWrapping;
+          t.generateMipmaps = true;
+          t.minFilter = THREE.LinearMipmapLinearFilter;
+          t.anisotropy = aniso;
+          // Bright Angel's fracture plates are ~0.5-1 m: the scanned mud-crack ground is shown 3x larger
+          const scale = role === "bedrock" ? 3 : 1;
+          return [role, { texture: t, sizeM: meta.materials[role].sizeM * scale }] as const;
+        }),
+      );
+      view.setMaterials(Object.fromEntries(entries) as Parameters<typeof view.setMaterials>[0]);
+    } catch (err) {
+      console.warn("close-up materials not loaded", err);
+    }
+  })();
+
   if (useHi) {
     loadTexture(site.base + hi!.file)
       .then((t) => {

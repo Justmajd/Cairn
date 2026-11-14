@@ -1,0 +1,62 @@
+{
+ "source": "Poly Haven (polyhaven.com), CC0 photo-scanned materials",
+ "materials": {
+  "sand": {
+   "id": "red_sand",
+   "name": "Red Sand",
+   "sizeM": 3.0,
+   "files": {
+    "2k": "materials/red_sand_2k.webp",
+    "1k": "materials/red_sand_1k.webp"
+   },
+   "authors": [
+    "Rohit Seervi"
+   ],
+   "license": "CC0",
+   "url": "https://polyhaven.com/a/red_sand"
+  },
+  "gravel": {
+   "id": "dry_ground_rocks",
+   "name": "Dry Ground Rocks",
+   "sizeM": 4.0,
+   "files": {
+    "2k": "materials/dry_ground_rocks_2k.webp",
+    "1k": "materials/dry_ground_rocks_1k.webp"
+   },
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "license": "CC0",
+   "url": "https://polyhaven.com/a/dry_ground_rocks"
+  },
+  "bedrock": {
+   "id": "cracked_red_ground",
+   "name": "Cracked Red Ground",
+   "sizeM": 2.0,
+   "files": {
+    "2k": "materials/cracked_red_ground_2k.webp",
+    "1k": "materials/cracked_red_ground_1k.webp"
+   },
+   "authors": [
+    "Amal Kumar"
+   ],
+   "license": "CC0",
+   "url": "https://polyhaven.com/a/cracked_red_ground"
+  },
+  "rock": {
+   "id": "rock_boulder_dry",
+   "name": "Rock Boulder Dry",
+   "sizeM": 1.8,
+   "files": {
+    "2k": "materials/rock_boulder_dry_2k.webp",
+    "1k": "materials/rock_boulder_dry_1k.webp"
+   },
+   "authors": [
+    "Dimitrios Savva",
+    "Rico Cilliers"
+   ],
+   "license": "CC0",
+   "url": "https://polyhaven.com/a/rock_boulder_dry"
+  }
+ }
+}

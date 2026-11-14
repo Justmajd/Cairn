@@ -161,6 +161,12 @@ const AOI_FRAG = /* glsl */ `
   uniform sampler2D uMap;
   uniform vec2 uMapSize;
   uniform float uDetail;
+  // photo-scanned close-up materials (CC0, Poly Haven): R = brightness ratio x0.5, GB = normal xy
+  uniform sampler2D uMatSand;
+  uniform sampler2D uMatGravel;
+  uniform sampler2D uMatBed;
+  uniform vec3 uMatSize; // metres per tile: sand, gravel, bedrock
+  uniform float uMatOn;
   uniform sampler2D uRelief;
   uniform float uReliefRange;
   uniform float uExag;
@@ -170,10 +176,7 @@ const AOI_FRAG = /* glsl */ `
   uniform int uLayer;
   uniform float uLayerMix;
   uniform float uGridN;
-  uniform sampler2D uSlope;
-  uniform sampler2D uSand;
-  uniform sampler2D uEffort;
-  uniform sampler2D uRisk;
+  uniform sampler2D uGrid4; // r = slope (deg), g = sand, b = effort, a = risk (bytes)
   uniform sampler2D uThermal;
   uniform sampler2D uShelter;
   uniform float uReveal; // minutes from the rover shown so far (the layer floods outward when it opens)
@@ -215,6 +218,19 @@ const AOI_FRAG = /* glsl */ `
   // data grids are node-registered (n x n), row 0 = north
   vec2 gridUv(vec2 uv) { return nodeUv(uv, uGridN); }
 
+  // one material, sampled twice (second copy rotated and scaled) and mixed by a slow noise: no visible tiling
+  // explicit gradients: called inside per-pixel branches, where implicit derivatives are undefined
+  vec3 matSample(sampler2D t, vec2 p, vec2 dx, vec2 dy, float size, float mixK) {
+    vec2 uv = p / size;
+    vec3 a = textureGrad(t, uv, dx / size, dy / size).rgb;
+    mat2 r = mat2(0.8, -0.6, 0.6, 0.8);
+    vec2 uv2 = r * uv * 0.71 + vec2(0.37, 0.19);
+    vec3 b = textureGrad(t, uv2, r * dx * 0.71 / size, r * dy * 0.71 / size).rgb;
+    vec2 nb = mat2(0.8, 0.6, -0.6, 0.8) * (b.gb * 2.0 - 1.0); // rotate the second normal back
+    b.gb = nb * 0.5 + 0.5;
+    return mix(a, b, mixK);
+  }
+
   // ---- ground detail below the image resolution (rendering detail, not data) -----------------
   // sin-free hash: stays precise at kilometre-scale coordinates (the sin hash shows a grid there)
   float hash2(vec2 p) {
@@ -251,6 +267,7 @@ const AOI_FRAG = /* glsl */ `
       amp *= 0.42;
     }
     // (pebbles and cobbles are real 3D rocks now: scene/rocks.ts)
+    if (uMatOn > 0.5) acc *= 0.5; // the scanned materials carry the fine detail
     return acc;
   }
 
@@ -287,8 +304,8 @@ const AOI_FRAG = /* glsl */ `
 
   vec4 layerColor(vec2 g) {
     if (uLayer == 1) {
-      float effort = texture2D(uEffort, g).r * 255.0 / 50.0;
-      float riskRaw = texture2D(uRisk, g).r * 255.0;
+      float effort = texture2D(uGrid4, g).b * 255.0 / 50.0;
+      float riskRaw = texture2D(uGrid4, g).a * 255.0;
       float total = effort * min(riskRaw, 254.0) / 50.0;
       vec4 c = ramp(total, 1.0, 1.25, 1.9, 2.8, 4.5,
         vec4(OK_BLUE, 0.0), vec4(OK_BLUE, 0.4), vec4(OK_YELLOW, 0.58),
@@ -296,14 +313,14 @@ const AOI_FRAG = /* glsl */ `
       return impassable(c, smoothstep(200.0, 250.0, riskRaw));
     }
     if (uLayer == 2) {
-      float deg = texture2D(uSlope, g).r * 255.0;
+      float deg = texture2D(uGrid4, g).r * 255.0;
       vec4 c = ramp(deg, 5.0, 10.0, 15.0, 20.0, 25.0,
         vec4(OK_BLUE, 0.0), vec4(OK_BLUE, 0.45), vec4(OK_YELLOW, 0.6),
         vec4(OK_ORANGE, 0.72), vec4(OK_VERMILLION, 0.82));
-      return impassable(c, step(250.0, texture2D(uRisk, g).r * 255.0));
+      return impassable(c, step(250.0, texture2D(uGrid4, g).a * 255.0));
     }
     if (uLayer == 3) {
-      float s = texture2D(uSand, g).r;
+      float s = texture2D(uGrid4, g).g;
       return vec4(1.0, 0.76, 0.3, smoothstep(0.15, 0.85, s) * 0.8);
     }
     if (uLayer == 4) {
@@ -395,6 +412,29 @@ const AOI_FRAG = /* glsl */ `
       n += vec3(-gd.x, 0.0, -gd.y);
       c *= 1.0 + rg.z;
     }
+    // close up, photo-scanned materials add what HiRISE cannot see: grain, cracks, pebbles (rendering detail).
+    // Which one comes from the data: loose sand where the sand map says so, light-toned bedrock where the
+    // HiRISE image is bright, gravelly regolith elsewhere.  The HiRISE colour and brightness are kept.
+    vec2 pdx = dFdx(vWorld.xz);
+    vec2 pdy = dFdy(vWorld.xz);
+    if (uMatOn > 0.5 && pw < 0.35) {
+      float fade = 1.0 - smoothstep(0.06, 0.35, pw);
+      vec2 gu = gridUv(vUv);
+      float sandK = smoothstep(0.12, 0.55, texture2D(uGrid4, gu).g);
+      float bedK = (1.0 - sandK) * smoothstep(0.42, 0.66, g);
+      float gravK = max(0.0, 1.0 - sandK - bedK);
+      float mixK = smoothstep(0.3, 0.7, noised(vWorld.xz * 0.11).x);
+      vec3 m = vec3(0.0);
+      if (sandK > 0.01) m += sandK * matSample(uMatSand, vWorld.xz, pdx, pdy, uMatSize.x, mixK);
+      if (gravK > 0.01) m += gravK * matSample(uMatGravel, vWorld.xz, pdx, pdy, uMatSize.y, mixK);
+      if (bedK > 0.01) m += bedK * matSample(uMatBed, vWorld.xz, pdx, pdy, uMatSize.z, mixK);
+      m /= max(sandK + gravK + bedK, 1e-3);
+      float d = m.r * 2.0;
+      d = 1.0 + (d - 1.0) * 1.6;                 // a little more contrast than the scan's albedo
+      c *= mix(1.0, clamp(d, 0.35, 1.8), fade);
+      vec2 mn = (m.gb * 2.0 - 1.0) * 2.2 * fade;
+      n += vec3(mn.x, 0.0, mn.y) * uExag;
+    }
     n = normalize(n);
     vec3 view = normalize(cameraPosition - vWorld);
     float skyVis = smoothstep(0.62, 0.99, texture2D(uShield, gridUv(vUv)).r); // terrain sky-view (AO, from the DTM)
@@ -452,10 +492,8 @@ const REGION_FRAG = /* glsl */ `
 `;
 
 export interface GridTextures {
-  slope: THREE.DataTexture;
-  sand: THREE.DataTexture;
-  effort: THREE.DataTexture;
-  risk: THREE.DataTexture;
+  /** slope (deg), sand, effort, risk in one RGBA texture: one sampler instead of four (WebGL allows 16) */
+  terrain4: THREE.DataTexture;
   thermal: THREE.DataTexture;
   geology: THREE.DataTexture;
   geoLut: THREE.DataTexture;
@@ -485,6 +523,23 @@ export function geologyLut(units: GeologyUnit[]): THREE.DataTexture {
 }
 
 /** RGBA-per-node grid (4 bytes) as a texture, smoothly interpolated. */
+/** Four byte grids interleaved into one RGBA texture (same node layout, smooth interpolation). */
+export function packedGridTexture(r: Uint8Array, g: Uint8Array, b: Uint8Array, a: Uint8Array, n: number): THREE.DataTexture {
+  const data = new Uint8Array(n * n * 4);
+  for (let i = 0, j = 0; i < n * n; i++, j += 4) {
+    data[j] = r[i];
+    data[j + 1] = g[i];
+    data[j + 2] = b[i];
+    data[j + 3] = a[i];
+  }
+  const tex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 export function rgbaTexture(rgba: Uint8Array | null, n: number): THREE.DataTexture {
   const data = rgba ? new Uint8Array(rgba) : new Uint8Array(n * n * 4);
   const tex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat);
@@ -536,6 +591,13 @@ export function heightTexture(heights: Float32Array, n: number, zRef: number): T
   tex.needsUpdate = true;
   return tex;
 }
+
+/** 1x1 "no detail" material (ratio 1, flat normal) until the real ones load. */
+export const NEUTRAL_MATERIAL = (() => {
+  const t = new THREE.DataTexture(new Uint8Array([128, 128, 128, 255]), 1, 1);
+  t.needsUpdate = true;
+  return t;
+})();
 
 export function makeShadowUniforms(): ShadowUniforms {
   return {
@@ -793,19 +855,21 @@ export function buildTerrain(
     uMap: { value: map },
     uMapSize: { value: new THREE.Vector2(img.width, img.height) },
     uDetail: { value: step === 1 ? 1 : 0 }, // ?q=low skips the close-up regolith detail
+    uMatSand: { value: NEUTRAL_MATERIAL },
+    uMatGravel: { value: NEUTRAL_MATERIAL },
+    uMatBed: { value: NEUTRAL_MATERIAL },
+    uMatSize: { value: new THREE.Vector3(3, 4, 2) },
+    uMatOn: { value: 0 },
     uRelief: { value: relief },
     uReliefRange: { value: reliefRange },
     uLayer: { value: 0 },
     uLayerMix: { value: 0.8 },
     uGridN: { value: n },
-    uSlope: { value: layers.slope },
-    uSand: { value: layers.sand },
-    uEffort: { value: layers.effort },
-    uRisk: { value: layers.risk },
+    uGrid4: { value: layers.terrain4 },
     uThermal: { value: layers.thermal },
-    uShelter: { value: layers.slope },
+    uShelter: { value: layers.terrain4 },
     uReveal: { value: 1000 },
-    uRadio: { value: layers.slope },
+    uRadio: { value: layers.terrain4 },
     uGeo: { value: layers.geology },
     uGeoLut: { value: layers.geoLut },
     uShield: { value: layers.shield },
