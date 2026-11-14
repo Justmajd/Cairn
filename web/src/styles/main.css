@@ -44,7 +44,7 @@ ul { list-style: none; padding: 0; }
 a { color: var(--accent); cursor: pointer; text-decoration: none; }
 a:hover { text-decoration: underline; }
 .ic { flex: none; display: block; }
-.sr { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.sr { position: absolute; top: 0; left: 0; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
 .logo { width: 24px; height: 24px; flex: none; }
 .good { color: var(--good); }
 .bad { color: var(--bad); }
@@ -120,7 +120,7 @@ button.link:hover:not(:disabled) { color: var(--accent); background: transparent
 
 #left { top: calc(var(--gap) * 2 + var(--top-h)); left: var(--gap); max-height: calc(100% - var(--top-h) - var(--gap) * 3); width: var(--left-w); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
 /* side panels are as tall as their content, so the map shows below them */
-#right { top: calc(var(--gap) * 2 + var(--top-h)); right: var(--gap); max-height: calc(100% - var(--top-h) - var(--gap) * 3); width: var(--right-w); display: flex; flex-direction: column; overflow: hidden; }
+#right { top: calc(var(--gap) * 2 + var(--top-h)); right: var(--gap); max-height: calc(100% - var(--top-h) - var(--gap) * 3); width: var(--right-w); display: flex; flex-direction: column; overflow: hidden; overflow: clip; }
 #bottom { left: calc(var(--gap) * 2 + var(--left-w)); right: calc(var(--gap) * 2 + var(--right-w)); bottom: var(--gap); height: var(--bottom-h); display: flex; flex-direction: column; overflow: hidden; padding: 0; }
 #app[data-view="walk"] #left { display: none; }
 #app[data-view="walk"] #bottom { left: var(--gap); }
@@ -188,7 +188,7 @@ input[type="range"]::-moz-range-track { height: 3px; border-radius: 2px; backgro
 .slider.start .daylight { display: block; color: var(--text-3); font-size: 11px; margin-top: 2px; }
 input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5.5px; border-radius: 50%; background: var(--text); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); }
 input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: var(--text); }
-.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; cursor: pointer; color: var(--text-2); font-size: 12.5px; }
+.switch { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; cursor: pointer; color: var(--text-2); font-size: 12.5px; }
 .switch:hover { color: var(--text); }
 .switch i { flex: none; position: relative; width: 30px; height: 18px; border-radius: 9px; background: var(--line-2); transition: background 0.15s; }
 .switch i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #e8e1da; transition: transform 0.15s; }
