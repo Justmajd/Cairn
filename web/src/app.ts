@@ -1234,7 +1234,10 @@ export class App {
         },
         run: async (d) => {
           this.selectLayer("risk");
-          await d.sleep(7500);
+          await d.sleep(7000);
+          this.selectLayer("shelter");
+          d.say(`And the way home from every point of the map, worked out in ${Math.max(0.1, this.field.ms / 1000).toFixed(1)} s when CAIRN opened — so an emergency re-route is instant.`);
+          await d.sleep(4500);
           this.selectLayer("none");
         },
       },
