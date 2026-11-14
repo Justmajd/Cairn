@@ -36,6 +36,9 @@ interface Plan {
   relayAtS: number;
 }
 
+/** Steepest ground the pressurised rover may park on (assumption). */
+const ROVER_PARK_MAX_SLOPE = 10;
+
 /** Terrain classes of the Traversability layer (same thresholds as the map colours). */
 const HAZARD_CLASSES = ["easy", "moderate", "hard", "very hard", "impassable"] as const;
 const HAZARD_COLORS = ["#56b4e9", "#f0e442", "#e69f00", "#d55e00", "#8c2973"];
@@ -87,7 +90,11 @@ const PX_PER_DEG = 4;
 export class App {
   private readonly P: EvaParams = DEFAULT_PARAMS;
   private readonly rad: RadiationModel;
-  private readonly rover: Poi;
+  private rover: Poi;
+  /** Where the site data parks the rover; the crew can park it elsewhere (see moveRover). */
+  private readonly roverHome: XY;
+  /** Way home from every point, and the rover's radio shadow, for where the rover is now. */
+  private field: FieldResult;
   private pois: Poi[];
   private customCount = 0;
   private selected: string[];
@@ -133,7 +140,7 @@ export class App {
 
   private readonly lookup: ReturnLookup;
   /** Radio shadow of the rover's mast antenna over the walk area (see eva/radio). */
-  private readonly radio: Uint8Array;
+  private radio: Uint8Array;
   private radioLost = false;
   /** Plan with the suggested relay (the crew stands it up on the way). */
   private useRelay = false;
@@ -152,9 +159,10 @@ export class App {
     private readonly site: SiteData,
     private readonly view: SceneView,
     private readonly router: Router,
-    private readonly field: FieldResult,
+    field: FieldResult,
     private readonly sites: SiteEntry[] = [],
   ) {
+    this.field = field;
     this.rad = new RadiationModel(site.replay);
     this.roverName = site.meta.rover?.name ?? "Perseverance";
     this.selected = site.pois.filter((p) => p.kind === "objective").map((p) => p.id);
@@ -163,9 +171,10 @@ export class App {
     this.lat = site.meta.centerLonLat?.lat ?? (site.meta.boundsLonLat.south + site.meta.boundsLonLat.north) / 2;
     this.pois = site.pois.slice();
     this.rover = this.pois.find((p) => p.kind === "shelter")!;
+    this.roverHome = { x: this.rover.x, y: this.rover.y };
     this.lookup = (x, y) => {
       const node = site.grid.nodeAt(x, y);
-      return { timeS: field.time[node], energyJ: field.energy[node] };
+      return { timeS: this.field.time[node], energyJ: this.field.energy[node] };
     };
 
     this.radio = field.radio; // computed by the routing worker at start-up
@@ -184,7 +193,8 @@ export class App {
     this.renderRight();
     this.renderBottom();
     this.syncViewButtons();
-    void this.replan();
+    if (this.pendingRover) void this.moveRover(this.pendingRover);
+    else void this.replan();
   }
 
   // ================================================================ chrome
@@ -290,11 +300,12 @@ export class App {
       if (t.id === "more-layers") this.moreLayersOpen = t.open;
     }, true); // toggle does not bubble
     left.addEventListener("click", (ev) => {
-      const t = (ev.target as HTMLElement).closest<HTMLElement>("[data-info],[data-src],[data-remove]");
+      const t = (ev.target as HTMLElement).closest<HTMLElement>("[data-info],[data-src],[data-remove],[data-rover-reset]");
       if (!t) return;
       if (t.dataset.info) this.openCard(t.dataset.info, false);
       else if (t.dataset.src) showSources(this.site, t.dataset.src);
       else if (t.dataset.remove) this.removeCustom(t.dataset.remove);
+      else if (t.dataset.roverReset) void this.moveRover(this.roverHome);
     });
 
     const right = $("#right");
@@ -687,7 +698,9 @@ export class App {
     const blocked = grid.isBlocked(node) || !Number.isFinite(this.field.time[node]);
     menu.innerHTML = blocked
       ? `<p class="t bad">${ic.warn}Too steep to walk</p><p>Slope ${grid.slope[node]}°, beyond the ${this.site.meta.model.slopeLimitDeg}° limit or cut off from the rover.</p><div class="row"><button data-x="close">OK</button></div>`
-      : `<p class="t">${ic.walk}${fmtDur(this.field.time[node])} from the rover</p><p>Slope ${grid.slope[node]}°${this.site.geologyGrid ? ` · ${esc(this.unitAt(p.x, p.y) ?? "unmapped unit")}` : ""}</p><div class="row"><button data-x="close">Cancel</button><button class="primary" data-x="add">${ic.plus}<span>Add stop</span></button></div>`;
+      : `<p class="t">${ic.walk}${fmtDur(this.field.time[node])} from the rover</p><p>Slope ${grid.slope[node]}°${this.site.geologyGrid ? ` · ${esc(this.unitAt(p.x, p.y) ?? "unmapped unit")}` : ""}</p><div class="row"><button data-x="close">Cancel</button>${
+          grid.slope[node] <= ROVER_PARK_MAX_SLOPE ? `<button data-x="rover" title="Move the rover (start, end and shelter) here">${ic.home}<span>Park rover</span></button>` : ""
+        }<button class="primary" data-x="add">${ic.plus}<span>Add stop</span></button></div>`;
     menu.hidden = false;
     menu.style.left = `${Math.min(rect.width - 260, Math.max(8, clientX - rect.left + 12))}px`;
     menu.style.top = `${Math.min(rect.height - 150, Math.max(8, clientY - rect.top + 12))}px`;
@@ -696,7 +709,36 @@ export class App {
       if (!act) return;
       menu.hidden = true;
       if (act === "add") this.addCustom(p);
+      else if (act === "rover") void this.moveRover(p);
     };
+  }
+
+  private roverMoved(): boolean {
+    return Math.hypot(this.rover.x - this.roverHome.x, this.rover.y - this.roverHome.y) > 1;
+  }
+
+  /**
+   * Park the pressurised rover somewhere else: the way home from every point and the radio shadow are
+   * worked out again from there (in the routing worker), then the plan follows.
+   */
+  private async moveRover(p: XY): Promise<void> {
+    if (this.phase !== "planning") return;
+    const at = { x: Math.round(p.x), y: Math.round(p.y) };
+    this.busy = true;
+    this.renderRight();
+    this.toast("Moving the rover: working out the way home from every point…", 2500);
+    const field = await this.router.init(this.site.grid, this.P, at);
+    this.field = field;
+    this.radio = field.radio;
+    this.relayCache = null;
+    this.view.setShelterTimes(field.time);
+    const moved: Poi = { ...this.rover, x: at.x, y: at.y };
+    this.pois = this.pois.map((q) => (q === this.rover ? moved : q));
+    this.rover = moved;
+    this.busy = false;
+    this.renderLeft();
+    await this.replan();
+    this.toast(this.roverMoved() ? `Rover parked here. Way home from every point recomputed in ${Math.max(0.1, field.ms / 1000).toFixed(1)} s.` : "Rover back at its planned spot.", 3500);
   }
 
   private addCustom(p: XY): void {
@@ -821,7 +863,7 @@ export class App {
         <ul class="stops">
           <li class="stop shelter">
             <span class="pin home">${ic.home}</span>
-            <span class="txt"><b>${esc(this.rover.name)}</b><small>Start, end and radiation shelter</small></span>
+            <span class="txt"><b>${esc(this.rover.name)}</b><small>${this.roverMoved() ? `Parked ${fmtDist(Math.hypot(this.rover.x - this.roverHome.x, this.rover.y - this.roverHome.y))} from the planned spot · <button class="link" data-rover-reset="1">put back</button>` : "Start, end and radiation shelter"}</small></span>
             <button class="icon" data-info="${this.rover.id}" title="Photos">${ic.image}</button>
           </li>
           ${stops}
@@ -1250,6 +1292,7 @@ export class App {
 
   async startDemo(): Promise<void> {
     this.demo?.stop();
+    if (this.phase === "planning" && this.roverMoved()) await this.moveRover(this.roverHome); // the demo tells the site's own plan
     $("#briefing").hidden = true;
     $("#modal").hidden = true;
     const objective = this.site.pois.find((p) => p.kind === "objective");
@@ -1431,6 +1474,7 @@ export class App {
     if (!this.storm) parts.push("storm=0");
     if (this.buddy) parts.push("buddy=1");
     if (this.useRelay) parts.push("relay=1");
+    if (this.roverMoved()) parts.push(`rover=${Math.round(this.rover.x)}_${Math.round(this.rover.y)}`);
     return parts.join("&");
   }
 
@@ -1458,7 +1502,12 @@ export class App {
     if (q.get("storm") === "0") this.storm = false;
     if (q.get("buddy") === "1") this.buddy = true;
     if (q.get("relay") === "1") this.useRelay = true;
+    const [rx, ry] = (q.get("rover") ?? "").split("_").map(Number);
+    if (Number.isFinite(rx) && Number.isFinite(ry) && grid.inside(rx, ry) && !grid.isBlocked(grid.nodeAt(rx, ry))) {
+      this.pendingRover = { x: rx, y: ry }; // moved once the panels are up (it needs the routing worker)
+    }
   }
+  private pendingRover: XY | null = null;
 
   private async copyPlanLink(): Promise<void> {
     this.writePlanHash();

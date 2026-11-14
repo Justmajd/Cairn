@@ -1055,7 +1055,15 @@ export class SceneView {
       const t = timeS[i];
       data[i] = Number.isFinite(t) ? Math.min(254, Math.round((t / 60) * 4)) : 255;
     }
+    this.shelterTex?.dispose();
     this.shelterTex = byteTexture(data, this.site.grid.n);
+    // the rover moved while the layer is on screen: show the new field (it floods out again)
+    const u = this.terrain.uniforms;
+    if (u.uLayer.value === LAYER_IDS.shelter) {
+      u.uShelter.value = this.shelterTex;
+      if (!reducedMotion.matches) this.revealT = 0;
+      this.dirty = true;
+    }
   }
 
   /** Thin line around the HiRISE walk area, with a note on where the 25 cm data ends. */
