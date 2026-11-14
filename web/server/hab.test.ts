@@ -29,10 +29,10 @@ function freePort(): Promise<number> {
 class Client {
   ws: WebSocket;
   got: ServerMsg[] = [];
-  constructor(role: "crew" | "mc", site = "jezero") {
+  constructor(role: "crew" | "mc", site = "jezero", member?: "ev1" | "ev2") {
     this.ws = new WebSocket(base.replace("http", "ws") + "/hab");
     this.ws.on("message", (d) => this.got.push(JSON.parse(d.toString()) as ServerMsg));
-    this.ws.on("open", () => this.send({ type: "hello", role, site }));
+    this.ws.on("open", () => this.send({ type: "hello", role, site, ...(member ? { member } : {}) }));
   }
   ready(): Promise<void> {
     return new Promise((ok) => (this.ws.readyState === WebSocket.OPEN ? ok() : this.ws.once("open", () => ok())));
@@ -137,6 +137,32 @@ describe("hab server", () => {
     expect(((await (await fetch(`${base}/api/notebook/gale`)).json()) as { notes: unknown[] }).notes).toHaveLength(0);
     expect((await fetch(`${base}/api/audio/gale/n1`)).status).toBe(404);
     tablet.ws.close();
+  });
+
+  it("links EV2's device to EV1's EVA live, with no delay (both are on Mars)", async () => {
+    const ev1 = new Client("crew", "deuteronilus", "ev1");
+    await ev1.ready();
+    const ev2 = new Client("crew", "deuteronilus", "ev2");
+    await ev2.ready();
+    await ev1.waitFor((m) => m.type === "members" && m.ev2 === 1);
+    ev1.send({ type: "plan", plan: { site: "deuteronilus", hash: "stops=toe&buddy=1", lightTimeS: 600 } as never });
+    const plan = (await ev2.waitFor((m) => m.type === "crewplan")) as { plan: { hash: string } };
+    expect(plan.plan.hash).toBe("stops=toe&buddy=1");
+    ev1.send({ type: "eva", state: "start", evaId: "e2", lightTimeS: 600 });
+    await ev2.waitFor((m) => m.type === "crew-eva" && !!m.eva?.running);
+    ev1.send({ type: "frame", frame: frame(42) });
+    const live = (await ev2.waitFor((m) => m.type === "live")) as { frame: Frame };
+    expect(live.frame.t).toBe(42); // straight away, not one light time later
+    // EV2 cannot drive the shared EVA
+    ev2.send({ type: "eva", state: "end", evaId: "e2", aborted: true, summary: "" });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(ev2.got.some((m) => m.type === "crew-eva" && !!m.eva?.ended)).toBe(false);
+    ev1.send({ type: "eva", state: "end", evaId: "e2", aborted: false, summary: "" });
+    await ev2.waitFor((m) => m.type === "crew-eva" && !!m.eva?.ended);
+    const evas = (await (await fetch(`${base}/api/evas/deuteronilus`)).json()) as { evas: { frames: Frame[] }[] };
+    expect(evas.evas.at(-1)?.frames.map((f) => f.t)).toEqual([42]);
+    ev1.ws.close();
+    ev2.ws.close();
   });
 
   it("serves only files inside the app", async () => {

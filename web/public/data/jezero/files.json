@@ -45,6 +45,10 @@
 "bytes": 815018
 },
 {
+"path": "dust.json",
+"bytes": 21260
+},
+{
 "path": "effort.u8.pk",
 "bytes": 296626
 },
@@ -225,5 +229,5 @@
 "bytes": 2929
 }
 ],
-"totalBytes": 27633589
+"totalBytes": 27654849
 }

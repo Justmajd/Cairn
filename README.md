@@ -65,11 +65,12 @@ Open the address Vite prints (normally http://localhost:5173).
 |---|---|
 | `npm run dev:all` | Development: frontend and hab server together, one terminal (Ctrl+C stops both) |
 | `npm run dev` | Development server (frontend only) |
-| `npm test` | 91 unit and integration tests (including the hab server end to end) |
+| `npm test` | 94 unit and integration tests (including the hab server end to end) |
 | `npm run build` | Type-check and build to `web/dist/` |
 | `npm run preview` | Serve the built app |
 | `npm start` | Build, then serve the app with the hab server (Mission Control, shared notebook) |
 | `npm run hab` | The hab server alone, for development next to `npm run dev` |
+| `npm run fetch-speech` | Once: put the speech-to-text model on the hab (about 45 MB, not committed) |
 
 URL options: `?site=gale` opens Gale Crater (default `jezero`), `?skip=1` skips the briefing, `?demo=1` plays the guided demo straight away (for a booth screen or recording the video), `?q=low` uses a lighter mesh and the 50 cm texture for slow GPUs, `?tex=4k` stays on the 50 cm texture. The part after `#` is the plan, e.g. `#stops=cheyava,serpentine&t=9.5&relay=1`; links with a plan open straight on it.
 
@@ -90,6 +91,10 @@ The server prints its network address too (e.g. `http://192.168.1.10:8787`), so 
 
 - **Mission Control** opens from the main menu (or the *Mission Control* button in the planner's top bar, or `?view=mission&site=jezero`). It shows the crew's position, oxygen, dose, log, notes and voice notes **one light time late** (13–22 min, for the EVA's real date), and messages typed there reach the crew one light time after they are sent. The delay runs on the EVA clock, so it speeds up with the simulation.
 - **Field notebook** entries and voice notes are kept on the hab (`web/hab-data/`, not committed) and appear on every crew device; edits made offline sync when the hab is back. Finished EVAs are recorded there too.
+- **Two astronauts, two devices.** Open the planner on one device (EV1) and choose *Join as EV2* on the main menu of another. EV1 plans and starts the EVA; EV2's device rebuilds the same plan and walks it in lockstep with EV1's EVA clock, from EV2's own position, each seeing the other suit. Notes taken by either appear on both. Mission Control labels EV1 and EV2 on its map.
+- **Revised plans from Earth.** In Mission Control, *Propose a plan change*: click a stop to drop it or the map to add one, then send. It reaches the crew one light time later as a card to accept or decline (during an EVA, an accepted change applies back at the rover), and the crew's answer reaches Earth one light time after that.
+- **Replay.** Every EVA recorded on the hab can be replayed in Mission Control: a timeline of Earth's clock, with what happened on Mars and when Earth found out.
+- **Voice notes to text, on the device.** Run `npm run fetch-speech` once to put the speech model (Whisper tiny, ~45 MB) on the hab; then *Turn into text* in a note transcribes in a few seconds without the recording leaving the device.
 - Without the hab, nothing changes: the planner shows a grey dot on *Mission Control* and keeps notes on the device.
 
 For development, `npm run dev:all` starts both in one terminal (open http://localhost:5173; Ctrl+C stops both), or run `npm run hab` (restarts on changes) next to `npm run dev`; Vite forwards `/api` and `/hab` to it. Environment: `PORT` (8787), `HOST` (`0.0.0.0`), `CAIRN_DATA` (`web/hab-data`), `CAIRN_DIST` (`web/dist`).
@@ -160,6 +165,8 @@ make build     # writes web/public/data/jezero/  (make gale, make deuteronilus f
 ```
 
 `python progress.py --watch` shows download progress. DONKI uses `DEMO_KEY` unless `NASA_API_KEY` is set.
+
+Dust by sol: put the two optical-depth records in `data-pipeline/raw/dust/` (Curiosity: `msl_tau_880.csv` from the NASA PDS bundle `msl_mmm_tau_bundle`; Perseverance: `m20-ztau-merged-1499.txt` from Mendeley Data, DOI 10.17632/gktjp9jptb.1), then `python build_dust.py` writes `dust.json` for every site.
 
 ## What is real and what is assumed
 

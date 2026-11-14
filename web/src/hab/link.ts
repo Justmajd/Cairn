@@ -3,7 +3,7 @@
  * by itself after a drop, and the hab's storage API.  Without a hab server (the static build, or the
  * server stopped) everything here quietly reports "offline" and the planner works on its own.
  */
-import type { ClientMsg, NoteRecord, Role, ServerMsg } from "./protocol";
+import type { ClientMsg, Member, NoteRecord, Role, ServerMsg } from "./protocol";
 
 export type LinkState = "connecting" | "online" | "offline";
 
@@ -26,6 +26,7 @@ export class HabLink {
   constructor(
     private readonly role: Role,
     private readonly site: string,
+    private readonly member: Member = "ev1",
   ) {
     this.connect();
     window.addEventListener("online", () => this.state !== "online" && this.reconnectNow());
@@ -83,7 +84,7 @@ export class HabLink {
     this.ws = ws;
     ws.onopen = () => {
       this.retry = 0;
-      ws.send(JSON.stringify({ type: "hello", role: this.role, site: this.site } satisfies ClientMsg));
+      ws.send(JSON.stringify({ type: "hello", role: this.role, site: this.site, ...(this.role === "crew" ? { member: this.member } : {}) } satisfies ClientMsg));
       for (const m of this.sticky.values()) ws.send(JSON.stringify(m));
       this.setState("online");
     };

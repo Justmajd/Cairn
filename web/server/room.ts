@@ -7,7 +7,7 @@
  *   - "now" is the latest EVA clock the crew reported.  After the EVA ends, or if the crew drops off,
  *     the clock keeps running at the last simulation speed (tick) so what is still in flight arrives.
  */
-import type { EarthMessage, Frame, LogEntry, McSnapshot, NoteRecord, PlanInfo, ServerMsg } from "../src/hab/protocol.ts";
+import type { EarthMessage, EvaRecord, Frame, LogEntry, McSnapshot, NoteRecord, PlanChange, PlanInfo, ServerMsg } from "../src/hab/protocol.ts";
 
 const MAX_FRAMES = 6000;
 const MAX_LOG = 500;
@@ -39,6 +39,8 @@ export class Room {
   private notes = new Map<string, NoteRecord>();
   private notesOut = new Set<string>();
   private outbox: EarthMessage[] = [];
+  /** Notes taken during the current EVA (for its record). */
+  private evaNotes = new Set<string>();
   private msgCount = 0;
 
   readonly site: string;
@@ -83,6 +85,7 @@ export class Room {
     this.logKeys.clear();
     this.logOut.clear();
     this.live = null;
+    this.evaNotes.clear();
     // notes from earlier EVAs and from planning stay known on Earth; this EVA's arrive with the delay
     for (const n of this.notes.values()) if (n.evaT === null) this.notesOut.add(n.id);
     this.outbox = this.outbox.filter((m) => !m.delivered && m.immediate);
@@ -133,6 +136,7 @@ export class Room {
 
   /** A note saved on the hab (by any crew device): crew devices get it now, Earth after the delay. */
   upsertNote(n: NoteRecord): Out {
+    if (this.running && n.evaT !== null) this.evaNotes.add(n.id);
     const known = this.notesOut.has(n.id);
     this.notes.set(n.id, n);
     const o = out();
@@ -161,10 +165,10 @@ export class Room {
   }
 
   /** Mission Control sends a message to the crew. */
-  say(text: string): Out {
+  say(text: string, change?: PlanChange): Out {
     const clean = text.trim().slice(0, 500);
     const o = out();
-    if (!clean) return o;
+    if (!clean && !change) return o;
     const immediate = !this.running;
     const msg: EarthMessage = {
       id: `m${++this.msgCount}`,
@@ -172,6 +176,7 @@ export class Room {
       sentT: this.now,
       deliverT: immediate ? this.now : this.now + this.lightTimeS,
       ...(immediate ? { immediate: true } : {}),
+      ...(change ? { change } : {}),
     };
     this.outbox.push(msg);
     o.mc.push({ type: "outbox", msg });
@@ -179,6 +184,22 @@ export class Room {
       msg.delivered = true;
       o.crew.push({ type: "msg", msg });
     }
+    return o;
+  }
+
+  /** The crew answers a revised plan: during an EVA it reaches Earth one light time later. */
+  reply(id: string, accepted: boolean): Out {
+    const msg = this.outbox.find((m) => m.id === id);
+    if (!msg?.change) return out();
+    const entry: LogEntry = { t: this.now, kind: "radio", text: `Crew ${accepted ? "accepted" : "declined"} Mission Control's revised plan`, ref: id, accepted };
+    const k = key(entry);
+    if (this.logKeys.has(k)) return out();
+    this.logKeys.add(k);
+    this.log.push(entry);
+    if (this.running) return this.release();
+    this.logOut.add(k); // no EVA running: no EVA clock to delay it on
+    const o = out();
+    o.mc.push({ type: "log", entry });
     return o;
   }
 
@@ -240,8 +261,26 @@ export class Room {
     };
   }
 
-  /** The EVA's record, kept on the hab when it ends. */
-  record(): { evaId: string | null; site: string; plan: PlanInfo | null; log: LogEntry[]; lastFrame: Frame | null } {
-    return { evaId: this.evaId, site: this.site, plan: this.plan, log: this.log.slice(), lastFrame: this.frames[this.frames.length - 1] ?? null };
+  /** The EVA's record, kept on the hab when it ends: enough for Mission Control to replay it. */
+  record(): EvaRecord {
+    // at most ~1500 frames (an EVA at 4 frames a second of real time), always keeping the last one
+    const step = Math.max(1, Math.ceil(this.frames.length / 1500));
+    const frames = this.frames.filter((_, i) => i % step === 0 || i === this.frames.length - 1);
+    return {
+      evaId: this.evaId,
+      site: this.site,
+      plan: this.plan,
+      log: this.log.slice(),
+      frames,
+      notes: [...this.notes.values()].filter((n) => this.evaNotes.has(n.id)),
+      outbox: this.outbox.slice(-50),
+      lightTimeS: this.lightTimeS,
+      lastFrame: this.frames[this.frames.length - 1] ?? null,
+    };
+  }
+
+  /** The latest frame (for EV2's device joining mid-EVA). */
+  lastFrame(): Frame | null {
+    return this.frames[this.frames.length - 1] ?? null;
   }
 }

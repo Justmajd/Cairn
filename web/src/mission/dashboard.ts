@@ -5,7 +5,7 @@
  * receives.  Messages typed here reach the crew one light time later.
  */
 import { HabLink, habApi, type LinkState } from "../hab/link";
-import type { EarthMessage, Frame, LogEntry, McSnapshot, NoteRecord, PlanInfo, ServerMsg } from "../hab/protocol";
+import type { EarthMessage, EvaRecord, Frame, LogEntry, McSnapshot, NoteRecord, PlanChange, PlanInfo, ServerMsg } from "../hab/protocol";
 import { $, esc, fmtClock, LOGO_SVG } from "../ui/dom";
 import "../styles/mission.css";
 
@@ -47,6 +47,15 @@ export function startMissionControl(site: string): void {
           <div><span>Mars as of</span><b id="mc-shown">—</b><small id="mc-shown-lmst"></small></div>
         </div>
       </header>
+      <div class="mc-replay" id="mc-replay" hidden>
+        <div class="mc-replay-head"><b id="mc-replay-title">Replay</b><span id="mc-replay-clock"></span>
+          <button id="mc-replay-play" aria-label="Play">▶</button>
+          <label><span class="vh">Replay speed</span><select id="mc-replay-speed"><option value="30">30×</option><option value="60" selected>60×</option><option value="180">180×</option></select></label>
+          <button id="mc-replay-exit">Back to live</button></div>
+        <div class="mc-replay-track"><div id="mc-replay-marks" aria-hidden="true"></div>
+          <label class="vh" for="mc-replay-t">Earth clock during the replay</label><input type="range" id="mc-replay-t" min="0" max="1" step="1" value="0"/></div>
+        <p class="mc-replay-key"><i class="k-alert"></i>Event on Mars <i class="k-earth"></i>Earth finds out <i class="k-msg"></i>Message from Earth</p>
+      </div>
       <div class="mc-banner" id="mc-banner" hidden></div>
       <main class="mc-grid">
         <section class="mc-card mc-map">
@@ -71,19 +80,34 @@ export function startMissionControl(site: string): void {
         <section class="mc-card mc-comms">
           <header><h2>Message the crew</h2><small id="mc-comms-hint"></small></header>
           <form id="mc-form"><label class="vh" for="mc-text">Message to the crew</label><textarea id="mc-text" rows="2" maxlength="500" placeholder="e.g. Copy the storm alert. Shelter in the rover, report when inside."></textarea><button class="primary" id="mc-send" type="submit">Send</button></form>
+          <div class="mc-propose">
+            <button id="mc-propose" type="button" aria-pressed="false">Propose a plan change</button>
+            <div id="mc-propose-box" hidden>
+              <p>On the map: click a stop to drop it, or click elsewhere to add a stop (up to 3).</p>
+              <ul id="mc-changes"></ul>
+              <div class="row"><button type="button" id="mc-propose-cancel">Cancel</button><button type="button" class="primary" id="mc-propose-send" disabled>Send revised plan</button></div>
+            </div>
+          </div>
           <ul id="mc-outbox"></ul>
         </section>
         <section class="mc-card mc-history">
-          <header><h2>Past EVAs on the hab</h2></header>
+          <header><h2>Past EVAs on the hab</h2><small>replay any of them</small></header>
           <ul id="mc-history"><li class="empty">—</li></ul>
         </section>
       </main>
     </div>`;
 
-  const S: State = {
+  // L: the live EVA, as messages arrive.  S: what the screen shows (L, or a replay of a past EVA).
+  const L: State = {
     link: "connecting", crewOnline: false, plan: null, eva: null, now: 0, lightTimeS: 0, speed: 0, live: null,
     frames: [], log: [], notes: new Map(), outbox: new Map(), alert: null,
   };
+  let S: State = L;
+  let history: EvaRecord[] = [];
+  let replay: { rec: EvaRecord; t: number; end: number; playing: boolean; timer: number } | null = null;
+  let editing: PlanChange | null = null;
+  /** Names of every stop seen in any plan: a revised plan may drop a stop the current plan no longer has. */
+  const stopNames = new Map<string, string>();
   let image: HTMLImageElement | null = null;
   let imageSrc = "";
 
@@ -101,79 +125,80 @@ export function startMissionControl(site: string): void {
     switch (m.type) {
       case "snapshot": {
         const s = m.snap;
-        S.plan = s.plan;
-        S.crewOnline = s.crewOnline;
-        S.eva = s.eva;
-        S.now = s.now;
-        S.lightTimeS = s.lightTimeS;
-        S.frames = s.frames;
-        S.log = s.log.map((entry) => ({ entry, arrivedT: entry.t + s.lightTimeS }));
-        S.notes = new Map(s.notes.map((note) => [note.id, { note, arrivedT: (note.evaT ?? 0) + s.lightTimeS }]));
-        S.outbox = new Map(s.outbox.map((o) => [o.id, o]));
-        S.alert = [...s.log].reverse().find((e) => e.kind === "alert") ?? null;
+        L.plan = s.plan;
+        L.crewOnline = s.crewOnline;
+        L.eva = s.eva;
+        L.now = s.now;
+        L.lightTimeS = s.lightTimeS;
+        L.frames = s.frames;
+        L.log = s.log.map((entry) => ({ entry, arrivedT: entry.t + s.lightTimeS }));
+        L.notes = new Map(s.notes.map((note) => [note.id, { note, arrivedT: (note.evaT ?? 0) + s.lightTimeS }]));
+        L.outbox = new Map(s.outbox.map((o) => [o.id, o]));
+        L.alert = [...s.log].reverse().find((e) => e.kind === "alert") ?? null;
         break;
       }
       case "plan":
-        S.plan = m.plan;
-        if (!S.eva?.running) S.lightTimeS = m.plan.lightTimeS;
+        L.plan = m.plan;
+        if (!L.eva?.running) L.lightTimeS = m.plan.lightTimeS;
         break;
       case "crew":
-        if (S.crewOnline !== m.online) announce(m.online ? "Crew device connected to the hab." : "Crew device disconnected from the hab.");
-        S.crewOnline = m.online;
+        if (L.crewOnline !== m.online) announce(m.online ? "Crew device connected to the hab." : "Crew device disconnected from the hab.");
+        L.crewOnline = m.online;
         break;
       case "eva":
-        if (m.eva && m.eva.id !== S.eva?.id) {
-          S.frames = [];
-          S.log = [];
-          S.alert = null;
-          for (const [id, msg] of S.outbox) if (msg.delivered || !msg.immediate) S.outbox.delete(id);
-          for (const [id, n] of S.notes) if (n.note.evaT !== null) S.notes.delete(id);
+        if (m.eva && m.eva.id !== L.eva?.id) {
+          L.frames = [];
+          L.log = [];
+          L.alert = null;
+          for (const [id, msg] of L.outbox) if (msg.delivered || !msg.immediate) L.outbox.delete(id);
+          for (const [id, n] of L.notes) if (n.note.evaT !== null) L.notes.delete(id);
           void loadHistory();
         }
-        S.eva = m.eva;
+        L.eva = m.eva;
         if (m.eva?.ended) void loadHistory();
         break;
       case "clock":
-        S.now = m.now;
-        S.lightTimeS = m.lightTimeS;
-        S.speed = m.speed;
-        S.live = m.live;
+        L.now = m.now;
+        L.lightTimeS = m.lightTimeS;
+        L.speed = m.speed;
+        L.live = m.live;
         break;
       case "frame":
-        S.frames.push(m.frame);
+        L.frames.push(m.frame);
         break;
       case "log":
-        S.log.push({ entry: m.entry, arrivedT: S.now });
+        L.log.push({ entry: m.entry, arrivedT: L.now });
         if (m.entry.kind === "alert") {
-          S.alert = m.entry;
-          announce(`Received from Mars: ${m.entry.text}. It happened ${fmtLight(S.now - m.entry.t)} ago.`, true);
+          L.alert = m.entry;
+          announce(`Received from Mars: ${m.entry.text}. It happened ${fmtLight(L.now - m.entry.t)} ago.`, true);
         }
         break;
       case "note":
-        if (!S.notes.has(m.note.id)) announce(`${m.note.sample ? "Sample" : "Field note"} ${m.note.label} received${m.note.text ? `: ${m.note.text.replace(/[.\s]+$/, "")}` : ""}.`);
-        S.notes.set(m.note.id, { note: m.note, arrivedT: S.now });
+        if (!L.notes.has(m.note.id)) announce(`${m.note.sample ? "Sample" : "Field note"} ${m.note.label} received${m.note.text ? `: ${m.note.text.replace(/[.\s]+$/, "")}` : ""}.`);
+        L.notes.set(m.note.id, { note: m.note, arrivedT: L.now });
         break;
       case "note-removed":
-        S.notes.delete(m.id);
+        L.notes.delete(m.id);
         break;
       case "outbox":
-        if (m.msg.delivered && !S.outbox.get(m.msg.id)?.delivered && !m.msg.immediate) announce(`Your message reached the crew: ${m.msg.text}`);
-        S.outbox.set(m.msg.id, m.msg);
+        if (m.msg.delivered && !L.outbox.get(m.msg.id)?.delivered && !m.msg.immediate) announce(`Your message reached the crew: ${m.msg.text}`);
+        L.outbox.set(m.msg.id, m.msg);
         break;
     }
   }
 
   async function loadHistory(): Promise<void> {
     try {
-      const evas = (await habApi.evas(site)) as { evaId: string; ended: string; aborted: boolean; log: LogEntry[]; plan: PlanInfo | null }[];
-      $("#mc-history").innerHTML = evas.length
-        ? evas
-            .slice()
-            .reverse()
-            .slice(0, 8)
-            .map((e) => {
+      history = ((await habApi.evas(site)) as EvaRecord[]).slice().reverse().slice(0, 8);
+      $("#mc-history").innerHTML = history.length
+        ? history
+            .map((e, i) => {
               const last = e.log[e.log.length - 1];
-              return `<li><b>${new Date(e.ended).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</b><span>${e.aborted ? "Ended early" : "Completed"} · ${e.log.length} log entries${last ? ` · last at EVA ${fmtClock(last.t)}` : ""}${e.plan ? ` · ${fmtDistM(e.plan.distanceM)} planned` : ""}</span></li>`;
+              const alert = e.log.some((l) => l.kind === "alert");
+              const canReplay = (e.frames?.length ?? 0) > 1;
+              return `<li><b>${new Date(e.ended ?? "").toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</b><span>${e.aborted ? "Ended early" : "Completed"}${alert ? " · storm alert" : ""} · ${e.log.length} log entries${last ? ` · last at EVA ${fmtClock(last.t)}` : ""}${e.plan ? ` · ${fmtDistM(e.plan.distanceM)} planned` : ""}</span>${
+                canReplay ? `<button data-replay="${i}">▶ Replay</button>` : `<small>No telemetry kept (recorded before replays existed).</small>`
+              }</li>`;
             })
             .join("")
         : `<li class="empty">No EVA has been completed at this site yet.</li>`;
@@ -186,6 +211,7 @@ export function startMissionControl(site: string): void {
   const lastFrame = () => S.frames[S.frames.length - 1] ?? null;
 
   function render(): void {
+    for (const st of S.plan?.stops ?? []) stopNames.set(st.id, st.short);
     const dot = (el: HTMLElement, on: boolean, text: string, title: string) => {
       el.className = `dot ${on ? "on" : "off"}`;
       el.textContent = text;
@@ -281,10 +307,14 @@ export function startMissionControl(site: string): void {
     $("#mc-outbox").innerHTML = msgs
       .map((m) => {
         const state = m.delivered ? `Delivered at T+${fmtClock(m.deliverT)}` : `In flight · reaches the crew at T+${fmtClock(m.deliverT)} (in ${fmtMin(m.deliverT - S.now)})`;
-        return `<li class="${m.delivered ? "done" : "flight"}"><p>${esc(m.text)}</p><small>Sent T+${fmtClock(m.sentT)} · ${state}</small></li>`;
+        const answer = S.log.find((l) => l.entry.ref === m.id)?.entry;
+        const change = m.change ? `<p class="change">Revised plan: ${[...m.change.drop.map((id) => `drop ${esc(stopNames.get(id) ?? id)}`), ...(m.change.add.length ? [`add ${m.change.add.length} stop${m.change.add.length === 1 ? "" : "s"}`] : [])].join(", ")}</p>` : "";
+        const reply = m.change ? (answer ? `<b class="${answer.accepted ? "yes" : "no"}">Crew ${answer.accepted ? "accepted" : "declined"} · ${m.immediate ? "heard at once (no EVA running)" : `Earth heard it at T+${fmtClock(answer.t + S.lightTimeS)}`}</b>` : m.delivered ? `<b>Waiting for the crew's answer</b>` : "") : "";
+        return `<li class="${m.delivered ? "done" : "flight"}">${m.text ? `<p>${esc(m.text)}</p>` : ""}${change}<small>Sent T+${fmtClock(m.sentT)} · ${state}</small>${reply}</li>`;
       })
       .join("");
-    ($("#mc-send") as HTMLButtonElement).disabled = S.link !== "online";
+    ($("#mc-send") as HTMLButtonElement).disabled = S.link !== "online" || !!replay;
+    ($("#mc-propose") as HTMLButtonElement).disabled = S.link !== "online" || !!replay || !S.plan;
   }
 
   // ---------------------------------------------------------------- map
@@ -368,10 +398,48 @@ export function startMissionControl(site: string): void {
       g.restore();
       if (f.buddy) {
         g.beginPath();
-        g.arc(X(f.buddy.x), Y(f.buddy.y), 4, 0, Math.PI * 2);
+        g.arc(X(f.buddy.x), Y(f.buddy.y), 4.5, 0, Math.PI * 2);
         g.fillStyle = "#ffe3a8";
+        g.strokeStyle = "#0b0d10";
+        g.lineWidth = 1.5;
         g.fill();
+        g.stroke();
+        // with two astronauts, say which is which
+        g.font = "600 10px 'IBM Plex Mono', monospace";
+        g.fillStyle = "#ffe3a8";
+        g.shadowColor = "rgba(0,0,0,0.8)";
+        g.shadowBlur = 3;
+        g.fillText("EV2", X(f.buddy.x) + 7, Y(f.buddy.y) + 12);
+        g.fillStyle = "#ffc45c";
+        g.fillText("EV1", X(f.x) + 9, Y(f.y) - 8);
+        g.shadowBlur = 0;
       }
+    }
+    if (editing) {
+      for (const id of editing.drop) {
+        const st = P.stops.find((x) => x.id === id);
+        if (!st) continue;
+        g.strokeStyle = "#ff6257";
+        g.lineWidth = 3;
+        g.beginPath();
+        g.moveTo(X(st.x) - 8, Y(st.y) - 8);
+        g.lineTo(X(st.x) + 8, Y(st.y) + 8);
+        g.moveTo(X(st.x) + 8, Y(st.y) - 8);
+        g.lineTo(X(st.x) - 8, Y(st.y) + 8);
+        g.stroke();
+      }
+      editing.add.forEach((p, i) => {
+        g.beginPath();
+        g.arc(X(p.x), Y(p.y), 8, 0, Math.PI * 2);
+        g.fillStyle = "rgba(70, 224, 207, 0.25)";
+        g.strokeStyle = "#46e0cf";
+        g.lineWidth = 2;
+        g.fill();
+        g.stroke();
+        g.font = "600 11px 'IBM Plex Mono', monospace";
+        g.fillStyle = "#fff";
+        g.fillText(`+${i + 1}`, X(p.x) + 11, Y(p.y) + 4);
+      });
     }
     const lf = lastFrame();
     canvas.setAttribute(
@@ -434,6 +502,156 @@ export function startMissionControl(site: string): void {
     g.fillText("— O₂ reserve", 120, 11);
   }
 
+  // ---------------------------------------------------------------- replay of a past EVA
+  /** What Earth knew at Earth time `t` of a recorded EVA (and, for the truth toggle, where the crew was). */
+  function replayState(rec: EvaRecord, t: number): State {
+    const lt = rec.lightTimeS;
+    const seen = (at: number) => at + lt <= t;
+    const frames = rec.frames.filter((f) => seen(f.t));
+    const log = rec.log.filter((e) => seen(e.t)).map((entry) => ({ entry, arrivedT: entry.t + lt }));
+    const mars = [...rec.frames].reverse().find((f) => f.t <= t) ?? rec.frames[0];
+    return {
+      link: L.link,
+      crewOnline: false,
+      plan: rec.plan,
+      eva: { id: rec.evaId ?? "replay", running: t < (rec.lastFrame?.t ?? 0), ended: t >= (rec.lastFrame?.t ?? 0) },
+      now: t,
+      lightTimeS: lt,
+      speed: 0,
+      live: mars ? { x: mars.x, y: mars.y } : null,
+      frames,
+      log,
+      notes: new Map(rec.notes.filter((n) => n.evaT !== null && seen(n.evaT)).map((note) => [note.id, { note, arrivedT: (note.evaT ?? 0) + lt }])),
+      outbox: new Map(rec.outbox.filter((m) => m.sentT <= t).map((m) => [m.id, { ...m, delivered: m.deliverT <= t }])),
+      alert: [...log].reverse().find((l) => l.entry.kind === "alert")?.entry ?? null,
+    };
+  }
+
+  function showReplay(): void {
+    if (!replay) return;
+    S = replayState(replay.rec, replay.t);
+    $<HTMLInputElement>("#mc-replay-t").value = String(Math.round(replay.t));
+    $("#mc-replay-clock").textContent = `Earth clock T+${fmtClock(replay.t)} · seeing Mars at T+${fmtClock(Math.max(0, replay.t - replay.rec.lightTimeS))}`;
+    $("#mc-replay-play").textContent = replay.playing ? "❚❚" : "▶";
+    $("#mc-replay-play").setAttribute("aria-label", replay.playing ? "Pause" : "Play");
+    render();
+  }
+
+  function startReplay(rec: EvaRecord): void {
+    stopReplay(false);
+    const end = (rec.lastFrame?.t ?? rec.frames[rec.frames.length - 1]?.t ?? 0) + rec.lightTimeS + 30;
+    replay = { rec, t: 0, end, playing: true, timer: 0 };
+    const bar = $("#mc-replay");
+    bar.hidden = false;
+    $("#mc-replay-title").textContent = `Replay · ${new Date(rec.ended ?? "").toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`;
+    const range = $<HTMLInputElement>("#mc-replay-t");
+    range.max = String(Math.ceil(end));
+    // marks on the timeline: what happened on Mars, and when Earth found out
+    const pos = (t: number) => `${Math.max(0, Math.min(100, (t / end) * 100)).toFixed(2)}%`;
+    const marks: string[] = [];
+    for (const e of rec.log) {
+      if (e.kind !== "alert" && !e.ref) continue;
+      marks.push(`<i class="k-alert" style="left:${pos(e.t)}" title="On Mars at T+${fmtClock(e.t)}: ${esc(e.text)}"></i>`);
+      marks.push(`<i class="k-earth" style="left:${pos(e.t + rec.lightTimeS)}" title="Earth finds out at T+${fmtClock(e.t + rec.lightTimeS)}"></i>`);
+    }
+    for (const m of rec.outbox) marks.push(`<i class="k-msg" style="left:${pos(m.sentT)}" title="Earth sends at T+${fmtClock(m.sentT)}"></i>`);
+    $("#mc-replay-marks").innerHTML = marks.join("");
+    tickReplay();
+    bar.scrollIntoView({ block: "nearest" });
+  }
+
+  function tickReplay(): void {
+    if (!replay) return;
+    window.clearInterval(replay.timer);
+    if (replay.playing) {
+      replay.timer = window.setInterval(() => {
+        if (!replay) return;
+        replay.t = Math.min(replay.end, replay.t + 0.1 * Number($<HTMLSelectElement>("#mc-replay-speed").value));
+        if (replay.t >= replay.end) {
+          replay.playing = false;
+          window.clearInterval(replay.timer);
+        }
+        showReplay();
+      }, 100);
+    }
+    showReplay();
+  }
+
+  function stopReplay(show = true): void {
+    if (replay) window.clearInterval(replay.timer);
+    replay = null;
+    S = L;
+    $("#mc-replay").hidden = true;
+    if (show) render();
+  }
+
+  $("#mc-history").addEventListener("click", (ev) => {
+    const b = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-replay]");
+    const rec = b ? history[Number(b.dataset.replay)] : null;
+    if (rec) startReplay(rec);
+  });
+  $("#mc-replay-play").addEventListener("click", () => {
+    if (!replay) return;
+    if (replay.t >= replay.end) replay.t = 0;
+    replay.playing = !replay.playing;
+    tickReplay();
+  });
+  $("#mc-replay-t").addEventListener("input", (ev) => {
+    if (!replay) return;
+    replay.t = Number((ev.target as HTMLInputElement).value);
+    replay.playing = false;
+    tickReplay();
+  });
+  $("#mc-replay-exit").addEventListener("click", () => stopReplay());
+
+  // ---------------------------------------------------------------- proposing a revised plan
+  function renderChanges(): void {
+    const box = $("#mc-propose-box");
+    const btn = $("#mc-propose");
+    box.hidden = !editing;
+    btn.setAttribute("aria-pressed", String(!!editing));
+    btn.textContent = editing ? "Editing the plan on the map…" : "Propose a plan change";
+    if (!editing) return;
+    const items = [
+      ...editing.drop.map((id) => `<li>Drop ${esc(S.plan?.stops.find((st) => st.id === id)?.name ?? id)}</li>`),
+      ...editing.add.map((p, i) => `<li>Add stop +${i + 1} (${Math.round(p.x)}, ${Math.round(p.y)})</li>`),
+    ];
+    $("#mc-changes").innerHTML = items.join("") || `<li class="empty">No changes yet.</li>`;
+    ($("#mc-propose-send") as HTMLButtonElement).disabled = !items.length;
+  }
+  $("#mc-propose").addEventListener("click", () => {
+    editing = editing ? null : { drop: [], add: [] };
+    renderChanges();
+    draw();
+  });
+  $("#mc-propose-cancel").addEventListener("click", () => {
+    editing = null;
+    renderChanges();
+    draw();
+  });
+  $("#mc-propose-send").addEventListener("click", () => {
+    if (!editing) return;
+    const note = $<HTMLTextAreaElement>("#mc-text").value.trim();
+    if (link.send({ type: "say", text: note, change: editing })) {
+      $<HTMLTextAreaElement>("#mc-text").value = "";
+      editing = null;
+      renderChanges();
+      draw();
+    }
+  });
+  canvas.addEventListener("click", (ev) => {
+    if (!editing || !S.plan || replay) return;
+    const r = canvas.getBoundingClientRect();
+    const size = r.width;
+    const px = ev.clientX - r.left, py = ev.clientY - r.top;
+    const x = (px / size) * S.plan.sizeM, y = (1 - py / size) * S.plan.sizeM;
+    const hit = S.plan.stops.find((st) => st.kind !== "shelter" && Math.hypot(((st.x - x) / S.plan!.sizeM) * size, ((st.y - y) / S.plan!.sizeM) * size) < 14);
+    if (hit) editing.drop = editing.drop.includes(hit.id) ? editing.drop.filter((id) => id !== hit.id) : [...editing.drop, hit.id];
+    else if (editing.add.length < 3) editing.add.push({ x: Math.round(x), y: Math.round(y) });
+    renderChanges();
+    draw();
+  });
+
   // ---------------------------------------------------------------- inputs
   $("#mc-truth").addEventListener("change", () => draw());
   $<HTMLFormElement>("#mc-form").addEventListener("submit", (ev) => {
@@ -453,10 +671,10 @@ export function startMissionControl(site: string): void {
   link = new HabLink("mc", site);
   link.onMessage((m) => {
     apply(m);
-    render();
+    if (!replay) render();
   });
   link.onState((st) => {
-    S.link = st;
+    L.link = st;
     if (st === "online") void loadHistory();
     render();
   });

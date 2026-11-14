@@ -50,8 +50,11 @@ export function editNote(
         <div class="note-voice">
           ${canRecord() ? `<button class="secondary" id="nb-rec" aria-pressed="false">${ic.mic}<span>Record a voice note</span></button>` : `<small>Voice notes need a microphone and a browser that can record.</small>`}
           <audio id="nb-audio" controls hidden aria-label="Voice note"></audio>
-          <p class="vh" id="nb-status" role="status" aria-live="polite"></p>
-          <button class="secondary" id="nb-mp3" hidden>${ic.download}<span>Download MP3</span></button>
+          <p class="note-status" id="nb-status" role="status" aria-live="polite"></p>
+          <div class="note-voice-row">
+            <button class="secondary" id="nb-text-btn" hidden title="Speech to text on this device: the recording is not sent anywhere">${ic.note}<span>Turn into text</span></button>
+            <button class="secondary" id="nb-mp3" hidden>${ic.download}<span>Download MP3</span></button>
+          </div>
         </div>
         <div class="note-actions">
           ${isNew ? "" : `<button class="secondary danger" id="nb-del">${ic.close}<span>Delete</span></button>`}
@@ -72,7 +75,35 @@ export function editNote(
     audio.src = url;
     audio.hidden = false;
     mp3Btn.hidden = false;
+    textBtn.hidden = false;
   };
+  // speech to text, on this device (the model loads once, ~45 MB, from the hab when it has it)
+  const textBtn = $<HTMLButtonElement>("#nb-text-btn", host);
+  textBtn.addEventListener("click", async () => {
+    const src = clip ?? (await book.loadAudio(note.id));
+    if (!src) return;
+    const label = textBtn.querySelector("span")!;
+    textBtn.disabled = true;
+    label.textContent = "Starting…";
+    status("Turning the voice note into text on this device.");
+    try {
+      const { transcribe } = await import("./transcribe");
+      const r = await transcribe(src, (loaded, total) => {
+        label.textContent = total > 1 ? `Loading speech model ${Math.round((loaded / total) * 100)}%` : "Loading speech model…";
+      });
+      label.textContent = "Turn into text";
+      const ta = $<HTMLTextAreaElement>("#nb-text", host);
+      if (r.text) ta.value = ta.value.trim() ? `${ta.value.trim()}\n${r.text}` : r.text;
+      status(r.text ? `Transcribed in ${(r.ms / 1000).toFixed(1)} s on this device${r.local ? ", with the hab's speech model" : ""}. Check it, then save.` : "No speech heard in the recording.");
+      ta.focus();
+    } catch (e) {
+      label.textContent = "Could not transcribe";
+      status(`Speech to text failed: ${e instanceof Error ? e.message : e}`);
+      console.warn("transcribe", e);
+    } finally {
+      textBtn.disabled = false;
+    }
+  });
   const mp3Btn = $<HTMLButtonElement>("#nb-mp3", host);
   mp3Btn.addEventListener("click", async () => {
     const src = clip ?? (await book.loadAudio(note.id));

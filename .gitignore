@@ -6,3 +6,5 @@ data-pipeline/.venv/
 __pycache__/
 *.pyc
 web/hab-data/
+web/public/models/
+web/public/ort/

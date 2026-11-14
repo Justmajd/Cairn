@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { readFile } from "node:fs/promises";
 import { WebSocketServer, type WebSocket } from "ws";
-import { SAFE_ID, type ClientMsg, type NoteRecord, type Role, type ServerMsg } from "../src/hab/protocol.ts";
+import { SAFE_ID, type ClientMsg, type Member, type NoteRecord, type Role, type ServerMsg } from "../src/hab/protocol.ts";
 import { Room, type Out } from "./room.ts";
 import { MAX_AUDIO_BYTES, Store } from "./store.ts";
 
@@ -36,6 +36,7 @@ interface Client {
   ws: WebSocket;
   role: Role | null;
   site: string | null;
+  member: Member;
   alive: boolean;
   said: number[];
 }
@@ -61,6 +62,16 @@ function deliver(site: string, o: Out): void {
   if (o.crew.length) for (const c of inRoom(site, "crew")) for (const m of o.crew) send(c, m);
 }
 
+/** EV2's devices: they get EV1's plan, EVA state and telemetry live (both astronauts are on Mars). */
+const ev2s = (site: string) => inRoom(site, "crew").filter((c) => c.member === "ev2");
+function toEv2(site: string, msg: ServerMsg): void {
+  for (const c of ev2s(site)) send(c, msg);
+}
+function countEv2(site: string): void {
+  const ev2 = ev2s(site).length;
+  for (const c of inRoom(site, "crew")) if (c.member === "ev1") send(c, { type: "members", ev2 });
+}
+
 function countMc(site: string): void {
   const online = inRoom(site, "mc").length;
   for (const c of inRoom(site, "crew")) send(c, { type: "mc", online });
@@ -77,11 +88,20 @@ async function onMessage(c: Client, raw: string): Promise<void> {
     if ((msg.role !== "crew" && msg.role !== "mc") || !SAFE_ID.test(msg.site)) return c.ws.close(1008, "bad hello");
     c.role = msg.role;
     c.site = msg.site;
+    c.member = msg.member === "ev2" ? "ev2" : "ev1";
     const r = await room(msg.site);
     if (c.role === "mc") send(c, { type: "snapshot", snap: r.snapshot() });
     else {
       deliver(msg.site, r.setCrewOnline(true));
       send(c, { type: "notebook", notes: await store.notes(msg.site) });
+      if (c.member === "ev2") {
+        // catch up with EV1: the plan, whether an EVA is under way, and where it is now
+        if (r.plan) send(c, { type: "crewplan", plan: r.plan });
+        send(c, { type: "crew-eva", eva: r.evaId ? { id: r.evaId, running: r.running, ended: r.ended } : null });
+        const f = r.lastFrame();
+        if (r.running && f) send(c, { type: "live", frame: f });
+      }
+      countEv2(msg.site);
     }
     countMc(msg.site);
     return;
@@ -89,17 +109,29 @@ async function onMessage(c: Client, raw: string): Promise<void> {
   if (!c.site || !c.role) return;
   const r = await room(c.site);
   if (c.role === "crew") {
-    if (msg.type === "plan" && msg.plan && typeof msg.plan === "object") deliver(c.site, r.setPlan(msg.plan));
-    else if (msg.type === "frame" && msg.frame && Number.isFinite(msg.frame.t)) deliver(c.site, r.frame(msg.frame));
+    if (c.member === "ev2") return; // EV2 follows EV1's EVA: the plan, the clock and the log are EV1's
+    if (msg.type === "plan" && msg.plan && typeof msg.plan === "object") {
+      deliver(c.site, r.setPlan(msg.plan));
+      toEv2(c.site, { type: "crewplan", plan: msg.plan });
+    } else if (msg.type === "frame" && msg.frame && Number.isFinite(msg.frame.t)) {
+      deliver(c.site, r.frame(msg.frame));
+      toEv2(c.site, { type: "live", frame: msg.frame });
+    }
     else if (msg.type === "log" && Array.isArray(msg.entries)) deliver(c.site, r.setLog(msg.entries.filter((e) => e && Number.isFinite(e.t) && typeof e.text === "string")));
-    else if (msg.type === "eva" && msg.state === "start" && typeof msg.evaId === "string") deliver(c.site, r.startEva(msg.evaId, Number(msg.lightTimeS) || 0));
+    else if (msg.type === "eva" && msg.state === "start" && typeof msg.evaId === "string") {
+      deliver(c.site, r.startEva(msg.evaId, Number(msg.lightTimeS) || 0));
+      toEv2(c.site, { type: "crew-eva", eva: { id: msg.evaId, running: true, ended: false } });
+    }
+    else if (msg.type === "reply" && typeof msg.id === "string") deliver(c.site, r.reply(msg.id, !!msg.accepted));
     else if (msg.type === "eva" && msg.state === "idle") {
       if (r.running) {
         deliver(c.site, r.endEva());
+        toEv2(c.site, { type: "crew-eva", eva: { id: r.evaId ?? "", running: false, ended: true } });
         await store.addEva(c.site, { ...r.record(), ended: new Date().toISOString(), aborted: true, summary: "The crew's planner was closed or reloaded during the EVA." });
       }
     } else if (msg.type === "eva" && msg.state === "end") {
       deliver(c.site, r.endEva());
+      toEv2(c.site, { type: "crew-eva", eva: { id: r.evaId ?? "", running: false, ended: true } });
       await store.addEva(c.site, { ...r.record(), ended: new Date().toISOString(), aborted: !!msg.aborted, summary: String(msg.summary ?? "").slice(0, 2000) });
     }
   } else if (c.role === "mc" && msg.type === "say" && typeof msg.text === "string") {
@@ -108,7 +140,15 @@ async function onMessage(c: Client, raw: string): Promise<void> {
     c.said = c.said.filter((t) => now - t < 10_000);
     if (c.said.length >= 5) return;
     c.said.push(now);
-    deliver(c.site, r.say(msg.text));
+    const ch = msg.change;
+    const change =
+      ch && Array.isArray(ch.drop) && Array.isArray(ch.add)
+        ? {
+            drop: ch.drop.filter((id) => typeof id === "string" && SAFE_ID.test(id)).slice(0, 10),
+            add: ch.add.filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)).slice(0, 5).map((p) => ({ x: +p.x, y: +p.y })),
+          }
+        : undefined;
+    deliver(c.site, r.say(msg.text, change && (change.drop.length || change.add.length) ? change : undefined));
   }
 }
 
@@ -218,8 +258,9 @@ const TYPES: Record<string, string> = {
   ".json": "application/json; charset=utf-8", ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml",
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".woff2": "font/woff2", ".woff": "font/woff",
   ".pk": "application/octet-stream", ".bin": "application/octet-stream", ".txt": "text/plain; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8", ".wasm": "application/wasm", ".onnx": "application/octet-stream", ".wav": "audio/wav",
 };
-const GZIP = new Set([".html", ".js", ".css", ".json", ".svg", ".webmanifest", ".txt"]);
+const GZIP = new Set([".html", ".js", ".mjs", ".css", ".json", ".svg", ".webmanifest", ".txt"]);
 const gzCache = new Map<string, { mtime: number; data: Buffer }>();
 
 async function serveStatic(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<void> {
@@ -288,7 +329,7 @@ server.on("upgrade", (req, socket, head) => {
   wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
 });
 wss.on("connection", (ws: WebSocket) => {
-  const c: Client = { ws, role: null, site: null, alive: true, said: [] };
+  const c: Client = { ws, role: null, site: null, member: "ev1", alive: true, said: [] };
   clients.add(c);
   ws.on("pong", () => (c.alive = true));
   ws.on("message", (data) => void onMessage(c, data.toString()).catch((e) => console.error("hab:", e)));
@@ -297,6 +338,7 @@ wss.on("connection", (ws: WebSocket) => {
     if (!c.site) return;
     const r = rooms.get(c.site);
     if (c.role === "crew" && r && inRoom(c.site, "crew").length === 0) deliver(c.site, r.setCrewOnline(false));
+    if (c.role === "crew") countEv2(c.site);
     if (c.role === "mc") countMc(c.site);
   });
 });

@@ -8,7 +8,7 @@ import type { HabMap } from "./eva/hab";
 import { DUST_PRESETS, dustEffect, fmtVisibility } from "./eva/dust";
 import { FieldNote, Notebook } from "./ui/notebook";
 import { HabLink, type LinkState } from "./hab/link";
-import type { Frame, PlanInfo, ServerMsg } from "./hab/protocol";
+import type { EarthMessage, Frame, Member, PlanChange, PlanInfo, ServerMsg } from "./hab/protocol";
 import { bestRelay, inContact, lineOfSight, RadioCoverage, radioCoverage, radioShadow, relayFromShadow, RelaySuggestion, RELAY_MAST_M, SUIT_ANTENNA_M } from "./eva/radio";
 import { inTerrainShadow } from "./eva/shade";
 import { geometricMedian } from "./routing/median";
@@ -115,6 +115,8 @@ export class App {
   private layer: LayerId = "none";
   /** Dust in the air (eva/dust.ts preset id). */
   private dustId = "clear";
+  /** With "sol": the sol picked from the rover's record. */
+  private dustSol = 0;
   private dustWarned = false;
   /** The real rover's drive replayed as a ghost; its own clock while planning. */
   private ghostOn = false;
@@ -123,6 +125,18 @@ export class App {
   private readonly notebook: Notebook;
   /** Link to the hab server (the habitat's computer): Mission Control, shared notebook, EVA records. */
   private readonly habLink: HabLink;
+  /** This device's astronaut: EV1 plans and runs the EVA; EV2 walks it with EV1 on another device. */
+  private readonly member: Member = new URLSearchParams(location.search).get("crew") === "ev2" ? "ev2" : "ev1";
+  /** EV1: EV2 devices linked through the hab.  EV2: EV1's latest EVA clock and speed, and its plan. */
+  private ev2Online = 0;
+  private followT = 0;
+  private followSpeed = 0;
+  private crewPlanHash = "";
+  private evaRunningOnEv1 = false;
+  private ev2Last: XY | null = null;
+  private ev2Heading = 0;
+  /** A revised plan accepted during the EVA: applied when the crew is back to planning. */
+  private pendingChange: PlanChange | null = null;
   private habState: LinkState = "connecting";
   private mcWatching = 0;
   private evaId = "";
@@ -225,19 +239,24 @@ export class App {
     view.onPoiClick = (id) => this.openCard(id, false);
     view.onGroundClick = (p, cx, cy) => this.groundClick(p, cx, cy);
     view.onNoteClick = (id) => this.openNote(id);
+    if (site.dust) {
+      this.dustId = "eva";
+      this.dustSol = site.dust.eva.sol ?? site.dust.record[site.dust.record.length - 1][0];
+      view.setDust(site.dust.eva.tau);
+    }
     this.notebook = new Notebook(site.meta.id);
     this.pushNotes();
     this.notebook.onChange = () => {
       this.pushNotes();
       this.renderLeft();
     };
-    this.habLink = new HabLink("crew", site.meta.id);
+    this.habLink = new HabLink("crew", site.meta.id, this.member);
     this.habLink.onMessage((m) => this.onHab(m));
     this.habLink.onState((st) => {
       this.habState = st;
       if (st === "online") {
         void this.notebook.sync().then((ok) => ok && this.notebook.onChange());
-        if (this.phase !== "eva") this.habLink.send({ type: "eva", state: "idle" });
+        if (this.phase !== "eva") this.crewSend({ type: "eva", state: "idle" });
         this.sendPlan();
       }
       this.renderHabChip();
@@ -468,7 +487,7 @@ export class App {
         if (this.voice.enabled) this.voice.say("Voice guidance on.", "urgent");
       } else if (act === "skip") this.skipAhead();
       else if (act === "note-here" && this.mission) {
-        const pose = this.mission.pose();
+        const pose = this.member === "ev2" ? this.mission.buddyPose() : this.mission.pose();
         this.addNote({ x: pose.x, y: pose.y });
       }
       else if (act === "end") this.backToPlanning();
@@ -939,9 +958,9 @@ export class App {
 
   private groundClick(p: XY, clientX: number, clientY: number): void {
     const menu = $("#pin-menu");
-    if (this.phase !== "planning") {
-      if (this.phase !== "eva") return;
-      // during the EVA a click on the ground can only take a note or a sample
+    if (this.phase !== "planning" || this.member === "ev2") {
+      if (this.phase !== "eva" && this.member !== "ev2") return;
+      // during the EVA (and on EV2's device) a click on the ground can only take a note or a sample
       const rect0 = $("#stage").getBoundingClientRect();
       menu.innerHTML = `<p class="t">${ic.note}Field notebook</p><p>Elevation ${Math.round(this.site.grid.heightAt(p.x, p.y))} m · slope ${this.site.grid.slope[this.site.grid.nodeAt(p.x, p.y)]}°</p><div class="row"><button data-x="close">Cancel</button><button data-x="sample">${ic.sample}<span>Sample</span></button><button class="primary" data-x="note">${ic.note}<span>Note</span></button></div>`;
       menu.hidden = false;
@@ -1217,13 +1236,18 @@ export class App {
       ${this.site.rover.traverse.length ? `<label class="switch"><span>${esc(this.roverName)}'s real track</span><input class="sr" type="checkbox" id="track" ${this.showTrack ? "checked" : ""}/><i></i></label>` : ""}
       ${this.site.rover.traverse.length ? `<label class="switch"><span>Ghost of ${esc(this.roverName)}'s drive</span><input class="sr" type="checkbox" id="ghost" ${this.ghostOn ? "checked" : ""}/><i></i></label>` : ""}
       <label class="switch"><span>Sun shadows</span><input class="sr" type="checkbox" id="shadows" ${this.showShadows ? "checked" : ""}/><i></i></label>
-      <label class="view-menu-dust"><span>Dust in the air</span><select id="dust">${DUST_PRESETS.map((d) => `<option value="${d.id}" ${d.id === this.dustId ? "selected" : ""}>${esc(d.name)} · τ ${d.tau}</option>`).join("")}</select><small id="dust-info">${esc(this.dustText())}</small></label>
+      <label class="view-menu-dust"><span>Dust in the air</span><select id="dust">${this.dustOptions().map((o) => `<option value="${o.id}" ${o.id === this.dustId ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select><small id="dust-info">${esc(this.dustText())}</small></label>
+      <div id="dust-chart">${this.dustChart()}</div>
       <label class="slider"><span>Vertical exaggeration <b id="exag-val">×${this.exag.toFixed(2)}</b></span><input type="range" id="exag" min="1" max="2.5" step="0.25" value="${this.exag}"/></label>`;
   }
 
   private displayChange(t: HTMLInputElement): void {
     if (t.id === "ghost") this.setGhost(t.checked);
     else if (t.id === "dust") this.setDust(t.value);
+    else if (t.id === "dust-sol") {
+      this.dustSol = Number(t.value);
+      this.setDust("sol");
+    }
     else if (t.id === "track") {
       this.showTrack = t.checked;
       this.view.setTrackVisible(this.showTrack);
@@ -1380,7 +1404,12 @@ export class App {
           ${this.notebook.notes.length ? `<button data-act="notes-zip">${ic.note}<span><b>Field notebook (ZIP)</b><small>Route, notes and samples as KML + GeoJSON, voice notes as MP3</small></span></button>` : ""}
           <button data-act="link">${ic.link}<span><b>Copy link to this plan</b><small>Stops, start time and options, for a teammate or a judge</small></span></button>
         </div>
-        <button class="primary big" data-act="start" ${b.feasible ? "" : "disabled"}>${ic.play}<span>Start EVA</span></button>
+        ${
+          this.member === "ev2"
+            ? `<button class="primary big" disabled>${ic.play}<span>${this.habState === "online" ? "EV1 starts the EVA" : "No link to the hab"}</span></button>
+               <p class="crew-note">You are <b>EV2</b>. EV1 plans this EVA on their device; when they start it, you walk it with them here.</p>`
+            : `<button class="primary big" data-act="start" ${b.feasible ? "" : "disabled"}>${ic.play}<span>Start EVA</span></button>`
+        }
       </footer>`;
   }
 
@@ -2059,6 +2088,12 @@ export class App {
           : "No hab server: the planner works on its own. Start it with `npm start` to link Mission Control and share notes.";
     const label = b.querySelector("span");
     if (label) label.textContent = this.habState === "online" && this.mcWatching ? `Mission Control · ${this.mcWatching}` : "Mission Control";
+    const badge = document.getElementById("crew-badge");
+    if (badge) {
+      badge.hidden = this.member === "ev1" && this.ev2Online === 0;
+      badge.textContent = this.member === "ev2" ? "EV2" : "EV1 · EV2 linked";
+      badge.title = this.member === "ev2" ? "This device is EV2: you walk EV1's EVA with them" : "EV2 is linked on another device";
+    }
     // the label is hidden on small screens: say the state in words too
     b.setAttribute("aria-label", `Open Mission Control. ${this.habState === "online" ? `Hab connected${this.mcWatching ? `, ${this.mcWatching} screen${this.mcWatching === 1 ? "" : "s"} watching` : ""}` : this.habState === "connecting" ? "Connecting to the hab" : "No hab server"}.`);
   }
@@ -2084,7 +2119,7 @@ export class App {
     const stops = this.pois
       .filter((p) => p.kind === "shelter" || this.selected.includes(p.id))
       .map((p) => ({ id: p.id, name: p.name, short: p.short, x: p.x, y: p.y, kind: p.kind, order: Math.max(0, order.findIndex((o, i) => o.id === p.id && i > 0 && i < order.length - 1)) }));
-    const dust = DUST_PRESETS.find((d) => d.id === this.dustId) ?? DUST_PRESETS[0];
+    const dust = { tau: this.dustTau, name: this.dustOptions().find((o) => o.id === this.dustId)?.label ?? "" };
     return {
       site: this.site.meta.id,
       siteName: this.site.meta.name,
@@ -2102,12 +2137,13 @@ export class App {
       storm: this.storm,
       buddy: this.buddy,
       dust: { tau: dust.tau, name: dust.name },
+      hash: this.planHash(),
     };
   }
 
   private sendPlan(): void {
     const plan = this.planInfo();
-    if (plan) this.habLink.send({ type: "plan", plan }, true);
+    if (plan) this.crewSend({ type: "plan", plan }, true);
   }
 
   /** Telemetry to the hab, four times a second of real time during an EVA. */
@@ -2140,7 +2176,7 @@ export class App {
       speed: this.paused ? 0 : this.speed,
       buddy: this.buddy ? m.buddyPose() : null,
     };
-    this.habLink.send({ type: "frame", frame });
+    this.crewSend({ type: "frame", frame });
     this.sendLog();
   }
 
@@ -2148,10 +2184,62 @@ export class App {
     const sig = `${this.log.length}|${this.log[this.log.length - 1]?.t ?? 0}`;
     if (sig === this.logSent) return;
     const entries = this.log.filter((e) => e.kind !== "earth").map((e) => ({ t: e.t, kind: e.kind, text: e.text })); // Earth knows when it heard
-    if (this.habLink.send({ type: "log", entries })) this.logSent = sig;
+    if (this.crewSend({ type: "log", entries })) this.logSent = sig;
+  }
+
+  /** Send to the hab as the crew.  EV2's device follows EV1's EVA, so it never sends plan, clock or log. */
+  private crewSend(msg: Parameters<HabLink["send"]>[0], sticky = false): boolean {
+    if (this.member === "ev2") return false;
+    return this.habLink.send(msg, sticky);
   }
 
   private onHab(m: ServerMsg): void {
+    if (m.type === "members") {
+      const joined = m.ev2 > this.ev2Online;
+      this.ev2Online = m.ev2;
+      this.renderHabChip();
+      if (joined) {
+        if (this.phase === "planning" && !this.buddy) {
+          this.buddy = true;
+          void this.replan();
+          this.toast("EV2 joined on another device. Buddy mode is on: you plan, and you walk the EVA together.", 6000);
+        } else this.toast("EV2 joined on another device.", 4000);
+      }
+      return;
+    }
+    if (m.type === "crewplan") {
+      // EV2: rebuild EV1's plan exactly (same stops, rover, start time) from its link
+      if (this.member !== "ev2" || this.phase !== "planning" || !m.plan.hash || m.plan.hash === this.crewPlanHash) return;
+      this.crewPlanHash = m.plan.hash;
+      history.replaceState(history.state, "", `${location.pathname}${location.search}#${m.plan.hash}`);
+      this.restoreFromHash();
+      return;
+    }
+    if (m.type === "crew-eva") {
+      if (this.member !== "ev2") return;
+      this.evaRunningOnEv1 = !!m.eva?.running;
+      if (m.eva?.running && this.phase === "planning") {
+        // EV1 started: walk it with them (the plan is already EV1's; the clock follows EV1's frames)
+        window.setTimeout(() => {
+          if (!this.evaRunningOnEv1 || this.phase !== "planning") return;
+          this.followT = 0;
+          this.followSpeed = 0;
+          this.ev2Last = null;
+          this.startEva();
+          this.toast("EV1 started the EVA. You are EV2: walking with EV1. Drag to look around; Note marks what you see.", 6000);
+        }, 400);
+      } else if (!m.eva?.running && this.phase === "eva") {
+        this.onComplete(false);
+        this.toast("EV1 ended the EVA.", 4000);
+      }
+      return;
+    }
+    if (m.type === "live") {
+      if (this.member !== "ev2") return;
+      this.followT = Math.max(this.followT, m.frame.t);
+      this.followSpeed = m.frame.speed;
+      return;
+    }
     if (m.type === "mc") {
       this.mcWatching = m.online;
       this.renderHabChip();
@@ -2164,27 +2252,157 @@ export class App {
         this.log.push({ t: at, kind: "radio", text: `Mission Control: “${m.msg.text}”${lag}` });
         this.log.sort((a, b) => a.t - b.t);
       }
+      if (m.msg.change) {
+        this.voice.say("Mission Control sent a revised plan.");
+        this.buzz([80, 60, 80]);
+        if (this.member === "ev1") this.openProposal(m.msg);
+        else this.toast(`Mission Control sent EV1 a revised plan${lag}.`, 6000);
+        return;
+      }
       this.toast(`Message from Mission Control${lag}: “${m.msg.text}”`, 9000);
       this.voice.say(`Message from Mission Control. ${m.msg.text}`);
       this.buzz([80, 60, 80]);
     }
   }
 
+  // ================================================================ revised plans from Earth
+  /** What a plan change means, in words, for this site. */
+  private describeChange(c: PlanChange): string[] {
+    const lines: string[] = [];
+    for (const id of c.drop) lines.push(`Drop ${esc(this.poi(id)?.name ?? id)}`);
+    for (const p of c.add) {
+      const node = this.site.grid.nodeAt(p.x, p.y);
+      const t = this.field.time[node];
+      lines.push(`Add a stop ${Number.isFinite(t) ? `${fmtDur(t)} from the rover` : "where the ground is not walkable"} (${Math.round(p.x)}, ${Math.round(p.y)})`);
+    }
+    return lines;
+  }
+
+  /** A revised plan from Mission Control: the crew decides, and the answer travels back to Earth. */
+  private openProposal(msg: EarthMessage): void {
+    const c = msg.change!;
+    const lag = msg.immediate ? "" : `Sent ${fmtLightTime(msg.deliverT - msg.sentT)} ago from Earth. `;
+    const inEva = this.phase === "eva";
+    openModal(
+      "Revised plan from Mission Control",
+      `<div class="proposal">
+        <p>${lag}${msg.text ? `“${esc(msg.text)}”` : ""}</p>
+        <ul>${this.describeChange(c).map((l) => `<li>${l}</li>`).join("")}</ul>
+        <p class="note">${inEva ? "You are on the EVA: accepting applies it when you are back at the rover. Earth hears your answer one light time from now." : "Accepting changes the plan now. Earth hears your answer at once (no EVA clock is running)."}</p>
+        <div class="row"><button class="secondary" data-proposal="no">Decline</button><button class="primary" data-proposal="yes">${ic.check}<span>Accept</span></button></div>
+      </div>`,
+      false,
+    );
+    const box = $("#modal");
+    box.querySelector<HTMLButtonElement>("[data-proposal=yes]")?.focus();
+    box.querySelectorAll<HTMLButtonElement>("[data-proposal]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const accepted = b.dataset.proposal === "yes";
+        box.querySelector<HTMLButtonElement>(".close")?.click();
+        this.habLink.send({ type: "reply", id: msg.id, accepted });
+        if (this.phase === "eva") this.log.push({ t: this.mission?.t ?? 0, kind: "earth", text: `${accepted ? "Accepted" : "Declined"} Mission Control's revised plan` });
+        if (!accepted) return this.toast("Declined. Mission Control will hear it one light time from now.", 4000);
+        if (this.phase === "planning") this.applyChange(c);
+        else {
+          this.pendingChange = c;
+          this.toast("Accepted: the revised plan applies when you are back at the rover.", 5000);
+        }
+      }),
+    );
+  }
+
+  private applyChange(c: PlanChange): void {
+    this.selected = this.selected.filter((id) => !c.drop.includes(id));
+    const grid = this.site.grid;
+    for (const p of c.add) {
+      if (!grid.inside(p.x, p.y)) continue;
+      const node = grid.nodeAt(p.x, p.y);
+      if (grid.isBlocked(node) || !Number.isFinite(this.field.time[node])) continue;
+      this.selected.push(this.customPoi(p).id);
+    }
+    void this.replan();
+    this.toast("Revised plan from Mission Control applied.", 4000);
+  }
+
   // ================================================================ dust storm
+  /** The measured day nearest a sol in this site's record. */
+  private dustDay(sol: number): [number, number, number] | null {
+    const r = this.site.dust?.record;
+    if (!r?.length) return null;
+    let best = r[0];
+    for (const d of r) if (Math.abs(d[0] - sol) < Math.abs(best[0] - sol)) best = d;
+    return best;
+  }
+
   private get dustTau(): number {
-    return (DUST_PRESETS.find((d) => d.id === this.dustId) ?? DUST_PRESETS[0]).tau;
+    const d = this.site.dust;
+    if (this.dustId === "eva" && d) return d.eva.tau;
+    if (this.dustId === "sol" && d) return this.dustDay(this.dustSol)?.[1] ?? d.eva.tau;
+    return (DUST_PRESETS.find((p) => p.id === this.dustId) ?? DUST_PRESETS[0]).tau;
+  }
+
+  /** The dust choices: this EVA's measured value, the historic storms, or any sol of the rover's record. */
+  private dustOptions(): { id: string; label: string }[] {
+    const d = this.site.dust;
+    const own = d
+      ? [
+          { id: "eva", label: `${d.eva.how === "measured" ? `EVA sol ${d.eva.sol}` : "This season"} · τ ${d.eva.tau.toFixed(2)} (${d.rover})` },
+          { id: "sol", label: `Any sol of ${d.rover}'s record…` },
+        ]
+      : [];
+    return [...own, ...DUST_PRESETS.map((p) => ({ id: p.id, label: `${p.name} · τ ${p.tau}` }))];
   }
 
   private dustText(): string {
-    const p = DUST_PRESETS.find((d) => d.id === this.dustId) ?? DUST_PRESETS[0];
-    const e = dustEffect(p.tau, Math.max(20, this.sunAtEva(this.mission?.t ?? 0).elevation));
-    return `Measured: ${p.where}. Sunlight ${Math.round(e.sunlight * 100)}% of a clear day, visibility ${fmtVisibility(e.visibilityM)}.`;
+    const d = this.site.dust;
+    const e = dustEffect(this.dustTau, Math.max(20, this.sunAtEva(this.mission?.t ?? 0).elevation));
+    const effect = `Sunlight ${Math.round(e.sunlight * 100)}% of a clear day, visibility ${fmtVisibility(e.visibilityM)}.`;
+    if (d && this.dustId === "eva") return `${d.eva.text}${d.standIn ? `. ${d.standIn}` : ""} (${d.instrument}, ${d.wavelengthNm} nm). ${effect}`;
+    if (d && this.dustId === "sol") {
+      const day = this.dustDay(this.dustSol);
+      return day ? `Sol ${day[0]} (Ls ${Math.round(day[2])}°): τ ${day[1].toFixed(2)}, measured by ${d.rover}'s ${d.instrument}. ${effect}` : effect;
+    }
+    const p = DUST_PRESETS.find((x) => x.id === this.dustId) ?? DUST_PRESETS[0];
+    return `Measured: ${p.where}. ${effect}`;
+  }
+
+  /** The whole record as a small chart, with the picked sol marked (only with "Any sol…"). */
+  private dustChart(): string {
+    const d = this.site.dust;
+    if (!d || this.dustId !== "sol") return "";
+    const r = d.record;
+    const s0 = r[0][0], s1 = r[r.length - 1][0];
+    const max = Math.max(1, ...r.map((x) => x[1]));
+    const W = 236, H = 46;
+    const X = (sol: number) => ((sol - s0) / Math.max(1, s1 - s0)) * W;
+    const Y = (tau: number) => H - 2 - (Math.min(tau, max) / max) * (H - 6);
+    const path = r.map((x, i) => `${i ? "L" : "M"}${X(x[0]).toFixed(1)},${Y(x[1]).toFixed(1)}`).join("");
+    const day = this.dustDay(this.dustSol);
+    return `<div class="dust-pick">
+        <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="${esc(d.rover)}'s dust record, sols ${s0} to ${s1}; the highest is τ ${max.toFixed(1)}">
+          <path d="${path}" fill="none" stroke="#f5b544" stroke-width="1.2"/>
+          ${day ? `<line x1="${X(day[0]).toFixed(1)}" x2="${X(day[0]).toFixed(1)}" y1="0" y2="${H}" stroke="#46e0cf" stroke-width="1.5"/>` : ""}
+        </svg>
+        <label><span class="vh">Sol</span><input type="range" id="dust-sol" min="${s0}" max="${s1}" step="1" value="${this.dustSol}"/></label>
+        <small class="dust-axis"><span>sol ${s0}</span><span>τ up to ${max.toFixed(1)}</span><span>sol ${s1}</span></small>
+      </div>`;
   }
 
   private setDust(id: string): void {
+    const changed = id !== this.dustId;
     this.dustId = id;
     this.view.setDust(this.dustTau);
     setText(document.getElementById("dust-info"), this.dustText());
+    const chart = document.getElementById("dust-chart");
+    if (chart && changed) chart.innerHTML = this.dustChart();
+    else if (chart) {
+      // dragging the sol slider: move the marker only (rebuilding would drop the slider mid-drag)
+      const r = this.site.dust!.record;
+      const day = this.dustDay(this.dustSol);
+      const x = day ? (((day[0] - r[0][0]) / Math.max(1, r[r.length - 1][0] - r[0][0])) * 236).toFixed(1) : "0";
+      chart.querySelector("line")?.setAttribute("x1", x);
+      chart.querySelector("line")?.setAttribute("x2", x);
+    }
     this.dustWarned = false;
     if (this.phase === "eva") this.warnDust();
     if (this.viewMode === "walk") this.renderHud();
@@ -2448,7 +2666,7 @@ export class App {
     window.setTimeout(() => this.warnDust(), 2500);
     this.evaId = `eva-${Date.now().toString(36)}`;
     this.logSent = "";
-    this.habLink.send({ type: "eva", state: "start", evaId: this.evaId, lightTimeS: this.skyAt(0).lightTimeS }, true);
+    this.crewSend({ type: "eva", state: "start", evaId: this.evaId, lightTimeS: this.skyAt(0).lightTimeS }, true);
     this.sendFrame();
     this.view.setRelay(this.useRelay ? this.plan?.relay?.at ?? null : null);
     $("#pin-menu").hidden = true;
@@ -2464,7 +2682,14 @@ export class App {
   }
 
   private backToPlanning(): void {
-    if (this.phase === "eva" && this.evaId) this.habLink.send({ type: "eva", state: "end", evaId: this.evaId, aborted: true, summary: "EVA ended early from the planner." }, true);
+    window.setTimeout(() => {
+      if (this.pendingChange && this.phase === "planning") {
+        const c = this.pendingChange;
+        this.pendingChange = null;
+        this.applyChange(c);
+      }
+    }, 0);
+    if (this.phase === "eva" && this.evaId) this.crewSend({ type: "eva", state: "end", evaId: this.evaId, aborted: true, summary: "EVA ended early from the planner." }, true);
     void this.keepAwake(false);
     this.mission = null;
     this.voice.stop();
@@ -2504,10 +2729,27 @@ export class App {
   tick(dt: number): void {
     const m = this.mission;
     if (m && this.phase === "eva") {
-      if (!this.paused) this.handleEvents(m.advance(dt * this.speed));
+      if (this.member === "ev2") {
+        // run at EV1's speed, held to EV1's EVA clock (frames arrive four times a second)
+        let step = dt * this.followSpeed;
+        const err = this.followT - m.t;
+        if (err > Math.max(2, this.followSpeed * 0.6)) step = err; // fell behind (tab hidden, joined late): catch up
+        step = Math.max(0, Math.min(step, this.followT + this.followSpeed * 0.5 - m.t));
+        if (step > 0) this.handleEvents(m.advance(step));
+      } else if (!this.paused) this.handleEvents(m.advance(dt * this.speed));
       const pose = m.pose();
-      this.view.setAstronaut({ x: pose.x, y: pose.y, headingRad: pose.headingRad, moving: pose.moving && !this.paused }, dt);
-      this.view.setBuddy(this.buddy ? m.buddyPose() : null);
+      if (this.member === "ev2") {
+        // this device is EV2: the camera is at EV2, and EV1 is the other suit, walking ahead
+        const me = m.buddyPose();
+        if (this.ev2Last && Math.hypot(me.x - this.ev2Last.x, me.y - this.ev2Last.y) > 0.05) this.ev2Heading = Math.atan2(me.x - this.ev2Last.x, me.y - this.ev2Last.y);
+        const moving = !!this.ev2Last && Math.hypot(me.x - this.ev2Last.x, me.y - this.ev2Last.y) > 0.01;
+        this.ev2Last = me;
+        this.view.setAstronaut({ x: me.x, y: me.y, headingRad: this.ev2Heading, moving }, dt);
+        this.view.setBuddy({ x: pose.x, y: pose.y }, true);
+      } else {
+        this.view.setAstronaut({ x: pose.x, y: pose.y, headingRad: pose.headingRad, moving: pose.moving && !this.paused }, dt);
+        this.view.setBuddy(this.buddy ? m.buddyPose() : null, this.ev2Online > 0);
+      }
       if (this.viewMode === "orbit" && pose.moving && !this.paused) this.view.follow(pose.x, pose.y, dt);
       this.watchRadio(m);
       this.watchSun(m);
@@ -2643,7 +2885,7 @@ export class App {
   private onComplete(aborted: boolean): void {
     this.sendFrame();
     this.sendLog();
-    this.habLink.send({ type: "eva", state: "end", evaId: this.evaId, aborted, summary: this.log.map((e) => `${fmtClock(e.t)} ${e.text}`).join("\n") }, true);
+    this.crewSend({ type: "eva", state: "end", evaId: this.evaId, aborted, summary: this.log.map((e) => `${fmtClock(e.t)} ${e.text}`).join("\n") }, true);
     this.phase = "summary";
     void this.keepAwake(false);
     this.clearAlert();

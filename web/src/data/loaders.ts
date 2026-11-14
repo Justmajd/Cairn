@@ -1,4 +1,4 @@
-import type { ContextData, GeologyUnit, Poi, ProvenanceEntry, RegionMeta, ReplayData, RoverData, SiteMeta, WeatherData } from "../types";
+import type { DustRecord, ContextData, GeologyUnit, Poi, ProvenanceEntry, RegionMeta, ReplayData, RoverData, SiteMeta, WeatherData } from "../types";
 import type { PanoramaSet } from "../ui/panorama";
 import { TerrainGrid } from "./grid";
 import { undelta16, undelta8 } from "./pack";
@@ -15,6 +15,7 @@ export interface SiteData {
   pois: Poi[];
   rover: RoverData;
   weather: WeatherData | null; // null where no lander or rover has measured the weather
+  dust: DustRecord | null; // the rovers' measured dust optical depth by sol (build_dust.py)
   replay: ReplayData;
   context: ContextData;
   provenance: ProvenanceEntry[];
@@ -113,6 +114,7 @@ export async function loadSite(
   ]);
   const regionJob = loadRegion();
   const panoramaJob = json<PanoramaSet>("panoramas.json").catch(() => null);
+  const dustJob = json<DustRecord>("dust.json").catch(() => null);
   docs.catch(() => {}); // awaited below; avoid an unhandled rejection while the grids load
 
   const jobs: [string, string][] = [
@@ -151,9 +153,10 @@ export async function loadSite(
   progress("Mission data", 0.65);
   const [geology, poiDoc, rover, weather, replay, context, prov] = await docs;
   progress("Surrounding terrain", 0.7);
-  const [region, panoramas] = await Promise.all([regionJob, panoramaJob]);
+  const [region, panoramas, dust] = await Promise.all([regionJob, panoramaJob, dustJob]);
   return {
     panoramas,
+    dust,
     id: SITE_ID, base: DATA_BASE, meta, grid,
     geologyGrid: g.geology ? need(g.geology) : null,
     thermalGrid: g.thermal ? need(g.thermal) : null,

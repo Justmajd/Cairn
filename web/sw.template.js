@@ -30,6 +30,8 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   // the hab server's live data (notebook, voice notes, EVA logs) is never cached
   if (url.pathname.includes("/api/")) return;
+  // the speech model and its runtime (~60 MB) come from the hab when needed; never copied into the cache
+  if (url.pathname.includes("/models/") || url.pathname.includes("/ort/")) return;
 
   // the page itself: network first, so a new version shows up; the cached copy when offline
   if (req.mode === "navigate") {

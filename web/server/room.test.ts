@@ -85,6 +85,33 @@ describe("hab room: Earth sees Mars one light time late", () => {
     expect(snap.log.map((e) => e.text)).toEqual(["early"]);
   });
 
+  it("sends a revised plan with the delay, and the crew's answer back with the delay", () => {
+    const r = new Room("x");
+    r.setCrewOnline(true);
+    r.startEva("e1", LT);
+    r.frame(frame(1000));
+    r.say("Add the dark rocks", { drop: ["serpentine"], add: [{ x: 10, y: 20 }] });
+    const got = of(r.frame(frame(1600)).crew, "msg") as { msg: { id: string; change?: { drop: string[] } } }[];
+    expect(got[0].msg.change?.drop).toEqual(["serpentine"]);
+    expect(of(r.reply(got[0].msg.id, true).mc, "log")).toHaveLength(0); // answered at 1600: Earth hears it at 2200
+    const heard = of(r.frame(frame(2200)).mc, "log") as { entry: { ref?: string; accepted?: boolean } }[];
+    expect(heard[0].entry).toMatchObject({ ref: got[0].msg.id, accepted: true });
+  });
+
+  it("keeps a record of the EVA that is enough to replay it", () => {
+    const r = new Room("x");
+    r.setCrewOnline(true);
+    r.startEva("e1", LT);
+    for (let t = 0; t <= 4000; t += 2) r.frame(frame(t));
+    r.upsertNote({ id: "n9", label: "S1", sample: true, x: 1, y: 2, lon: 0, lat: 0, elevM: 0, text: "vein", audio: false, evaT: 900, lmst: "", created: "" });
+    r.endEva();
+    const rec = r.record();
+    expect(rec.frames.length).toBeLessThanOrEqual(1501);
+    expect(rec.frames[rec.frames.length - 1].t).toBe(4000);
+    expect(rec.notes.map((n) => n.id)).toEqual(["n9"]);
+    expect(rec.lightTimeS).toBe(LT);
+  });
+
   it("ignores frames that arrive out of order", () => {
     const r = new Room("x");
     r.setCrewOnline(true);

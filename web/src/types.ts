@@ -208,3 +208,18 @@ export interface RegionMeta {
   height: { file: string; zMin: number; zMax: number };
   texture: { file: string; px: number; mPerPx: number };
 }
+
+/** Measured dust optical depth at a site, by sol (data-pipeline/build_dust.py). */
+export interface DustRecord {
+  rover: string;
+  instrument: string;
+  wavelengthNm: number;
+  citation: string;
+  doi: string;
+  /** For a site no rover has visited: whose record stands in, and why. */
+  standIn?: string;
+  /** Daily means: [sol, tau, Ls]. */
+  record: [number, number, number][];
+  eva: { how: "measured" | "season"; tau: number; ls: number; sol?: number; range?: [number, number]; n?: number; years?: number; text: string };
+  note: string;
+}

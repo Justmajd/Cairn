@@ -996,25 +996,50 @@ export class SceneView {
   }
 
   // ---------------------------------------------------------------- astronaut
+  /**
+   * An astronaut in a suit (about 1.85 m), plus a coloured ring and halo that find it on the map.  Simple
+   * shapes, but a person at visor distance: legs, torso, arms, helmet with a gold visor, life-support pack.
+   */
   private makeAstronaut(color: number): THREE.Group {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.9, 4, 12), new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.6 }));
-    body.position.y = 0.95;
-    const visor = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 8), new THREE.MeshStandardMaterial({ color: 0xffb347, metalness: 0.7, roughness: 0.25 }));
-    visor.position.set(0, 1.5, -0.2);
+    const suit = new THREE.MeshStandardMaterial({ color: 0xeeeae4, roughness: 0.75 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x8d8780, roughness: 0.8 });
+    const part = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, rz = 0) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      m.rotation.z = rz;
+      g.add(m);
+      return m;
+    };
+    const leg = new THREE.CapsuleGeometry(0.11, 0.55, 4, 10);
+    part(leg, suit, -0.12, 0.42, 0);
+    part(leg, suit, 0.12, 0.42, 0);
+    const boot = new THREE.BoxGeometry(0.16, 0.1, 0.3);
+    part(boot, dark, -0.12, 0.05, -0.04);
+    part(boot, dark, 0.12, 0.05, -0.04);
+    part(new THREE.CapsuleGeometry(0.24, 0.36, 4, 12), suit, 0, 1.12, 0);
+    const arm = new THREE.CapsuleGeometry(0.08, 0.46, 4, 8);
+    part(arm, suit, -0.34, 1.08, -0.02, -0.18);
+    part(arm, suit, 0.34, 1.08, -0.02, 0.18);
+    part(new THREE.BoxGeometry(0.44, 0.52, 0.22), suit, 0, 1.18, 0.24); // life-support pack (behind)
+    part(new THREE.SphereGeometry(0.18, 16, 12), suit, 0, 1.6, 0);
+    const visor = part(new THREE.SphereGeometry(0.15, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), new THREE.MeshStandardMaterial({ color: 0xffb347, metalness: 0.8, roughness: 0.2 }), 0, 1.6, -0.06);
+    visor.rotation.x = -Math.PI / 2; // facing forward (−Z)
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.9, 1.25, 40).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, depthTest: false, fog: false }),
     );
     ring.position.y = 0.05;
     ring.renderOrder = 30;
+    ring.name = "marker";
     const halo = new THREE.Mesh(
       new THREE.CircleGeometry(0.9, 40).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.25, depthTest: false, fog: false }),
     );
     halo.position.y = 0.04;
     halo.renderOrder = 29;
-    g.add(body, visor, ring, halo);
+    halo.name = "marker";
+    g.add(ring, halo);
     return g;
   }
 
@@ -1039,9 +1064,19 @@ export class SceneView {
     if (pose.moving) this.walk.bob += dt * 7;
   }
 
-  setBuddy(pose: XY | null): void {
-    const visible = !!pose && this.mode !== "walk";
+  private buddyLast: XY | null = null;
+  /** The other astronaut.  `inVisor`: also in the first-person view (two devices: each sees the other suit). */
+  setBuddy(pose: XY | null, inVisor = false): void {
+    const near = !!pose && this.mode === "walk" && Math.hypot(pose.x - this.walk.x, pose.y - this.walk.y) < 2;
+    const visible = !!pose && (this.mode !== "walk" || (inVisor && !near));
+    // seen through the visor it is a person standing there, not a map marker
+    for (const c of this.buddy.children) if (c.name === "marker") c.visible = this.mode !== "walk";
     const at = pose ? this.ground(pose.x, pose.y) : this.buddy.position;
+    // face the way they walk (heading clockwise from north, as for the astronaut)
+    if (pose && this.buddyLast && Math.hypot(pose.x - this.buddyLast.x, pose.y - this.buddyLast.y) > 0.05) {
+      this.buddy.rotation.y = -Math.atan2(pose.x - this.buddyLast.x, pose.y - this.buddyLast.y);
+    }
+    if (pose) this.buddyLast = { x: pose.x, y: pose.y };
     if (visible !== this.buddy.visible || !at.equals(this.buddy.position)) this.dirty = true;
     this.buddy.visible = visible;
     this.buddy.position.copy(at);

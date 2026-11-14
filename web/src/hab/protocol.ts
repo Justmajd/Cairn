@@ -9,6 +9,8 @@
  */
 
 export type Role = "crew" | "mc";
+/** Which astronaut a crew device is: EV1 runs the EVA (and the plan); EV2 walks with EV1, on its own device. */
+export type Member = "ev1" | "ev2";
 
 /** What Mission Control needs to draw the plan. */
 export interface PlanInfo {
@@ -29,6 +31,14 @@ export interface PlanInfo {
   storm: boolean;
   buddy: boolean;
   dust: { tau: number; name: string };
+  /** The plan as a link (state/planLink.ts): EV2's device rebuilds exactly the same plan from it. */
+  hash?: string;
+}
+
+/** A change to the plan proposed by Mission Control: stops to drop (ids) and points to add. */
+export interface PlanChange {
+  drop: string[];
+  add: { x: number; y: number }[];
 }
 
 /** One telemetry frame from the crew, stamped with the EVA clock `t` (seconds). */
@@ -61,6 +71,9 @@ export interface LogEntry {
   t: number;
   kind: string;
   text: string;
+  /** The Earth message this answers (the crew accepting or declining a revised plan). */
+  ref?: string;
+  accepted?: boolean;
 }
 
 /** A field notebook entry as the server stores it (see ui/notebook.ts). */
@@ -91,10 +104,12 @@ export interface EarthMessage {
   /** Sent while no EVA was running: delivered at once (there is no EVA clock to delay it on). */
   immediate?: boolean;
   delivered?: boolean;
+  /** A revised plan, for the crew to accept or decline. */
+  change?: PlanChange;
 }
 
 export type ClientMsg =
-  | { type: "hello"; role: Role; site: string }
+  | { type: "hello"; role: Role; site: string; member?: Member }
   | { type: "plan"; plan: PlanInfo }
   | { type: "eva"; state: "start"; evaId: string; lightTimeS: number }
   | { type: "eva"; state: "end"; evaId: string; aborted: boolean; summary: string }
@@ -102,7 +117,9 @@ export type ClientMsg =
   | { type: "eva"; state: "idle" }
   | { type: "frame"; frame: Frame }
   | { type: "log"; entries: LogEntry[] }
-  | { type: "say"; text: string };
+  | { type: "say"; text: string; change?: PlanChange }
+  /** The crew's answer to a revised plan: travels back to Earth like everything else. */
+  | { type: "reply"; id: string; accepted: boolean };
 
 export interface McSnapshot {
   plan: PlanInfo | null;
@@ -131,7 +148,28 @@ export type ServerMsg =
   // to the crew
   | { type: "mc"; online: number }
   | { type: "msg"; msg: EarthMessage }
-  | { type: "notebook"; notes: NoteRecord[] };
+  | { type: "notebook"; notes: NoteRecord[] }
+  // between the two astronauts (Mars to Mars: no delay)
+  | { type: "members"; ev2: number }
+  | { type: "crewplan"; plan: PlanInfo }
+  | { type: "crew-eva"; eva: McSnapshot["eva"] }
+  | { type: "live"; frame: Frame };
+
+/** A finished EVA as the hab keeps it (for Mission Control's replay). */
+export interface EvaRecord {
+  evaId: string | null;
+  site: string;
+  plan: PlanInfo | null;
+  log: LogEntry[];
+  frames: Frame[];
+  notes: NoteRecord[];
+  outbox: EarthMessage[];
+  lightTimeS: number;
+  lastFrame: Frame | null;
+  ended?: string;
+  aborted?: boolean;
+  summary?: string;
+}
 
 /** Site ids and note ids: letters, digits, dash and underscore only (they become file names). */
 export const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;

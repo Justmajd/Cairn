@@ -919,3 +919,25 @@ svg.timeline .sunt { fill: #f0e442; font: 500 9px var(--mono); }
 .brief-mc b::before { content: "● "; color: var(--warn); }
 .brief-mc span { font-size: 12px; color: var(--text-2); }
 .brief-mc:hover { background: rgba(245, 181, 68, 0.13); }
+.brief-links { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.brief-links .brief-mc { margin-top: 0; }
+.brief-mc.ev2 { border-color: rgba(70, 224, 207, 0.4); background: rgba(70, 224, 207, 0.06); }
+.brief-mc.ev2 b::before { color: var(--accent); }
+.brief-mc.ev2:hover { background: rgba(70, 224, 207, 0.12); }
+@media (max-width: 560px) { .brief-links { grid-template-columns: 1fr; } }
+
+/* Two astronauts on two devices */
+.crew-badge { margin-left: 6px; padding: 2px 8px; border-radius: 999px; font: 600 11px var(--mono); color: #2a1d00; background: var(--warn); white-space: nowrap; }
+.crew-note { margin: 6px 2px 0; font-size: 12px; color: var(--text-2); }
+
+/* A revised plan from Mission Control */
+.proposal { display: grid; gap: 10px; padding: 16px 20px 18px; }
+.proposal p { margin: 0; }
+.proposal ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.proposal .row { display: flex; justify-content: flex-end; gap: 8px; }
+.dust-pick { display: grid; gap: 2px; margin-top: 6px; }
+.dust-pick input { width: 100%; margin: 0; accent-color: var(--accent); }
+.dust-axis { display: flex; justify-content: space-between; font: 10px var(--mono); color: var(--text-3); }
+.note-voice-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.note-voice-row button { flex: 1; min-width: 140px; }
+.note-status { margin: 0; min-height: 1em; font-size: 11.5px; color: var(--text-2); }

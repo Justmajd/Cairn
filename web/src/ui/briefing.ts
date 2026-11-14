@@ -56,7 +56,10 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
           <button id="brief-enter" class="primary big">Open the EVA planner →</button>
           <button id="brief-demo" class="big">▶ Watch the 2-minute demo</button>
         </div>
-        <button id="brief-mc" class="brief-mc"><b>Mission Control</b><span>Watch the EVA from Earth, ${lightText} behind Mars, and message the crew</span></button>
+        <div class="brief-links">
+          <button id="brief-mc" class="brief-mc"><b>Mission Control</b><span>Watch the EVA from Earth, ${lightText} behind Mars, and message the crew</span></button>
+          <button id="brief-ev2" class="brief-mc ev2"><b>Join as EV2</b><span>The second astronaut, on another device: walk the EVA with EV1</span></button>
+        </div>
         <p class="fine">Every map layer, photo and reading comes from NASA, USGS or JPL archives — see About → Data sources in the planner. Suit and physiology numbers are labelled demo assumptions.</p>
       </section>
       <section class="brief-map">
@@ -96,6 +99,9 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
   $("#brief-enter", host).addEventListener("click", () => {
     close();
     onEnter();
+  });
+  $("#brief-ev2", host).addEventListener("click", () => {
+    location.href = `?site=${encodeURIComponent(site.id)}&skip=1&crew=ev2`;
   });
   $("#brief-mc", host).addEventListener("click", () => {
     window.open(`?view=mission&site=${encodeURIComponent(site.id)}`, `cairn-mc-${site.id}`, "noopener");
