@@ -21,6 +21,7 @@ export function renderProfile(
   stops: Poi[],
   ghost: MeasuredPath[] | null,
   noRadio: ((x: number, y: number, leg: number, sample: number) => boolean) | null = null,
+  onHover: ((at: { x: number; y: number } | null) => void) | null = null,
 ): ProfileHandle {
   const W = Math.max(320, host.clientWidth);
   const H = Math.max(90, host.clientHeight);
@@ -106,6 +107,7 @@ export function renderProfile(
   svg += `<text class="axis" x="${W - pad.r}" y="${H - 4}" text-anchor="end">${fmtDist(total)} walked</text>`;
   svg += `<text class="axis" x="${pad.l}" y="${H - 4}">0</text>`;
   svg += `<g class="cursor" visibility="hidden"><line y1="${pad.t - 2}" y2="${H - pad.b}"/><circle r="4"/></g>`;
+  svg += `<g class="probe" visibility="hidden"><line y1="${pad.t - 2}" y2="${H - pad.b}"/><circle r="3.5"/><text y="${pad.t + 10}"></text></g>`;
 
   host.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Elevation profile of the planned route">${svg}</svg>`;
   const cursor = host.querySelector<SVGGElement>(".cursor")!;
@@ -113,11 +115,52 @@ export function renderProfile(
   const dot = cursor.querySelector("circle")!;
 
   // elevation lookup for the cursor dot
-  const flat: { d: number; z: number }[] = [];
+  const flat: { d: number; z: number; x: number; y: number; slope: number }[] = [];
   let acc = 0;
   for (const leg of legs) {
-    for (const s of leg.samples) flat.push({ d: acc + s.dist, z: s.z });
+    for (const s of leg.samples) flat.push({ d: acc + s.dist, z: s.z, x: s.x, y: s.y, slope: s.slopeDeg });
     acc += leg.distance;
+  }
+  const at = (distM: number) => {
+    let lo = 0;
+    let hi = flat.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (flat[mid].d <= distM) lo = mid;
+      else hi = mid;
+    }
+    return flat[lo];
+  };
+
+  // hovering the chart marks the same point on the map, with its height, slope and distance
+  if (onHover && flat.length) {
+    const svgEl = host.querySelector("svg")!;
+    const probe = svgEl.querySelector<SVGGElement>(".probe")!;
+    const pl = probe.querySelector("line")!;
+    const pc = probe.querySelector("circle")!;
+    const pt = probe.querySelector("text")!;
+    svgEl.addEventListener("pointermove", (ev) => {
+      const r = svgEl.getBoundingClientRect();
+      const px = ((ev.clientX - r.left) / r.width) * W;
+      if (px < pad.l || px > W - pad.r) return;
+      const d = ((px - pad.l) / (W - pad.l - pad.r)) * total;
+      const s = at(d);
+      const x = X(s.d);
+      probe.setAttribute("visibility", "visible");
+      pl.setAttribute("x1", x.toFixed(1));
+      pl.setAttribute("x2", x.toFixed(1));
+      pc.setAttribute("cx", x.toFixed(1));
+      pc.setAttribute("cy", Y(s.z).toFixed(1));
+      const right = x > W * 0.7;
+      pt.setAttribute("x", (x + (right ? -8 : 8)).toFixed(1));
+      pt.setAttribute("text-anchor", right ? "end" : "start");
+      pt.textContent = `${fmtDist(s.d)} · ${Math.round(s.z)} m · ${Math.round(s.slope)}°`;
+      onHover({ x: s.x, y: s.y });
+    });
+    svgEl.addEventListener("pointerleave", () => {
+      probe.setAttribute("visibility", "hidden");
+      onHover(null);
+    });
   }
   return {
     setCursor(distM) {
@@ -125,19 +168,12 @@ export function renderProfile(
         cursor.setAttribute("visibility", "hidden");
         return;
       }
-      let lo = 0;
-      let hi = flat.length - 1;
-      while (hi - lo > 1) {
-        const mid = (lo + hi) >> 1;
-        if (flat[mid].d <= distM) lo = mid;
-        else hi = mid;
-      }
       const x = X(Math.min(total, distM));
       cursor.setAttribute("visibility", "visible");
       line.setAttribute("x1", x.toFixed(1));
       line.setAttribute("x2", x.toFixed(1));
       dot.setAttribute("cx", x.toFixed(1));
-      dot.setAttribute("cy", Y(flat[lo].z).toFixed(1));
+      dot.setAttribute("cy", Y(at(distM).z).toFixed(1));
     },
   };
 }

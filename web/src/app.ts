@@ -1138,9 +1138,13 @@ export class App {
       this.profile = null;
       return;
     }
+    if (this.phase === "planning") this.view.setHoverMarker(null); // a chart redrawn under the pointer leaves no stale marker
     this.profile = renderProfile(
       host, this.plan.legs, this.plan.order, this.showStraight && this.phase === "planning" ? this.plan.straight : null,
       this.plan.radio.lostS > 0 ? (x, y, leg, i) => this.lostOnPlan(x, y, leg, i) : null,
+      (at) => {
+        if (this.phase === "planning") this.view.setHoverMarker(at);
+      },
     );
   }
 
