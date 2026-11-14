@@ -63,7 +63,8 @@ Open the address Vite prints (normally http://localhost:5173).
 
 | Command | What it does |
 |---|---|
-| `npm run dev` | Development server |
+| `npm run dev:all` | Development: frontend and hab server together, one terminal (Ctrl+C stops both) |
+| `npm run dev` | Development server (frontend only) |
 | `npm test` | 91 unit and integration tests (including the hab server end to end) |
 | `npm run build` | Type-check and build to `web/dist/` |
 | `npm run preview` | Serve the built app |
@@ -91,7 +92,7 @@ The server prints its network address too (e.g. `http://192.168.1.10:8787`), so 
 - **Field notebook** entries and voice notes are kept on the hab (`web/hab-data/`, not committed) and appear on every crew device; edits made offline sync when the hab is back. Finished EVAs are recorded there too.
 - Without the hab, nothing changes: the planner shows a grey dot on *Mission Control* and keeps notes on the device.
 
-For development, run `npm run hab` (restarts on changes) next to `npm run dev`; Vite forwards `/api` and `/hab` to it. Environment: `PORT` (8787), `HOST` (`0.0.0.0`), `CAIRN_DATA` (`web/hab-data`), `CAIRN_DIST` (`web/dist`).
+For development, `npm run dev:all` starts both in one terminal (open http://localhost:5173; Ctrl+C stops both), or run `npm run hab` (restarts on changes) next to `npm run dev`; Vite forwards `/api` and `/hab` to it. Environment: `PORT` (8787), `HOST` (`0.0.0.0`), `CAIRN_DATA` (`web/hab-data`), `CAIRN_DIST` (`web/dist`).
 
 ## Controls
 
