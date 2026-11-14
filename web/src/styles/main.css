@@ -841,3 +841,9 @@ svg.timeline .sunt { fill: #f0e442; font: 500 9px var(--mono); }
 .tl-key i.lost { background: rgba(185, 166, 255, 0.5); height: 9px; }
 .tl-key i.sun { height: 2px; background: #f0e442; }
 .tl-key i.o2 { height: 2px; background: #fff; }
+
+/* science time at a stop: − / + */
+.stop .dwell { display: inline-flex; gap: 2px; margin-left: auto; }
+.stop .dwell button { all: unset; box-sizing: border-box; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; background: var(--raise); color: var(--text-2); font: 600 13px var(--sans); cursor: pointer; }
+.stop .dwell button:hover { background: var(--line-2); color: var(--text); }
+.stop .dwell button:focus-visible { outline: 2px solid var(--accent); }

@@ -303,13 +303,17 @@ export class App {
       if (t.id === "more-layers") this.moreLayersOpen = t.open;
     }, true); // toggle does not bubble
     left.addEventListener("click", (ev) => {
-      const t = (ev.target as HTMLElement).closest<HTMLElement>("[data-info],[data-src],[data-remove],[data-rover-reset],[data-rover-closer]");
+      const t = (ev.target as HTMLElement).closest<HTMLElement>("[data-info],[data-src],[data-remove],[data-rover-reset],[data-rover-closer],[data-dwell]");
       if (!t) return;
       if (t.dataset.info) this.openCard(t.dataset.info, false);
       else if (t.dataset.src) showSources(this.site, t.dataset.src);
       else if (t.dataset.remove) this.removeCustom(t.dataset.remove);
       else if (t.dataset.roverReset) void this.moveRover(this.roverHome);
       else if (t.dataset.roverCloser) this.parkCloser();
+      else if (t.dataset.dwell) {
+        const p = this.poi(t.dataset.dwell);
+        if (p) this.setDwell(p.id, p.dwellMin + Number(t.dataset.d ?? 0));
+      }
     });
 
     const right = $("#right");
@@ -890,6 +894,19 @@ export class App {
     void this.moveRover(best);
   }
 
+  /** Minutes on site the crew changed, by stop id (kept in the plan link). */
+  private dwellOverrides: Record<string, number> = {};
+
+  /** Change the science time at a stop (5–180 min); the plan, oxygen and link follow. */
+  private setDwell(id: string, minutes: number, replan = true): void {
+    const m = Math.max(5, Math.min(180, Math.round(minutes / 5) * 5));
+    const original = this.site.pois.find((p) => p.id === id)?.dwellMin ?? 10;
+    this.pois = this.pois.map((p) => (p.id === id ? { ...p, dwellMin: m } : p));
+    if (m === original && !id.startsWith("custom-")) delete this.dwellOverrides[id];
+    else this.dwellOverrides[id] = m;
+    if (replan) void this.replan();
+  }
+
   private roverMoved(): boolean {
     return Math.hypot(this.rover.x - this.roverHome.x, this.rover.y - this.roverHome.y) > 1;
   }
@@ -997,6 +1014,11 @@ export class App {
             <span class="pin">${idx > 0 ? idx : ic.plus}</span>
             <span class="txt"><b>${esc(p.name)}</b><small>${kind} · ${p.dwellMin} min on site</small></span>
           </label>
+          ${
+            on && !locked
+              ? `<span class="dwell" role="group" aria-label="Minutes on site at ${esc(p.short)}"><button data-dwell="${p.id}" data-d="-5" title="5 min less on site">−</button><button data-dwell="${p.id}" data-d="5" title="5 min more on site">+</button></span>`
+              : ""
+          }
           ${
             custom
               ? `<button class="icon" data-remove="${p.id}" title="Remove this stop" ${locked ? "disabled" : ""}>${ic.close}</button>`
@@ -1668,6 +1690,7 @@ export class App {
       buddy: this.buddy,
       relay: this.useRelay,
       rover: this.roverMoved() ? this.rover : null,
+      dwell: Object.fromEntries(Object.entries(this.dwellOverrides).filter(([id]) => this.selected.includes(id))),
     });
   }
 
@@ -1689,7 +1712,10 @@ export class App {
   /** Back / Forward through plan edits: rebuild the plan from the link. */
   private restoreFromHash(): void {
     if (this.phase !== "planning") return;
-    this.pois = this.pois.filter((p) => !p.id.startsWith("custom-"));
+    this.pois = this.pois
+      .filter((p) => !p.id.startsWith("custom-"))
+      .map((p) => (p.kind === "shelter" ? p : this.site.pois.find((o) => o.id === p.id) ?? p)); // science times back to the site's
+    this.dwellOverrides = {};
     this.customCount = 0;
     this.selected = this.site.pois.filter((p) => p.kind === "objective").map((p) => p.id);
     this.startLmst = this.site.meta.eva?.startLmst ?? 10;
@@ -1721,6 +1747,7 @@ export class App {
     this.storm = link.storm;
     this.buddy = link.buddy;
     this.useRelay = link.relay;
+    for (const [id, m] of Object.entries(link.dwell)) if (this.poi(id)) this.setDwell(id, m, false);
     const r = link.rover;
     if (r && grid.inside(r.x, r.y) && !grid.isBlocked(grid.nodeAt(r.x, r.y))) {
       this.pendingRover = r; // moved once the panels are up (it needs the routing worker)
@@ -1817,7 +1844,10 @@ export class App {
     this.closeCard();
     this.useRelay = false;
     this.selected = this.site.pois.filter((p) => p.kind === "objective").map((p) => p.id);
-    this.pois = this.pois.filter((p) => !p.id.startsWith("custom-"));
+    this.pois = this.pois
+      .filter((p) => !p.id.startsWith("custom-"))
+      .map((p) => (p.kind === "shelter" ? p : this.site.pois.find((o) => o.id === p.id) ?? p));
+    this.dwellOverrides = {};
     this.startLmst = this.site.meta.eva?.startLmst ?? 10;
     this.selectLayer("none");
     void this.replan();
