@@ -212,8 +212,13 @@ export function showCueCard(input: CueCardInput): void {
     </div>`;
   host.hidden = false;
   renderProfile($("#cc-profile"), input.legs, input.order, null);
-  const close = () => (host.hidden = true);
+  const opener = document.activeElement as HTMLElement | null;
+  const close = () => {
+    host.hidden = true;
+    opener?.focus?.();
+  };
   $(".close", host).addEventListener("click", close);
+  $<HTMLButtonElement>("#cc-print", host).focus();
   $("#cc-print", host).addEventListener("click", () => {
     const print = $("#print");
     print.innerHTML = html;

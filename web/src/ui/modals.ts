@@ -13,8 +13,13 @@ export function openModal(title: string, bodyHtml: string, wide = true): void {
       <div class="modal-body">${bodyHtml}</div>
     </div>`;
   host.hidden = false;
-  const close = () => (host.hidden = true);
+  const opener = document.activeElement as HTMLElement | null;
+  const close = () => {
+    host.hidden = true;
+    opener?.focus?.(); // back to whatever opened the dialog
+  };
   $(".close", host).addEventListener("click", close);
+  $<HTMLButtonElement>(".close", host).focus();
   host.addEventListener("click", (ev) => ev.target === host && close(), { once: true });
 }
 
