@@ -139,6 +139,12 @@ export class App {
   private useRelay = false;
   /** The relay is up during the current EVA. */
   private relayUp = false;
+  /** What happened during the current EVA, for the summary (mission seconds, kind, text). */
+  private log: { t: number; kind: "go" | "stop" | "radio" | "alert" | "home"; text: string }[] = [];
+
+  private note(kind: "go" | "stop" | "radio" | "alert" | "home", text: string): void {
+    this.log.push({ t: this.mission?.t ?? 0, kind, text });
+  }
   private readonly voice = new Voice();
   private roverCheckCache: RoverCheck | null = null;
 
@@ -1094,11 +1100,33 @@ export class App {
               : `<p class="note">All objectives reached; the crew is back at the rover with ${Math.round(this.P.o2SupplyL - m.o2UsedL)} L of oxygen.</p>`
           }
         </section>
+        ${this.logHtml()}
       </div>
       <footer class="panel-foot">
         ${remaining.length ? `<button class="primary big" data-act="resume">${ic.later}<span>Plan the remaining stop${remaining.length > 1 ? "s" : ""} for a later sol</span></button>` : ""}
         <button class="big" data-act="replan">Back to planning</button>
       </footer>`;
+  }
+
+  /** The EVA log for the summary: mission clock, local time and what happened. */
+  private logHtml(): string {
+    if (this.log.length < 2) return "";
+    // radio flickers on a ridge crest: keep the log readable by merging lost/back pairs shorter than 30 s
+    const rows: typeof this.log = [];
+    for (const e of this.log) {
+      const prev = rows[rows.length - 1];
+      if (prev && prev.kind === "radio" && e.kind === "radio" && prev.text === "Radio contact lost" && e.text === "Radio contact back" && e.t - prev.t < 30) {
+        rows.pop();
+        continue;
+      }
+      rows.push(e);
+    }
+    return `<section class="evalog">
+        <header class="sec-head"><h2>EVA log</h2></header>
+        <ol>${rows
+          .map((e) => `<li class="${e.kind}"><time>${fmtClock(e.t)}</time><span>${esc(e.text)}</span><small>${fmtLmst(this.lmstAt(e.t))}</small></li>`)
+          .join("")}</ol>
+      </section>`;
   }
 
   // ================================================================ bottom bar
@@ -1550,6 +1578,7 @@ export class App {
     this.shelteredAtS = null;
     this.radioLost = false;
     this.relayUp = false;
+    this.log = [{ t: 0, kind: "go", text: "Left the rover" }];
     this.view.setRelay(this.useRelay ? this.plan?.relay?.at ?? null : null);
     $("#pin-menu").hidden = true;
     this.closeCard();
@@ -1637,21 +1666,29 @@ export class App {
         this.paused = true; // hold the walk until the demo has shown the stop
       }
       if (ev.type === "arrive" && ev.poi.kind !== "shelter") {
+        this.note("stop", `Arrived at ${ev.poi.short}`);
         this.openCard(ev.poi.id, true);
         this.toast(`Arrived at ${ev.poi.short}. ${ev.poi.dwellMin} min of science.`);
         this.voice.say(`Arrived at ${ev.poi.short}. ${spokenTime(ev.poi.dwellMin * 60)} of science.`);
       } else if (ev.type === "depart") {
+        this.note("go", `Left ${ev.poi.short}`);
         if (this.cardPoi === ev.poi.id) this.closeCard();
         const n = this.mission?.next();
         if (n?.poi) this.voice.say(`Heading to ${this.waypointName(n.poi)}. ${spokenDist(n.distM)}, about ${spokenTime(n.etaS)}.`);
       } else if (ev.type === "alert") void this.onAlert(ev.rateUGyH);
-      else if (ev.type === "sheltered") this.onSheltered();
-      else if (ev.type === "complete") this.onComplete(ev.aborted);
+      else if (ev.type === "sheltered") {
+        this.note("home", "Inside the rover");
+        this.onSheltered();
+      } else if (ev.type === "complete") {
+        if (!this.log.some((l) => l.kind === "home")) this.note("home", "Back at the rover");
+        this.onComplete(ev.aborted);
+      }
     }
   }
 
   private async onAlert(rate: number): Promise<void> {
     this.buzz([300, 120, 300, 120, 300]);
+    this.note("alert", `Storm alert: ${Math.round(rate)} µGy/h, turned back`);
     const m = this.mission!;
     this.closeCard();
     const pose = m.pose();
@@ -1882,6 +1919,7 @@ export class App {
     const relay = this.useRelay ? this.plan?.relay : null;
     if (relay && !this.relayUp && m.t >= this.plan!.relayAtS && m.alertS === null && !m.emergency) {
       this.relayUp = true;
+      this.note("radio", "Relay up");
       this.view.setRelay(relay.at, true);
       this.toast("Relay up: radio contact now reaches the ground behind the hills.", 3500);
       this.voice.say("Relay deployed.");
@@ -1890,6 +1928,7 @@ export class App {
     const lost = !m.sheltered && m.phase !== "complete" && !inContact(this.radio, this.site.grid, p.x, p.y, this.liveRelay());
     if (lost === this.radioLost) return;
     this.radioLost = lost;
+    this.note("radio", lost ? "Radio contact lost" : "Radio contact back");
     if (lost) {
       this.buzz([120]);
       this.toast("Radio contact with the rover lost: the terrain blocks the line of sight.", 4000);
@@ -1940,6 +1979,7 @@ export class App {
     const m = this.mission;
     if (!m || m.phase !== "eva" || m.emergency || m.alertS !== null || !m.segment) return;
     this.buzz([300, 120, 300]);
+    this.note("alert", kind === "leak" ? "Practice emergency: suit leak, turned back" : "Practice emergency: twisted ankle, turned back");
     m.hold();
     this.closeCard();
     const pose = m.pose();
