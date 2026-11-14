@@ -147,6 +147,7 @@ make build     # writes web/public/data/jezero/  (make gale for Gale; both end w
 | Radiation background and storm readings (Curiosity RAD) | The first ~13 hours of the storm's dose-rate curve (see below) |
 | The eruption record and alert (NASA DONKI) | Antenna heights (rover mast 3 m, suit 1.8 m, relay mast 2.5 m) and line-of-sight radio with no reflections |
 | Perseverance and Curiosity drive paths (rover check) | Practice emergencies: suit leak doubles oxygen use, twisted ankle halves the speed |
+| Sun position for the EVA sol (Mars24) | Thresholds: low sun under 8°, shade judged at 1.2 m, shelter within 30 min, rover parks on ≤ 10° ground (its drive is not modelled) |
 
 **The storm replay.** Curiosity's archived RAD data holds 2–4 hours of dosimetry per sol, so the start of the 20 May 2024 storm is not recorded. CAIRN shows the real readings as dots (background 5.4 µGy/h before the storm, 34.7 µGy/h at 19:08 UTC on 20 May) and fills the gap with a model: the tail is fitted to those readings and the peak is scaled so the total equals the 8,100 micrograys NASA reported. The chart labels measured and modelled values separately. Curiosity is in Gale crater, about 3,700 km from Jezero.
 
