@@ -358,6 +358,7 @@ export class App {
       else if (act === "show-radio") this.selectLayer("radio");
       else if (act === "relay-on" || act === "relay-off") this.setRelay(act === "relay-on");
       else if (act === "spot") this.showSpot(t.dataset.spot === "steep" ? "steep" : "home");
+      else if (act === "check") this.openCheck(t.dataset.check ?? "");
       else if (act === "show-track") {
         this.showTrack = !this.showTrack;
         this.view.setTrackVisible(this.showTrack);
@@ -624,12 +625,27 @@ export class App {
       <p class="tl-key"><i class="walk"></i>walking <i class="dwell"></i>science <i class="lost"></i>no radio <i class="sun"></i>Sun height <i class="o2"></i>oxygen left (dashed: reserve)</p>`;
   }
 
+  /** A safety check chip shows where it comes from: a map layer, or the part of the panel behind it. */
+  private openCheck(name: string): void {
+    const layers: Record<string, LayerId> = { terrain: "risk", shelter: "shelter", radio: "radio" };
+    if (layers[name]) {
+      this.selectLayer(layers[name]);
+      this.toast(`${name[0].toUpperCase()}${name.slice(1)}: showing the ${LAYERS.find((l) => l.id === layers[name])?.name ?? name} layer.`, 2500);
+      return;
+    }
+    const target = name === "daylight" ? "#start" : name === "oxygen" ? ".o2" : name === "time" ? "#plan-details" : null;
+    const el = target ? document.querySelector<HTMLElement>(`#right ${target}`) : null;
+    if (name === "time") (el as HTMLDetailsElement | null)?.setAttribute("open", "");
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (el instanceof HTMLInputElement) el.focus();
+  }
+
   /** One row of safety checks for the plan: terrain, oxygen, time, shelter, radio, daylight. */
   private checksHtml(lowSun: boolean, margin: number): string {
     const checks = this.planChecks(lowSun, margin);
     return checks.length
       ? `<ul class="checks" aria-label="Safety checks">${checks
-          .map(([name, ok, why]) => `<li class="${ok ? "ok" : "warn"}" title="${esc(why)}">${ok ? ic.check : ic.warn}<span>${name}</span></li>`)
+          .map(([name, ok, why]) => `<li><button class="${ok ? "ok" : "warn"}" data-act="check" data-check="${name.toLowerCase()}" title="${esc(why)}">${ok ? ic.check : ic.warn}<span>${name}</span></button></li>`)
           .join("")}</ul>`
       : "";
   }
