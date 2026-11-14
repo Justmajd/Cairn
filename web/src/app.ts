@@ -99,6 +99,9 @@ function heroDur(s: number): string {
 const PX_PER_DEG = 4;
 
 /** Application controller: owns the plan, the EVA simulation and every panel. */
+/** The map-click menu closes from its corner (Escape works too). */
+const PIN_CLOSE = `<button class="icon close" data-x="close" aria-label="Close" title="Close (Esc)">${ic.close}</button>`;
+
 export class App {
   private readonly P: EvaParams = DEFAULT_PARAMS;
   private readonly rad: RadiationModel;
@@ -958,11 +961,8 @@ export class App {
     if (this.phase !== "planning" || this.member === "ev2") {
       if (this.phase !== "eva" && this.member !== "ev2") return;
       // during the EVA (and on EV2's device) a click on the ground can only take a note or a sample
-      const rect0 = $("#stage").getBoundingClientRect();
-      menu.innerHTML = `<p class="t">${ic.note}Field notebook</p><p>Elevation ${Math.round(this.site.grid.heightAt(p.x, p.y))} m · slope ${this.site.grid.slope[this.site.grid.nodeAt(p.x, p.y)]}°</p><div class="row"><button data-x="close">Cancel</button><button data-x="sample">${ic.sample}<span>Sample</span></button><button class="primary" data-x="note">${ic.note}<span>Note</span></button></div>`;
-      menu.hidden = false;
-      menu.style.left = `${Math.min(rect0.width - 312, Math.max(8, clientX - rect0.left + 12))}px`;
-      menu.style.top = `${Math.min(rect0.height - 150, Math.max(8, clientY - rect0.top + 12))}px`;
+      menu.innerHTML = `${PIN_CLOSE}<p class="t">${ic.note}Field notebook</p><p>Elevation ${Math.round(this.site.grid.heightAt(p.x, p.y))} m · slope ${this.site.grid.slope[this.site.grid.nodeAt(p.x, p.y)]}°</p><div class="row"><button data-x="sample">${ic.sample}<span>Sample</span></button><button class="primary" data-x="note">${ic.note}<span>Note</span></button></div>`;
+      this.placePinMenu(menu, clientX, clientY);
       menu.onclick = (ev) => {
         const act = (ev.target as HTMLElement).closest<HTMLElement>("[data-x]")?.dataset.x;
         if (!act) return;
@@ -973,16 +973,13 @@ export class App {
     }
     const grid = this.site.grid;
     const node = grid.nodeAt(p.x, p.y);
-    const rect = $("#stage").getBoundingClientRect();
     const blocked = grid.isBlocked(node) || !Number.isFinite(this.field.time[node]);
     menu.innerHTML = blocked
       ? `<p class="t bad">${ic.warn}Too steep to walk</p><p>Slope ${grid.slope[node]}°, beyond the ${this.site.meta.model.slopeLimitDeg}° limit or cut off from the rover.</p><div class="row"><button data-x="close">OK</button></div>`
-      : `<p class="t">${ic.walk}${fmtDur(this.field.time[node])} from the rover</p><p>Slope ${grid.slope[node]}°${this.site.geologyGrid ? ` · ${esc(this.unitAt(p.x, p.y) ?? "unmapped unit")}` : ""}</p><div class="row"><button data-x="close">Cancel</button>${
+      : `${PIN_CLOSE}<p class="t">${ic.walk}${fmtDur(this.field.time[node])} from the rover</p><p>Slope ${grid.slope[node]}°${this.site.geologyGrid ? ` · ${esc(this.unitAt(p.x, p.y) ?? "unmapped unit")}` : ""}</p><div class="row">${
           grid.slope[node] <= ROVER_PARK_MAX_SLOPE ? `<button data-x="rover" title="Move the rover (start, end and shelter) here">${ic.home}<span>Park rover</span></button>` : ""
         }<button data-x="note" title="Geotagged field note or sample here">${ic.note}<span>Note</span></button><button class="primary" data-x="add">${ic.plus}<span>Add stop</span></button></div>`;
-    menu.hidden = false;
-    menu.style.left = `${Math.min(rect.width - 312, Math.max(8, clientX - rect.left + 12))}px`;
-    menu.style.top = `${Math.min(rect.height - 150, Math.max(8, clientY - rect.top + 12))}px`;
+    this.placePinMenu(menu, clientX, clientY);
     menu.onclick = (ev) => {
       const act = (ev.target as HTMLElement).closest<HTMLElement>("[data-x]")?.dataset.x;
       if (!act) return;
@@ -991,6 +988,39 @@ export class App {
       else if (act === "rover") void this.moveRover(p);
       else if (act === "note") this.addNote(p);
     };
+  }
+
+  /**
+   * Show the map-click menu next to the click, on the map: beside the pointer, flipped to its left or
+   * above it when it would run under a side panel, the chart, or off the screen.
+   */
+  private placePinMenu(menu: HTMLElement, clientX: number, clientY: number): void {
+    menu.style.left = "0px";
+    menu.style.top = "0px";
+    menu.hidden = false;
+    const stage = $("#stage").getBoundingClientRect();
+    const w = menu.offsetWidth;
+    const h = menu.offsetHeight;
+    let maxX = stage.right - 8;
+    let maxY = stage.bottom - 8;
+    for (const id of ["#right", "#bottom"]) {
+      const el = document.querySelector<HTMLElement>(id);
+      if (!el || el.hidden || getComputedStyle(el).display === "none") continue;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) continue;
+      const beside = r.left > stage.left + stage.width / 2 && clientY >= r.top - h && clientY <= r.bottom; // a panel on the right
+      const below = r.top > stage.top + stage.height / 2 && clientX >= r.left - w && clientX <= r.right; // a panel along the bottom
+      if (beside) maxX = Math.min(maxX, r.left - 8);
+      if (below) maxY = Math.min(maxY, r.top - 8);
+    }
+    let x = clientX + 12;
+    if (x + w > maxX) x = clientX - 12 - w;
+    let y = clientY + 12;
+    if (y + h > maxY) y = clientY - 12 - h;
+    x = Math.max(stage.left + 8, Math.min(x, maxX - w));
+    y = Math.max(stage.top + 8, Math.min(y, maxY - h));
+    menu.style.left = `${Math.round(x - stage.left)}px`;
+    menu.style.top = `${Math.round(y - stage.top)}px`;
   }
 
   /**

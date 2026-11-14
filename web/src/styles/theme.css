@@ -322,3 +322,13 @@ input[type="range"]::-moz-range-thumb { background: var(--accent); }
 
 /* while the briefing is open, the planner under it is not drawn at all (and cannot take keyboard focus) */
 body:has(> #briefing:not([hidden])) #app { visibility: hidden; }
+
+/* the map-click menu: what is here, then the actions; the main one has a row of its own, so the menu
+   never needs to be wider than its card (Cancel is the ✕ in the corner) */
+#pin-menu { width: 288px; padding: 14px; border-radius: 16px; background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.012) 55%), #171614; }
+#pin-menu:not([hidden]) { animation: menu-in 0.25s var(--ease-smooth) both; transform-origin: top left; }
+#pin-menu .close { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; }
+#pin-menu p.t { padding-right: 30px; }
+#pin-menu .row { flex-wrap: wrap; justify-content: stretch; }
+#pin-menu .row button { flex: 1 1 0; min-width: 0; padding: 0 10px; }
+#pin-menu .row button.primary { flex-basis: 100%; height: 38px; order: 1; }

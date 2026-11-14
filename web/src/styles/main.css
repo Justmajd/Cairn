@@ -102,7 +102,9 @@ button.link:hover:not(:disabled) { color: var(--accent); background: transparent
 #app { position: fixed; inset: 0; }
 #stage { position: absolute; inset: 0; overflow: hidden; background: var(--bg); }
 #scene, #scene canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-.label-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+/* its own stacking layer: Three.js gives each label a z-index by depth, which must not lift a label over
+   the HUD (z 3), the panels (z 5) or the map-click menu (z 6) */
+.label-layer { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
 
 /* Large panels are near-opaque without a backdrop blur: blurring a live 3D canvas every frame costs more GPU time than the terrain itself. */
 .panel, .pill { background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); }
