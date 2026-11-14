@@ -67,7 +67,7 @@ Offline mode needs the built app (`npm run build`, then `npm run preview` or any
 | **Map** | Drag to move · scroll to zoom · double-click to fly there · click to add a stop | `+` `−` |
 | **3D** | Drag to rotate and tilt · Shift-drag or right-drag to move · scroll to zoom · double-click to fly there (also outside the walk area) | Arrow keys rotate and tilt · `+` `−` · `N` faces north |
 | **Visor** | Drag to look around | |
-| **Any** | Hover the elevation chart to see that point on the map | `1` `2` `3` switch views · `Space` pauses the EVA · `Esc` closes · `?` lists shortcuts |
+| **Any** | Hover the elevation chart to see that point on the map | `1` `2` `3` switch views · `Space` pauses the EVA · `Ctrl/⌘ Z` undoes a plan change (browser Back works too) · `Esc` closes · `?` lists shortcuts |
 
 The buttons at the bottom-right of the map do the same things.
 

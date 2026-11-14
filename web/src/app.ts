@@ -188,6 +188,7 @@ export class App {
     new ResizeObserver(() => this.renderProfileChart()).observe($("#bottom"));
     new ResizeObserver(() => this.updateInsets()).observe($("#app"));
 
+    this.historyIndex = (history.state as { cairn?: number } | null)?.cairn ?? 0; // after a reload mid-history
     this.applyPlanHash(location.hash);
     this.renderLeft();
     this.renderRight();
@@ -366,6 +367,10 @@ export class App {
     });
 
     window.addEventListener("keydown", (ev) => this.onKey(ev));
+    window.addEventListener("popstate", (ev) => {
+      this.historyIndex = (ev.state as { cairn?: number } | null)?.cairn ?? 0;
+      this.restoreFromHash();
+    });
 
     $("#bottom").addEventListener("click", (ev) => {
       const t = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]");
@@ -393,6 +398,12 @@ export class App {
   /** Keyboard shortcuts (the 3D camera keys live in the scene view). */
   private onKey(ev: KeyboardEvent): void {
     const t = ev.target as HTMLElement | null;
+    if ((ev.metaKey || ev.ctrlKey) && !ev.altKey && ev.key.toLowerCase() === "z" && this.phase === "planning" && $("#modal").hidden) {
+      ev.preventDefault();
+      if (ev.shiftKey) history.forward();
+      else if (this.historyIndex > 0) history.back(); // never back out of CAIRN itself
+      return;
+    }
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
     if (!$("#pano").hidden) return; // the panorama has its own keys
@@ -429,6 +440,7 @@ export class App {
         ${row(["←", "→", "↑", "↓"], "3D: rotate and tilt")}
         ${row(["N"], "3D: face north")}
         ${row(["Space"], "Pause or resume the EVA")}
+        ${row(["Ctrl/⌘", "Z"], "Undo a change to the plan (Shift for redo)")}
         ${row(["Esc"], "Close the open card or dialog")}
         ${row(["?"], "This list")}
       </table>
@@ -1478,9 +1490,37 @@ export class App {
     return parts.join("&");
   }
 
+  /**
+   * Each edit of the plan becomes a browser history entry, so Back (or Ctrl/Cmd+Z) undoes it and
+   * Forward (Ctrl/Cmd+Shift+Z) redoes it.  The first plan of a visit and the demo replace instead.
+   */
+  private historyReady = false;
+  /** Position in this visit's plan history (0 = the plan the visit started with): undo stops there. */
+  private historyIndex = 0;
   private writePlanHash(): void {
     const url = `${location.pathname}${location.search}#${this.planHash()}`;
-    if (url !== `${location.pathname}${location.search}${location.hash}`) history.replaceState(history.state, "", url);
+    if (url === `${location.pathname}${location.search}${location.hash}`) return;
+    if (this.historyReady && !this.demo?.running) history.pushState({ cairn: ++this.historyIndex }, "", url);
+    else history.replaceState({ cairn: this.historyIndex }, "", url);
+    this.historyReady = true;
+  }
+
+  /** Back / Forward through plan edits: rebuild the plan from the link. */
+  private restoreFromHash(): void {
+    if (this.phase !== "planning") return;
+    this.pois = this.pois.filter((p) => !p.id.startsWith("custom-"));
+    this.customCount = 0;
+    this.selected = this.site.pois.filter((p) => p.kind === "objective").map((p) => p.id);
+    this.startLmst = this.site.meta.eva?.startLmst ?? 10;
+    this.storm = true;
+    this.buddy = false;
+    this.useRelay = false;
+    this.pendingRover = null;
+    this.applyPlanHash(location.hash);
+    const to = this.pendingRover ?? this.roverHome;
+    this.pendingRover = null;
+    if (Math.hypot(to.x - this.rover.x, to.y - this.rover.y) > 1) void this.moveRover(to);
+    else void this.replan();
   }
 
   /** Restore a plan from a link; anything that does not fit this site is ignored. */
