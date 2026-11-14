@@ -98,7 +98,18 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
   host.hidden = false;
   scramble($("#brief-code", host), 1100);
   host.querySelectorAll<HTMLElement>(".brief-facts b").forEach((b, i) => countUp(b, 1500, 450 + i * 70));
-  pointerGlow(host, ".brief-mc");
+  // listeners on the host go on once: the briefing is drawn again into the same element
+  if (!host.dataset.scrollWatch) {
+    host.dataset.scrollWatch = "1";
+    pointerGlow(host, ".brief-mc");
+    // no hover effects while scrolling (see .scrolling in theme.css)
+    let t = 0;
+    host.addEventListener("scroll", () => {
+      host.classList.add("scrolling");
+      window.clearTimeout(t);
+      t = window.setTimeout(() => host.classList.remove("scrolling"), 160);
+    }, { passive: true });
+  }
   // pointing at another site warms the cache with its data, so the switch is quick
   host.querySelectorAll<HTMLAnchorElement>(".brief-sites a").forEach((a) => {
     const id = new URLSearchParams(a.search).get("site");
