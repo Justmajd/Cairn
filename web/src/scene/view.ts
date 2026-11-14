@@ -44,6 +44,7 @@ const EYE_HEIGHT_M = 1.7;
 const CAMERA_CLEARANCE_M = 3;
 const sightDir = new THREE.Vector3();
 const labelPos = new THREE.Vector3();
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
 interface Tween {
@@ -674,6 +675,7 @@ export class SceneView {
   }
 
   private startTween(toPos: THREE.Vector3, toTarget: THREE.Vector3, toFov: number, duration: number, done: () => void): void {
+    if (reducedMotion.matches) duration = Math.min(duration, 0.25); // still a cue to where the view went, not a ride
     this.controls.enabled = false;
     this.fly = null;
     this.tween = {

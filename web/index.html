@@ -3,7 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="description" content="CAIRN — a Marswalk route planner for the first human explorers at Jezero Crater, built on NASA, USGS and JPL data." />
+    <meta name="description" content="CAIRN plans safe walks for the first astronauts on Mars, at Jezero and Gale craters: routes on real NASA terrain, oxygen, radiation, radio contact and emergencies. Works offline." />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="CAIRN — Marswalk Route Planner" />
+    <meta property="og:description" content="Plan safe walks for the first astronauts on Mars, on real NASA terrain at Jezero and Gale craters." />
     <title>CAIRN — Marswalk Route Planner</title>
     <meta name="theme-color" content="#0b0d10" />
     <link rel="manifest" href="./manifest.webmanifest" />
@@ -56,9 +59,9 @@
       <div id="view-menu" hidden></div>
       <div id="about-menu" class="menu" role="menu" hidden></div>
       <div id="nav-hint"></div>
-      <div id="alert" hidden></div>
+      <div id="alert" role="alert" hidden></div>
       <div id="card" hidden></div>
-      <div id="toast" hidden></div>
+      <div id="toast" role="status" aria-live="polite" hidden></div>
       <div id="demo" hidden></div>
     </div>
 

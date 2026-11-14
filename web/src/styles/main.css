@@ -745,3 +745,8 @@ details.more-layers > summary em { margin-left: auto; font: 11px var(--mono); fo
 .hz-key.legend.units { grid-template-columns: repeat(3, auto); justify-content: start; gap: 4px 12px; margin: 0 0 8px; }
 .rover-check .note { margin-bottom: 8px; }
 .rover-check .link { display: inline-flex; align-items: center; gap: 6px; }
+
+/* reduced motion: no blinking warnings or sliding cards (the colours still mark them) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

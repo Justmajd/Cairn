@@ -93,7 +93,9 @@ async function boot(): Promise<void> {
   performance.mark("cairn:ready");
   progress("Ready", 1);
   $("#loading").hidden = true;
-  if (query.get("skip") !== "1") showBriefing(site, () => {}, sites);
+  // a shared plan link opens straight on the plan
+  const sharedPlan = /(^#|&)(stops|add)=/.test(location.hash);
+  if (query.get("skip") !== "1" && !sharedPlan) showBriefing(site, () => {}, sites);
 
   if (useHi) {
     loadTexture(site.base + hi!.file)

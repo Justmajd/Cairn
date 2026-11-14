@@ -164,6 +164,7 @@ export class App {
     new ResizeObserver(() => this.renderProfileChart()).observe($("#bottom"));
     new ResizeObserver(() => this.updateInsets()).observe($("#app"));
 
+    this.applyPlanHash(location.hash);
     this.renderLeft();
     this.renderRight();
     this.renderBottom();
@@ -284,6 +285,7 @@ export class App {
       const t = ev.target as HTMLInputElement;
       if (t.id === "opt-storm") this.storm = t.checked;
       if (t.id === "opt-buddy") this.buddy = t.checked;
+      if (t.id === "opt-storm" || t.id === "opt-buddy") this.writePlanHash();
       if (t.id === "opt-straight") {
         this.showStraight = t.checked;
         this.pushRoutes();
@@ -303,7 +305,9 @@ export class App {
       setText($("#sun-val"), `Sun ${this.sunText(this.sunAtEva(0))} → ${this.sunText(this.sunAtEva(b.totalTimeS))} at ${fmtLmst(this.lmstAt(b.totalTimeS))}`);
     });
     right.addEventListener("change", (ev) => {
-      if ((ev.target as HTMLElement).id === "start") this.renderRight(); // refresh warnings and dose
+      if ((ev.target as HTMLElement).id !== "start") return;
+      this.renderRight(); // refresh warnings and dose
+      this.writePlanHash();
     });
     right.addEventListener("click", (ev) => {
       const t = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]");
@@ -317,6 +321,7 @@ export class App {
         const menu = document.getElementById("export-menu");
         if (menu) menu.hidden = !menu.hidden;
       } else if (act === "kml" || act === "geojson") this.exportRoute(act);
+      else if (act === "link") void this.copyPlanLink();
       else if (act === "resume") this.resumeRemaining();
       else if (act === "show-radio") this.selectLayer("radio");
       else if (act === "show-track") {
@@ -523,6 +528,7 @@ export class App {
   }
 
   private afterPlan(): void {
+    if (this.phase === "planning") this.writePlanHash();
     this.pushRoutes();
     this.pushPois();
     this.renderLeft();
@@ -573,6 +579,12 @@ export class App {
   }
 
   private addCustom(p: XY): void {
+    this.selected.push(this.customPoi(p).id);
+    void this.replan();
+  }
+
+  /** A stop placed on the map (added to the list, not yet selected). */
+  private customPoi(p: XY): Poi {
     const n = ++this.customCount;
     const unit = this.unitAt(p.x, p.y);
     const poi: Poi = {
@@ -582,8 +594,7 @@ export class App {
       science: "", whyHumans: "",
     };
     this.pois.push(poi);
-    this.selected.push(poi.id);
-    void this.replan();
+    return poi;
   }
 
   private removeCustom(id: string): void {
@@ -859,11 +870,12 @@ export class App {
         <div class="foot-row three">
           <button class="secondary" data-act="fly" title="Fly along the planned route">${ic.flight}<span>Fly route</span></button>
           <button class="secondary" data-act="cue" title="One-page printable plan">${ic.book}<span>Cue card</span></button>
-          <button class="secondary" data-act="export" aria-haspopup="menu" title="Save the route for Google Earth or GIS tools">${ic.download}<span>Export</span></button>
+          <button class="secondary" data-act="export" aria-haspopup="menu" title="Save the route for Google Earth or GIS tools, or copy a link to the plan">${ic.download}<span>Export</span></button>
         </div>
         <div class="menu list" id="export-menu" role="menu" hidden>
           <button data-act="kml">${ic.download}<span><b>KML</b><small>Google Earth in Mars mode</small></span></button>
           <button data-act="geojson">${ic.download}<span><b>GeoJSON</b><small>QGIS and other map tools · Mars 2000 coordinates</small></span></button>
+          <button data-act="link">${ic.link}<span><b>Copy link to this plan</b><small>Stops, start time and options, for a teammate or a judge</small></span></button>
         </div>
         <button class="primary big" data-act="start" ${b.feasible ? "" : "disabled"}>${ic.play}<span>Start EVA</span></button>
       </footer>`;
@@ -1197,6 +1209,57 @@ export class App {
   }
 
   /** Save the planned route as KML (Google Earth, Mars mode) or GeoJSON (GIS tools). */
+  // ================================================================ plan links
+  /**
+   * The plan in the URL hash — `#stops=cheyava,serpentine&add=812_1460&t=9.5&storm=0&buddy=1` — so a
+   * reload keeps it and a link shares it.  Custom stops travel as local x_y metres.
+   */
+  private planHash(): string {
+    const custom = this.selected.map((id) => this.poi(id)).filter((p): p is Poi => !!p && p.id.startsWith("custom-"));
+    const parts = [`stops=${this.selected.filter((id) => !id.startsWith("custom-")).map(encodeURIComponent).join(",")}`];
+    if (custom.length) parts.push(`add=${custom.map((p) => `${Math.round(p.x)}_${Math.round(p.y)}`).join(",")}`);
+    if (this.startLmst !== (this.site.meta.eva?.startLmst ?? 10)) parts.push(`t=${+this.startLmst.toFixed(2)}`);
+    if (!this.storm) parts.push("storm=0");
+    if (this.buddy) parts.push("buddy=1");
+    return parts.join("&");
+  }
+
+  private writePlanHash(): void {
+    const url = `${location.pathname}${location.search}#${this.planHash()}`;
+    if (url !== `${location.pathname}${location.search}${location.hash}`) history.replaceState(history.state, "", url);
+  }
+
+  /** Restore a plan from a link; anything that does not fit this site is ignored. */
+  private applyPlanHash(hash: string): void {
+    const q = new URLSearchParams(hash.replace(/^#/, ""));
+    if (!q.has("stops") && !q.has("add")) return;
+    const ids = (q.get("stops") ?? "").split(",").filter((id) => this.site.pois.some((p) => p.id === id && p.kind !== "shelter"));
+    const grid = this.site.grid;
+    for (const xy of (q.get("add") ?? "").split(",").filter(Boolean)) {
+      const [x, y] = xy.split("_").map(Number);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !grid.inside(x, y)) continue;
+      const node = grid.nodeAt(x, y);
+      if (grid.isBlocked(node) || !Number.isFinite(this.field.time[node])) continue;
+      ids.push(this.customPoi({ x, y }).id);
+    }
+    this.selected = [...new Set(ids)];
+    const t = Number(q.get("t"));
+    if (q.has("t") && Number.isFinite(t) && t >= 5 && t <= 19) this.startLmst = t;
+    if (q.get("storm") === "0") this.storm = false;
+    if (q.get("buddy") === "1") this.buddy = true;
+  }
+
+  private async copyPlanLink(): Promise<void> {
+    this.writePlanHash();
+    const url = location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      this.toast("Link copied. It opens this plan: the same stops, start time and options.");
+    } catch {
+      this.toast(`Copy this link: ${url}`);
+    }
+  }
+
   private exportRoute(kind: "kml" | "geojson"): void {
     if (!this.plan) return;
     const b = this.plan.budget;
