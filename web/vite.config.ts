@@ -59,7 +59,7 @@ function httpsOptions(): { key: Buffer; cert: Buffer } | undefined {
 
 const HAB = process.env.CAIRN_HAB ?? "localhost:8787";
 
-// `base: "./"` keeps asset URLs relative, so the build works on GitHub Pages (/cairn-demo/),
+// `base: "./"` keeps asset URLs relative, so the build works on GitHub Pages (/Cairn/),
 // from `vite preview`, and from any static host without changes.
 export default defineConfig({
   base: "./",

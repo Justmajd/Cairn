@@ -73,7 +73,7 @@
       "instrument": "HiRISE image, HiRISE DTM, THEMIS night IR",
       "product": "Computed by CAIRN (data-pipeline/build_site.py): ripple texture in the HiRISE image and DTM, weighted by THEMIS night-time temperature",
       "provider": "CAIRN team (derived product)",
-      "url": "https://github.com/Justmajd/cairn-demo/blob/main/data-pipeline/build_site.py",
+      "url": "https://github.com/Justmajd/Cairn/blob/main/data-pipeline/build_site.py",
       "credit": "Derived from NASA/JPL-Caltech/University of Arizona/ASU/USGS data",
       "usedFor": "Extra walking energy on sand (×2.1 at full strength) and slower walking speed",
       "note": "This is our own analysis, not an official NASA product."
@@ -86,7 +86,7 @@
       "instrument": "HiRISE DTM",
       "product": "Computed by CAIRN: share of the sky blocked by terrain within 260 m of each point (HiRISE DTM), weighted by a cos² zenith dependence of the surface dose",
       "provider": "CAIRN team (derived product)",
-      "url": "https://github.com/Justmajd/cairn-demo/blob/main/data-pipeline/build_site.py",
+      "url": "https://github.com/Justmajd/Cairn/blob/main/data-pipeline/build_site.py",
       "credit": "Derived from NASA/JPL-Caltech/University of Arizona/USGS data",
       "usedFor": "Sky shielding layer, dose along the route, nearest natural cover during the storm",
       "note": "Model, not a measurement: the zenith exponent is an assumption."

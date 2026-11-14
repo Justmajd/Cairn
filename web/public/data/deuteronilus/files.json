@@ -66,7 +66,7 @@
 },
 {
 "path": "provenance.json",
-"bytes": 6407
+"bytes": 6402
 },
 {
 "path": "region.json",
@@ -125,5 +125,5 @@
 "bytes": 97192
 }
 ],
-"totalBytes": 25778221
+"totalBytes": 25778216
 }

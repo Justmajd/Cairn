@@ -13,7 +13,7 @@
 | Submission window | Opens **Sat Nov 14, 09:00**, closes **Sun Nov 15, 23:59** (local time) |
 | Challenge resources released | **Fri Nov 13** |
 | Max team size | 6 |
-| Repo | `github.com/Justmajd/cairn-demo` (private — make public before submitting) |
+| Repo | `github.com/Justmajd/Cairn` (private — make public before submitting) |
 | Target site | Jezero Crater — Cheyava Falls (Neretva Vallis) + Three Forks sample depot |
 
 > **Rule check:** confirm what Space Apps allows before the event starts. If writing code before Nov 14 isn't allowed, limit the pre-hackathon phase (Section 13.1) to research, data downloads, design and planning.

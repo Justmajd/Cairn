@@ -47,7 +47,7 @@
    "instrument": "HiRISE DTM",
    "product": "Computed by CAIRN: share of the sky blocked by terrain within 260 m, weighted by a cos² zenith dependence of the surface dose",
    "provider": "CAIRN team (derived product)",
-   "url": "https://github.com/Justmajd/cairn-demo/blob/main/data-pipeline/build_site.py",
+   "url": "https://github.com/Justmajd/Cairn/blob/main/data-pipeline/build_site.py",
    "credit": "Derived from NASA/JPL-Caltech/University of Arizona data",
    "usedFor": "Sky shielding layer, dose along the route, nearest natural cover during the storm",
    "note": "Model, not a measurement: the zenith exponent is an assumption."
