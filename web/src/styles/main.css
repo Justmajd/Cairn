@@ -538,6 +538,7 @@ body.demo-on #nav-hint { display: none; }
 
 /* ---------- EVA cue card ---------- */
 .panel-foot .foot-row { display: grid; grid-template-columns: auto 1fr; gap: 8px; margin-top: 8px; }
+.panel-foot .foot-row.log { grid-template-columns: 1fr auto; }
 .panel-foot .foot-row button.big { margin-top: 0; }
 button.secondary { background: var(--raise-2); }
 .cc-modal { width: min(1240px, 100%); }

@@ -349,6 +349,7 @@ export class App {
         this.renderRight();
       } else if (act === "emergency") void this.triggerEmergency(t.dataset.kind as EmergencyKind);
       else if (act === "replan") this.backToPlanning();
+      else if (act === "save-log") this.saveLog();
       else if (act === "sources") showSources(this.site, t.dataset.id);
       else if (act === "model") showAssumptions(this.site, this.P);
     });
@@ -1105,8 +1106,34 @@ export class App {
       </div>
       <footer class="panel-foot">
         ${remaining.length ? `<button class="primary big" data-act="resume">${ic.later}<span>Plan the remaining stop${remaining.length > 1 ? "s" : ""} for a later sol</span></button>` : ""}
-        <button class="big" data-act="replan">Back to planning</button>
+        <div class="foot-row log">
+          <button class="big" data-act="replan">Back to planning</button>
+          <button class="secondary" data-act="save-log" title="Download the EVA log as a Markdown file">${ic.download}<span>Save log</span></button>
+        </div>
       </footer>`;
+  }
+
+  /** Debrief file: the totals and the EVA log, as Markdown (readable as plain text too). */
+  private saveLog(): void {
+    const m = this.mission;
+    if (!m) return;
+    const site = this.site.meta;
+    const lines = [
+      `# EVA log — ${site.name}`,
+      "",
+      `- Date: ${site.eva?.sol !== undefined ? `sol ${site.eva.sol}` : ((site.eva as { label?: string } | undefined)?.label ?? "")}, left the rover at ${fmtLmst(this.startLmst)} LMST`,
+      `- Walked ${fmtDist(m.distanceM)} in ${fmtDur(m.t)}; oxygen used ${Math.round(m.o2UsedL)} L of ${this.P.o2SupplyL} L; dose ${fmtDose(m.doseUGy)}`,
+      m.emergency ? `- Practice emergency: ${m.emergency.kind === "leak" ? "suit leak" : "twisted ankle"}` : m.alertS !== null ? "- Aborted for a solar particle event" : "- Completed as planned",
+      "",
+      "| Mission time | LMST | Event |",
+      "|---|---|---|",
+      ...this.log.map((e) => `| ${fmtClock(e.t)} | ${fmtLmst(this.lmstAt(e.t))} | ${e.text} |`),
+      "",
+      "Made with CAIRN from NASA HiRISE terrain. Suit and physiology values are demo assumptions.",
+      "",
+    ];
+    saveFile(`cairn-${this.site.id}-eva-log.md`, "text/markdown", lines.join("\n"));
+    this.toast("Saved the EVA log.");
   }
 
   /** The EVA log for the summary: mission clock, local time and what happened. */
