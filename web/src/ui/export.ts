@@ -18,7 +18,7 @@ export interface ExportPlan {
   /** Portable radio relay the crew stands up on the way (local metres), if planned. */
   relay?: { x: number; y: number; mastM: number } | null;
   /** Field notebook entries (ui/notebook.ts). */
-  notes?: { label: string; sample: boolean; x: number; y: number; elevM: number; text: string; audio: boolean; lmst: string; evaT: number | null }[];
+  notes?: { label: string; sample: boolean; x: number; y: number; elevM: number; text: string; audio: boolean; lmst: string; evaT: number | null; voiceFile?: string }[];
 }
 
 /**
@@ -79,6 +79,7 @@ export function routeGeoJson(plan: ExportPlan): string {
         kind: n.sample ? "sample" : "note",
         text: n.text,
         voice_note: n.audio,
+        ...(n.voiceFile ? { voice_file: n.voiceFile } : {}),
         ...(n.evaT !== null ? { eva_min: minutes(n.evaT), lmst: n.lmst } : {}),
         elevation_m: +n.elevM.toFixed(1),
       },
@@ -160,7 +161,7 @@ ${marks}${relay}${(plan.notes ?? [])
       const when = n.evaT !== null ? ` Taken at ${n.lmst} LMST (EVA +${minutes(n.evaT)} min).` : "";
       return `\n    <Placemark>
       <name>${x(n.label)}</name>
-      <description>${x(`${n.sample ? "Sample" : "Field note"}: ${(n.text || "(no text)").replace(/[.\s]+$/, "")}${n.audio ? " · voice note on the device" : ""}.${when}`)}</description>
+      <description>${x(`${n.sample ? "Sample" : "Field note"}: ${(n.text || "(no text)").replace(/[.\s]+$/, "")}${n.voiceFile ? ` · voice note: ${n.voiceFile}` : n.audio ? " · voice note in the notebook ZIP export" : ""}.${when}`)}${n.voiceFile ? `&lt;br/&gt;&lt;a href="${x(n.voiceFile)}"&gt;Play the voice note&lt;/a&gt;` : ""}</description>
       <styleUrl>#${n.sample ? "sample" : "note"}</styleUrl>
       <Point><coordinates>${lon.toFixed(7)},${lat.toFixed(7)},0</coordinates></Point>
     </Placemark>`;

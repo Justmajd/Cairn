@@ -151,6 +151,7 @@ export function editNote(
         <div class="note-voice">
           ${canRecord() ? `<button class="secondary" id="nb-rec">${ic.mic}<span>Record a voice note</span></button>` : `<small>Voice notes need a microphone and a browser that can record.</small>`}
           <audio id="nb-audio" controls hidden></audio>
+          <button class="secondary" id="nb-mp3" hidden>${ic.download}<span>Download MP3</span></button>
         </div>
         <div class="note-actions">
           ${isNew ? "" : `<button class="secondary danger" id="nb-del">${ic.close}<span>Delete</span></button>`}
@@ -168,7 +169,22 @@ export function editNote(
     url = URL.createObjectURL(b);
     audio.src = url;
     audio.hidden = false;
+    mp3Btn.hidden = false;
   };
+  const mp3Btn = $<HTMLButtonElement>("#nb-mp3", host);
+  mp3Btn.addEventListener("click", async () => {
+    const src = clip ?? (await book.loadAudio(note.id));
+    if (!src) return;
+    const label = mp3Btn.querySelector("span")!;
+    label.textContent = "Converting…";
+    try {
+      const { toMp3, saveBlob } = await import("./voiceExport");
+      saveBlob(`${$("#nb-tag", host).textContent ?? note.label}.mp3`, await toMp3(src));
+      label.textContent = "Download MP3";
+    } catch {
+      label.textContent = "Could not convert this clip";
+    }
+  });
   if (note.audio) void book.loadAudio(note.id).then((b) => b && showClip(b));
   const close = async () => {
     if (rec) await rec.stop().catch(() => null);

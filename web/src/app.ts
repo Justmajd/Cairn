@@ -401,6 +401,7 @@ export class App {
         const menu = document.getElementById("export-menu");
         if (menu) menu.hidden = !menu.hidden;
       } else if (act === "kml" || act === "geojson") this.exportRoute(act);
+      else if (act === "notes-zip") void this.exportNotebook();
       else if (act === "link") void this.copyPlanLink();
       else if (act === "resume") this.resumeRemaining();
       else if (act === "show-radio") this.selectLayer("radio");
@@ -1348,6 +1349,7 @@ export class App {
         <div class="menu list" id="export-menu" role="menu" hidden>
           <button data-act="kml">${ic.download}<span><b>KML</b><small>Google Earth in Mars mode</small></span></button>
           <button data-act="geojson">${ic.download}<span><b>GeoJSON</b><small>QGIS and other map tools · Mars 2000 coordinates</small></span></button>
+          ${this.notebook.notes.length ? `<button data-act="notes-zip">${ic.note}<span><b>Field notebook (ZIP)</b><small>Route, notes and samples as KML + GeoJSON, voice notes as MP3</small></span></button>` : ""}
           <button data-act="link">${ic.link}<span><b>Copy link to this plan</b><small>Stops, start time and options, for a teammate or a judge</small></span></button>
         </div>
         <button class="primary big" data-act="start" ${b.feasible ? "" : "disabled"}>${ic.play}<span>Start EVA</span></button>
@@ -1870,6 +1872,50 @@ export class App {
     } catch {
       this.toast(`Copy this link: ${url}`);
     }
+  }
+
+  /** The route, notes and samples (KML + GeoJSON) with every voice note as an MP3, in one ZIP. */
+  private async exportNotebook(): Promise<void> {
+    const plan = this.exportPlan();
+    if (!plan) return;
+    const withVoice = this.notebook.notes.filter((n) => n.audio);
+    this.toast(withVoice.length ? `Converting ${withVoice.length} voice note${withVoice.length === 1 ? "" : "s"} to MP3…` : "Packing the notebook…", 2500);
+    const { toMp3, zipFiles, saveBlob } = await import("./ui/voiceExport");
+    const files: Record<string, string | Blob> = {};
+    const voiceFile = new Map<string, string>();
+    let failed = 0;
+    for (const n of withVoice) {
+      const clip = await this.notebook.loadAudio(n.id);
+      if (!clip) {
+        failed++;
+        continue;
+      }
+      try {
+        const path = `voice/${n.label}.mp3`;
+        files[path] = await toMp3(clip);
+        voiceFile.set(n.id, path);
+      } catch {
+        failed++;
+      }
+    }
+    plan.notes = this.notebook.notes.map((n) => ({ ...n, voiceFile: voiceFile.get(n.id) }));
+    const name = `cairn-${this.site.id}-notebook`;
+    files[`${name}.kml`] = routeKml(plan);
+    files[`${name}.geojson`] = routeGeoJson(plan);
+    saveBlob(`${name}.zip`, await zipFiles(files));
+    this.toast(`Saved ${name}.zip: route, ${this.notebook.notes.length} notebook entr${this.notebook.notes.length === 1 ? "y" : "ies"}${voiceFile.size ? `, ${voiceFile.size} MP3 voice note${voiceFile.size === 1 ? "" : "s"}` : ""}${failed ? ` (${failed} clip${failed === 1 ? "" : "s"} could not be read)` : ""}.`, 5000);
+  }
+
+  private exportPlan(): ExportPlan | null {
+    if (!this.plan) return null;
+    const b = this.plan.budget;
+    return {
+      site: this.site.meta, legs: this.plan.legs, distanceM: b.distanceM, timeS: b.totalTimeS, o2UsedL: b.o2UsedL,
+      startLmst: fmtLmst(this.startLmst),
+      stops: this.stopTimes().map((s) => ({ ...s, lmst: fmtLmst(this.lmstAt(s.arriveS)) })),
+      relay: this.useRelay && this.plan.relay ? { ...this.plan.relay.at, mastM: RELAY_MAST_M } : null,
+      notes: this.notebook.notes,
+    };
   }
 
   /** Save the planned route as KML (Google Earth, Mars mode) or GeoJSON (GIS tools). */
