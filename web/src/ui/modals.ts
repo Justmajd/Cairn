@@ -101,6 +101,12 @@ export function showAssumptions(site: SiteData, p: EvaParams): void {
          return `At this site terrain cuts the dose by at most ${Math.round((1 - min / 255) * 100)}%, and only right against cliff walls — the rover remains the real shelter.`;
        })()}</li>
      </ul>
+     <h3>Dust storms, the rover ghost and the field notebook</h3>
+     <ul>
+       <li>Dust presets are measured optical depths (τ): Jezero clear 0.4 and the January 2022 regional storm 1.4 (Perseverance Mastcam-Z, sols 312 and 316), Gale's 2018 global storm above 8 (Curiosity Mastcam, June 2018) and 10.8 at Meridiani (Opportunity, June 2018). What τ does to the scene is a model: direct sunlight e^(−Δτ/sin elevation), sky light e^(−0.18 Δτ), visibility 3.9·H/τ with the dust mixed through an 11 km scale height. The view adapts its exposure like an eye (it shows about √ of the drop in light); the HUD gives the real numbers.</li>
+       <li>The rover ghost replays the rover's end-of-drive positions from NASA's MMGIS waypoint layer, joined by straight lines and timed by sol (it waits between drives, as the rover did). During an EVA the whole drive is stretched over your walk.</li>
+       <li>Field notes, samples and voice clips stay in this browser (local storage); nothing is uploaded. Voice notes are kept as audio, not transcribed.</li>
+     </ul>
      <h3>Hab site map</h3>
      <ul>
        <li>Every 8 m spot is scored as the site of the crew's base (habitat, landing pad, parked rover). Flat ground is required: the mean slope of a ~24 m footprint (full marks at 3° or less, none at 10°), less for steep or impassable patches and loose sand. It multiplies a weighted mean of: walking time to the stops in the plan (weight 50), stops in direct radio line of sight from a 3 m mast (30), terrain radiation shielding (20) and, at Deuteronilus, walking time to the stops on buried ice (35).</li>

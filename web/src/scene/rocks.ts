@@ -165,7 +165,7 @@ export class Rocks {
     shared: ShadowUniforms,
   ) {
     const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog]);
-    Object.assign(uniforms, { uMap: map, uShadowAoi: shared.uShadowAoi, uShadowAoiN: shared.uShadowAoiN, uSunDir: shared.uSunDir, uHalf: { value: half }, uMatRock: this.matRock, uMatRockSize: this.matRockSize, uLinearOut: shared.uLinearOut });
+    Object.assign(uniforms, { uMap: map, uShadowAoi: shared.uShadowAoi, uShadowAoiN: shared.uShadowAoiN, uSunDir: shared.uSunDir, uHalf: { value: half }, uMatRock: this.matRock, uMatRockSize: this.matRockSize, uLinearOut: shared.uLinearOut, uDust: shared.uDust });
     const material = new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG, fog: true });
     this.meshes = [11, 23, 37].map((seed) => {
       const mesh = new THREE.InstancedMesh(rockGeometry(seed), material, MAX_PER_SHAPE);

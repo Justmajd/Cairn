@@ -5,6 +5,8 @@ import { buildBudget, EvaBudget, o2Litres, ReturnLookup, sampleAtTime, Segment, 
 import { DEFAULT_PARAMS, EvaParams } from "./eva/params";
 import { RadiationModel } from "./eva/radiation";
 import { HAB_WEIGHTS, HabMap, habSuitability } from "./eva/hab";
+import { DUST_PRESETS, dustEffect, fmtVisibility } from "./eva/dust";
+import { editNote, FieldNote, Notebook } from "./ui/notebook";
 import { bestRelay, inContact, lineOfSight, RadioCoverage, radioCoverage, radioShadow, relayFromShadow, RelaySuggestion, RELAY_MAST_M, SUIT_ANTENNA_M } from "./eva/radio";
 import { inTerrainShadow } from "./eva/shade";
 import { geometricMedian } from "./routing/median";
@@ -26,7 +28,7 @@ import { openModal, showAssumptions, showSources, stopCardHtml } from "./ui/moda
 import { openPanorama } from "./ui/panorama";
 import { DemoRunner, DemoStep } from "./ui/demo";
 import { CueRow, showCueCard } from "./ui/cuecard";
-import { ExportPlan, routeGeoJson, routeKml, saveFile } from "./ui/export";
+import { ExportPlan, routeGeoJson, routeKml, saveFile, toLonLat } from "./ui/export";
 import { promptInstall, saveForOffline } from "./ui/offline";
 import { spokenDist, spokenTime, turnWords, Voice } from "./ui/voice";
 
@@ -109,6 +111,14 @@ export class App {
   private readonly roverName: string;
 
   private layer: LayerId = "none";
+  /** Dust in the air (eva/dust.ts preset id). */
+  private dustId = "clear";
+  private dustWarned = false;
+  /** The real rover's drive replayed as a ghost; its own clock while planning. */
+  private ghostOn = false;
+  private ghostClock = 0;
+  private ghostHeading = 0;
+  private readonly notebook: Notebook;
   /** "Where do we put the hab?" scores, for the stops they were worked out from. */
   private hab: HabMap | null = null;
   private habKey = "";
@@ -159,7 +169,7 @@ export class App {
   /** The relay is up during the current EVA. */
   private relayUp = false;
   /** What happened during the current EVA, for the summary (mission seconds, kind, text). */
-  private log: { t: number; kind: "go" | "stop" | "radio" | "alert" | "home"; text: string }[] = [];
+  private log: { t: number; kind: "go" | "stop" | "radio" | "alert" | "home" | "note"; text: string }[] = [];
 
   /** Messages on their way between the crew and Earth: the mission time each one arrives, and its log line. */
   private earthQueue: { t: number; text: string }[] = [];
@@ -168,7 +178,7 @@ export class App {
   /** A UTC instant on the EVA's sol (from the site's EVA date). */
   private readonly solUtc: number;
 
-  private note(kind: "go" | "stop" | "radio" | "alert" | "home", text: string): void {
+  private note(kind: "go" | "stop" | "radio" | "alert" | "home" | "note", text: string): void {
     this.log.push({ t: this.mission?.t ?? 0, kind, text });
   }
   private readonly voice = new Voice();
@@ -205,6 +215,9 @@ export class App {
     this.bindChrome();
     view.onPoiClick = (id) => this.openCard(id, false);
     view.onGroundClick = (p, cx, cy) => this.groundClick(p, cx, cy);
+    view.onNoteClick = (id) => this.openNote(id);
+    this.notebook = new Notebook(site.meta.id);
+    this.pushNotes();
     view.onHover = (p, cx, cy) => this.hover(p, cx, cy);
     new ResizeObserver(() => this.renderProfileChart()).observe($("#bottom"));
     new ResizeObserver(() => this.updateInsets()).observe($("#app"));
@@ -329,9 +342,10 @@ export class App {
       if (t.id === "more-layers") this.moreLayersOpen = t.open;
     }, true); // toggle does not bubble
     left.addEventListener("click", (ev) => {
-      const t = (ev.target as HTMLElement).closest<HTMLElement>("[data-info],[data-src],[data-remove],[data-rover-reset],[data-rover-closer],[data-dwell],[data-hab]");
+      const t = (ev.target as HTMLElement).closest<HTMLElement>("[data-info],[data-src],[data-remove],[data-rover-reset],[data-rover-closer],[data-dwell],[data-hab],[data-note]");
       if (!t) return;
-      if (t.dataset.hab && this.hab) {
+      if (t.dataset.note) this.openNote(t.dataset.note);
+      else if (t.dataset.hab && this.hab) {
         if (t.dataset.hab === "park") void this.moveRover(this.hab.best);
         else this.showHabBest();
       } else if (t.dataset.info) this.openCard(t.dataset.info, false);
@@ -425,6 +439,10 @@ export class App {
         this.renderBottom();
         if (this.voice.enabled) this.voice.say("Voice guidance on.", "urgent");
       } else if (act === "skip") this.skipAhead();
+      else if (act === "note-here" && this.mission) {
+        const pose = this.mission.pose();
+        this.addNote({ x: pose.x, y: pose.y });
+      }
       else if (act === "end") this.backToPlanning();
       else if (act === "chart") {
         this.chartOpen[this.viewMode] = !this.chartIsOpen();
@@ -892,7 +910,22 @@ export class App {
 
   private groundClick(p: XY, clientX: number, clientY: number): void {
     const menu = $("#pin-menu");
-    if (this.phase !== "planning") return;
+    if (this.phase !== "planning") {
+      if (this.phase !== "eva") return;
+      // during the EVA a click on the ground can only take a note or a sample
+      const rect0 = $("#stage").getBoundingClientRect();
+      menu.innerHTML = `<p class="t">${ic.note}Field notebook</p><p>Elevation ${Math.round(this.site.grid.heightAt(p.x, p.y))} m · slope ${this.site.grid.slope[this.site.grid.nodeAt(p.x, p.y)]}°</p><div class="row"><button data-x="close">Cancel</button><button data-x="sample">${ic.sample}<span>Sample</span></button><button class="primary" data-x="note">${ic.note}<span>Note</span></button></div>`;
+      menu.hidden = false;
+      menu.style.left = `${Math.min(rect0.width - 312, Math.max(8, clientX - rect0.left + 12))}px`;
+      menu.style.top = `${Math.min(rect0.height - 150, Math.max(8, clientY - rect0.top + 12))}px`;
+      menu.onclick = (ev) => {
+        const act = (ev.target as HTMLElement).closest<HTMLElement>("[data-x]")?.dataset.x;
+        if (!act) return;
+        menu.hidden = true;
+        if (act === "note" || act === "sample") this.addNote(p, act === "sample");
+      };
+      return;
+    }
     const grid = this.site.grid;
     const node = grid.nodeAt(p.x, p.y);
     const rect = $("#stage").getBoundingClientRect();
@@ -901,7 +934,7 @@ export class App {
       ? `<p class="t bad">${ic.warn}Too steep to walk</p><p>Slope ${grid.slope[node]}°, beyond the ${this.site.meta.model.slopeLimitDeg}° limit or cut off from the rover.</p><div class="row"><button data-x="close">OK</button></div>`
       : `<p class="t">${ic.walk}${fmtDur(this.field.time[node])} from the rover</p><p>Slope ${grid.slope[node]}°${this.site.geologyGrid ? ` · ${esc(this.unitAt(p.x, p.y) ?? "unmapped unit")}` : ""}</p><div class="row"><button data-x="close">Cancel</button>${
           grid.slope[node] <= ROVER_PARK_MAX_SLOPE ? `<button data-x="rover" title="Move the rover (start, end and shelter) here">${ic.home}<span>Park rover</span></button>` : ""
-        }<button class="primary" data-x="add">${ic.plus}<span>Add stop</span></button></div>`;
+        }<button data-x="note" title="Geotagged field note or sample here">${ic.note}<span>Note</span></button><button class="primary" data-x="add">${ic.plus}<span>Add stop</span></button></div>`;
     menu.hidden = false;
     menu.style.left = `${Math.min(rect.width - 312, Math.max(8, clientX - rect.left + 12))}px`;
     menu.style.top = `${Math.min(rect.height - 150, Math.max(8, clientY - rect.top + 12))}px`;
@@ -911,6 +944,7 @@ export class App {
       menu.hidden = true;
       if (act === "add") this.addCustom(p);
       else if (act === "rover") void this.moveRover(p);
+      else if (act === "note") this.addNote(p);
     };
   }
 
@@ -1143,7 +1177,8 @@ export class App {
                  <summary>${ic.layers}<span>More layers</span><em>${rest.length}</em>${ic.chev}</summary>${more}</details>`
             : ""
         }
-      </section>`;
+      </section>
+      ${this.notesHtml()}`;
   }
 
   /** Display settings, in a small menu on the map. */
@@ -1151,12 +1186,16 @@ export class App {
     $("#view-menu").innerHTML = `
       <h3>Display</h3>
       ${this.site.rover.traverse.length ? `<label class="switch"><span>${esc(this.roverName)}'s real track</span><input class="sr" type="checkbox" id="track" ${this.showTrack ? "checked" : ""}/><i></i></label>` : ""}
+      ${this.site.rover.traverse.length ? `<label class="switch"><span>Ghost of ${esc(this.roverName)}'s drive</span><input class="sr" type="checkbox" id="ghost" ${this.ghostOn ? "checked" : ""}/><i></i></label>` : ""}
       <label class="switch"><span>Sun shadows</span><input class="sr" type="checkbox" id="shadows" ${this.showShadows ? "checked" : ""}/><i></i></label>
+      <label class="view-menu-dust"><span>Dust in the air</span><select id="dust">${DUST_PRESETS.map((d) => `<option value="${d.id}" ${d.id === this.dustId ? "selected" : ""}>${esc(d.name)} · τ ${d.tau}</option>`).join("")}</select><small id="dust-info">${esc(this.dustText())}</small></label>
       <label class="slider"><span>Vertical exaggeration <b id="exag-val">×${this.exag.toFixed(2)}</b></span><input type="range" id="exag" min="1" max="2.5" step="0.25" value="${this.exag}"/></label>`;
   }
 
   private displayChange(t: HTMLInputElement): void {
-    if (t.id === "track") {
+    if (t.id === "ghost") this.setGhost(t.checked);
+    else if (t.id === "dust") this.setDust(t.value);
+    else if (t.id === "track") {
       this.showTrack = t.checked;
       this.view.setTrackVisible(this.showTrack);
     } else if (t.id === "shadows") {
@@ -1499,6 +1538,7 @@ export class App {
                  <button class="icon solid" data-act="pause" title="${this.paused ? "Resume" : "Pause"}">${this.paused ? ic.play : ic.pause}</button>
                  <div class="seg small">${SPEEDS.map((v) => `<button data-act="speed" data-v="${v}" class="${v === this.speed ? "on" : ""}">${v}×</button>`).join("")}</div>
                  <button class="ghost" data-act="skip" title="Jump to the end of the current step">${ic.skip}<span>Skip</span></button>
+                 <button class="ghost" data-act="note-here" title="Geotagged note or sample where you stand">${ic.note}<span>Note</span></button>
                  ${this.voice.supported ? `<button class="ghost voice${this.voice.enabled ? " on" : ""}" data-act="voice" title="Spoken directions" aria-pressed="${this.voice.enabled}">${this.voice.enabled ? ic.voiceOn : ic.voiceOff}<span>Voice</span></button>` : ""}
                  <button class="ghost" data-act="end">${ic.stop}<span>End EVA</span></button>
                </div>`
@@ -1841,6 +1881,7 @@ export class App {
       startLmst: fmtLmst(this.startLmst),
       stops: this.stopTimes().map((s) => ({ ...s, lmst: fmtLmst(this.lmstAt(s.arriveS)) })),
       relay: this.useRelay && this.plan.relay ? { ...this.plan.relay.at, mastM: RELAY_MAST_M } : null,
+      notes: this.notebook.notes,
     };
     const name = `cairn-${this.site.id}-eva`;
     if (kind === "kml") saveFile(`${name}.kml`, "application/vnd.google-earth.kml+xml", routeKml(plan));
@@ -1894,6 +1935,7 @@ export class App {
       start: { lmst: fmtLmst(this.lmstAt(0)), sunEl: s0.elevation, sunAz: s0.azimuth },
       end: { lmst: fmtLmst(this.lmstAt(b.totalTimeS)), sunEl: s1.elevation },
       alertUGyH: this.rad.baseline * 3, rover: this.roverName, storm: this.storm, buddy: this.buddy,
+      notes: this.notebook.notes,
       doseUGy: this.rad.baseline * b.exposureH,
       checks: this.planChecks(s0.elevation < 8 || s1.elevation < 8, b.walkBack.minMarginL),
       radio: {
@@ -1917,6 +1959,150 @@ export class App {
     this.startLmst = this.site.meta.eva?.startLmst ?? 10;
     this.selectLayer("none");
     void this.replan();
+  }
+
+  // ================================================================ dust storm
+  private get dustTau(): number {
+    return (DUST_PRESETS.find((d) => d.id === this.dustId) ?? DUST_PRESETS[0]).tau;
+  }
+
+  private dustText(): string {
+    const p = DUST_PRESETS.find((d) => d.id === this.dustId) ?? DUST_PRESETS[0];
+    const e = dustEffect(p.tau, Math.max(20, this.sunAtEva(this.mission?.t ?? 0).elevation));
+    return `Measured: ${p.where}. Sunlight ${Math.round(e.sunlight * 100)}% of a clear day, visibility ${fmtVisibility(e.visibilityM)}.`;
+  }
+
+  private setDust(id: string): void {
+    this.dustId = id;
+    this.view.setDust(this.dustTau);
+    setText(document.getElementById("dust-info"), this.dustText());
+    this.dustWarned = false;
+    if (this.phase === "eva") this.warnDust();
+    if (this.viewMode === "walk") this.renderHud();
+  }
+
+  /** Tell the crew what the dust does to them (once per change). */
+  private warnDust(): void {
+    if (this.dustWarned || this.dustTau < 1) return;
+    this.dustWarned = true;
+    const e = dustEffect(this.dustTau, this.sunAtEva(this.mission?.t ?? 0).elevation);
+    const vis = fmtVisibility(e.visibilityM);
+    this.note("alert", `Dust storm, τ ${this.dustTau}: visibility ${vis}, sunlight ${Math.round(e.sunlight * 100)}%`);
+    this.toast(`Dust storm (τ ${this.dustTau}): visibility about ${vis}, sunlight ${Math.round(e.sunlight * 100)}% of a clear day. Distant landmarks are gone — navigate by the route arrow, not by sight.`, 6500);
+    this.voice.say(`Dust storm. Visibility about ${vis.replace("km", "kilometres")}. Sunlight ${Math.round(e.sunlight * 100)} percent. Navigate by the route, not by landmarks.`);
+  }
+
+  // ================================================================ ghost of the real rover
+  private setGhost(on: boolean): void {
+    this.ghostOn = on;
+    this.ghostClock = 0;
+    this.view.setTrackVisible(this.showTrack || on);
+    if (!on) {
+      this.view.setGhost(null);
+      return;
+    }
+    const tr = this.site.rover.traverse;
+    let km = 0;
+    for (let i = 1; i < tr.length; i++) km += Math.hypot(tr[i][0] - tr[i - 1][0], tr[i][1] - tr[i - 1][1]) / 1000;
+    this.toast(
+      `Ghost of ${this.roverName}: its real drive here, sols ${tr[0][2]}–${tr[tr.length - 1][2]} (${km.toFixed(1)} km in ${tr[tr.length - 1][2] - tr[0][2]} sols), replayed in 45 s. During an EVA it keeps pace with your walk.`,
+      7000,
+    );
+  }
+
+  /** Where the real rover was at `frac` (0..1) of its drive here, by sol: it stops between drives, as it did. */
+  private ghostPose(frac: number): { x: number; y: number; heading: number; label: string } | null {
+    const tr = this.site.rover.traverse;
+    if (tr.length < 2) return null;
+    const sol = tr[0][2] + frac * (tr[tr.length - 1][2] - tr[0][2]);
+    let i = 1;
+    while (i < tr.length - 1 && tr[i][2] < sol) i++;
+    const a = tr[i - 1], b = tr[i];
+    const k = b[2] > a[2] ? Math.min(1, Math.max(0, (sol - a[2]) / (b[2] - a[2]))) : 1;
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 0.5) this.ghostHeading = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    return { x: a[0] + (b[0] - a[0]) * k, y: a[1] + (b[1] - a[1]) * k, heading: this.ghostHeading, label: `${this.roverName} · sol ${Math.floor(sol)}` };
+  }
+
+  private tickGhost(dt: number): void {
+    if (!this.ghostOn) return;
+    const m = this.mission;
+    let frac: number;
+    if (m && this.phase === "eva" && this.plan) frac = Math.min(1, m.t / Math.max(1, this.plan.budget.totalTimeS));
+    else {
+      this.ghostClock = (this.ghostClock + dt) % 48; // 45 s of driving, then a pause at the end
+      frac = Math.min(1, this.ghostClock / 45);
+    }
+    this.view.setGhost(this.ghostPose(frac));
+  }
+
+  // ================================================================ field notebook
+  private pushNotes(): void {
+    this.view.setNotes(this.notebook.notes.map((n) => ({ id: n.id, label: n.label, x: n.x, y: n.y, sample: n.sample, text: n.text })));
+  }
+
+  /** A new note or sample at a spot on the ground; opens the editor. */
+  private addNote(p: XY, sample = false): void {
+    const [lon, lat] = toLonLat(this.site.meta, p.x, p.y);
+    const evaT = this.phase === "eva" && this.mission ? this.mission.t : null;
+    const note: FieldNote = {
+      id: `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      label: this.notebook.nextLabel(sample),
+      sample,
+      x: p.x,
+      y: p.y,
+      lon,
+      lat,
+      elevM: this.site.grid.heightAt(p.x, p.y),
+      text: "",
+      audio: false,
+      evaT,
+      lmst: evaT !== null ? fmtLmst(this.lmstAt(evaT)) : "",
+      created: new Date().toISOString(),
+    };
+    this.editNoteDialog(note, true);
+  }
+
+  private openNote(id: string): void {
+    const n = this.notebook.get(id);
+    if (n) this.editNoteDialog(n, false);
+  }
+
+  private editNoteDialog(note: FieldNote, isNew: boolean): void {
+    const where = `${note.lat.toFixed(5)}° N, ${note.lon.toFixed(5)}° E · ${Math.round(note.elevM)} m${note.evaT !== null ? ` · EVA ${fmtClock(note.evaT)}, ${note.lmst} LMST` : ""}`;
+    editNote(
+      this.notebook,
+      note,
+      isNew,
+      where,
+      (saved, clip) => {
+        this.notebook.upsert(saved);
+        if (clip) void this.notebook.saveAudio(saved.id, clip);
+        this.pushNotes();
+        this.renderLeft();
+        if (isNew && saved.evaT !== null) {
+          this.log.push({ t: saved.evaT, kind: "note", text: `${saved.label} ${saved.sample ? "sample" : "note"}${saved.text ? `: ${saved.text}` : ""}${clip ? " (voice)" : ""}` });
+          this.log.sort((a, b) => a.t - b.t);
+        }
+        this.toast(`${saved.label} saved${saved.sample ? " as a sample" : ""}. It goes into the EVA log, the cue card and the exports.`, 3500);
+      },
+      () => {
+        this.notebook.remove(note.id);
+        this.pushNotes();
+        this.renderLeft();
+      },
+    );
+  }
+
+  private notesHtml(): string {
+    const notes = this.notebook.notes;
+    const list = notes
+      .map((n) => `<li><button data-note="${n.id}"><span class="note-tag${n.sample ? " sample" : ""}">${esc(n.label)}</span><span>${esc(n.text || (n.audio ? "Voice note" : n.sample ? "Sample" : "Note"))}</span><small>${n.lmst || "plan"}</small></button></li>`)
+      .join("");
+    return `<section>
+        <header class="sec-head"><h2>Field notebook</h2><span class="sub">${notes.length ? `${notes.length} entr${notes.length === 1 ? "y" : "ies"}` : ""}</span></header>
+        ${notes.length ? `<ul class="notes-list">${list}</ul>` : ""}
+        <p class="hint">${ic.note}<span>${this.phase === "eva" ? "Press <b>Note</b> in the bar below to note or sample where you stand, or click the map." : "Click the map and choose <b>Note</b> to add a geotagged note or sample."}</span></p>
+      </section>`;
   }
 
   private selectLayer(id: LayerId): void {
@@ -2047,6 +2233,8 @@ export class App {
     this.log = [{ t: 0, kind: "go", text: "Left the rover" }];
     this.earthQueue = [];
     this.tellEarth("EVA started", false);
+    this.dustWarned = false;
+    window.setTimeout(() => this.warnDust(), 2500);
     this.view.setRelay(this.useRelay ? this.plan?.relay?.at ?? null : null);
     $("#pin-menu").hidden = true;
     this.closeCard();
@@ -2133,6 +2321,7 @@ export class App {
       this.log.sort((x, y) => x.t - y.t); // a skip ahead can deliver it after later events
       this.toast(msg.text, 3500);
     }
+    this.tickGhost(dt);
     this.liveTimer += dt;
     if (this.liveTimer > 0.1) {
       this.liveTimer = 0;
@@ -2729,6 +2918,11 @@ export class App {
       <div class="hud-side right">
         <div class="hud-item" id="hud-ratebox"><span>Dose rate</span><b><i id="hud-rate">—</i> µGy/h</b></div>
         <div class="hud-item minor"><span>Dose</span><b id="hud-dose">—</b></div>
+        ${this.dustTau >= 1 ? (() => {
+          const e = dustEffect(this.dustTau, this.sunAtEva(this.mission?.t ?? 0).elevation);
+          return `<div class="hud-item warn" title="Dust optical depth τ ${this.dustTau}"><span>Dust · visibility</span><b>${fmtVisibility(e.visibilityM)}</b></div>
+        <div class="hud-item minor warn"><span>Sunlight</span><b>${Math.round(e.sunlight * 100)}%</b></div>`;
+        })() : ""}
         ${this.site.weather ? `<div class="hud-item minor"><span>Air · ground</span><b id="hud-temp">—</b></div>
         <div class="hud-item minor"><span>Pressure</span><b id="hud-pres">—</b></div>` : ""}
       </div>

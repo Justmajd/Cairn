@@ -35,6 +35,8 @@ export interface CueCardInput {
   rover: string;
   storm: boolean;
   buddy: boolean;
+  /** Field notebook entries to print with the plan. */
+  notes?: { label: string; sample: boolean; text: string; lmst: string; lon: number; lat: number }[];
   doseUGy: number;
   /** The plan's safety checks: name, passed, details. */
   checks?: [string, boolean, string][];
@@ -187,6 +189,10 @@ export function showCueCard(input: CueCardInput): void {
               <li>Sun ${Math.round(input.start.sunEl)}° at departure, ${Math.round(input.end.sunEl)}° at return${input.start.sunEl < 15 || input.end.sunEl < 15 ? " — low sun: shadows hide holes and rocks." : "."}</li>
             </ul>
           </div>
+          ${input.notes?.length ? `<div class="cc-box notes">
+            <h4>${ic.note} Field notebook</h4>
+            <ul>${input.notes.map((n) => `<li><b>${esc(n.label)}</b> ${n.sample ? "Sample · " : ""}${esc(n.text || "(voice or position only)")} <small>${n.lat.toFixed(5)}°, ${n.lon.toFixed(5)}°E${n.lmst ? ` · ${esc(n.lmst)} LMST` : ""}</small></li>`).join("")}</ul>
+          </div>` : ""}
           <div class="cc-box storm">
             <h4>${ic.rad} Solar particle event</h4>
             <ul>

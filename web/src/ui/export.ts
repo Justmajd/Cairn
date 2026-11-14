@@ -17,6 +17,8 @@ export interface ExportPlan {
   startLmst: string;
   /** Portable radio relay the crew stands up on the way (local metres), if planned. */
   relay?: { x: number; y: number; mastM: number } | null;
+  /** Field notebook entries (ui/notebook.ts). */
+  notes?: { label: string; sample: boolean; x: number; y: number; elevM: number; text: string; audio: boolean; lmst: string; evaT: number | null }[];
 }
 
 /**
@@ -69,6 +71,18 @@ export function routeGeoJson(plan: ExportPlan): string {
         dwell_min: s.poi.kind === "shelter" ? 0 : s.poi.dwellMin,
       },
       geometry: { type: "Point", coordinates: toLonLat(plan.site, s.poi.x, s.poi.y).map((v) => +v.toFixed(7)) },
+    })),
+    ...(plan.notes ?? []).map((n) => ({
+      type: "Feature",
+      properties: {
+        name: n.label,
+        kind: n.sample ? "sample" : "note",
+        text: n.text,
+        voice_note: n.audio,
+        ...(n.evaT !== null ? { eva_min: minutes(n.evaT), lmst: n.lmst } : {}),
+        elevation_m: +n.elevM.toFixed(1),
+      },
+      geometry: { type: "Point", coordinates: toLonLat(plan.site, n.x, n.y).map((v) => +v.toFixed(7)) },
     })),
     ...(plan.relay
       ? [{
@@ -132,13 +146,26 @@ export function routeKml(plan: ExportPlan): string {
     <Style id="route"><LineStyle><color>ffe9b456</color><width>4</width></LineStyle></Style>
     <Style id="rover"><IconStyle><color>ff27b6f5</color><Icon><href>http://maps.google.com/mapfiles/kml/shapes/homegardenbusiness.png</href></Icon></IconStyle></Style>
     <Style id="stop"><IconStyle><color>ffcfe145</color><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon></IconStyle></Style>
+    <Style id="note"><IconStyle><color>ff8ae0ff</color><Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png</href></Icon></IconStyle></Style>
+    <Style id="sample"><IconStyle><color>ffc8f08a</color><Icon><href>http://maps.google.com/mapfiles/kml/paddle/grn-diamond.png</href></Icon></IconStyle></Style>
     <Style id="relay"><IconStyle><color>ffffa6b9</color><Icon><href>http://maps.google.com/mapfiles/kml/shapes/target.png</href></Icon></IconStyle></Style>
     <Placemark>
       <name>Safe route</name>
       <styleUrl>#route</styleUrl>
       <LineString><tessellate>1</tessellate><altitudeMode>clampToGround</altitudeMode><coordinates>${line}</coordinates></LineString>
     </Placemark>
-${marks}${relay}
+${marks}${relay}${(plan.notes ?? [])
+    .map((n) => {
+      const [lon, lat] = toLonLat(plan.site, n.x, n.y);
+      const when = n.evaT !== null ? ` Taken at ${n.lmst} LMST (EVA +${minutes(n.evaT)} min).` : "";
+      return `\n    <Placemark>
+      <name>${x(n.label)}</name>
+      <description>${x(`${n.sample ? "Sample" : "Field note"}: ${(n.text || "(no text)").replace(/[.\s]+$/, "")}${n.audio ? " · voice note on the device" : ""}.${when}`)}</description>
+      <styleUrl>#${n.sample ? "sample" : "note"}</styleUrl>
+      <Point><coordinates>${lon.toFixed(7)},${lat.toFixed(7)},0</coordinates></Point>
+    </Placemark>`;
+    })
+    .join("")}
   </Document>
 </kml>
 `;

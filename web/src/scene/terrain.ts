@@ -81,11 +81,12 @@ const SHADOW = /* glsl */ `
 /** Sun light for the terrain shaders; the visibility comes from the baked shadow texture. */
 export const LIGHT = /* glsl */ `
   uniform vec3 uSunDir;
+  uniform vec2 uDust; // dust storm: x = direct sunlight, y = sky light, relative to a clear day (eva/dust.ts)
   // daylight: dim towards twilight, warm low sun
   vec3 sunLight(float nl, float vis) {
     float day = smoothstep(-2.0, 12.0, degrees(asin(clamp(uSunDir.y, -1.0, 1.0))));
     float direct = max(nl, 0.0) * vis;
-    return vec3(0.36 + 0.86 * direct) * mix(0.25, 1.0, day);
+    return vec3(0.36 * uDust.y + 0.86 * direct * uDust.x) * mix(0.25, 1.0, day);
   }
 
   // Physically motivated light for dusty regolith (rendering model, not data):
@@ -103,7 +104,7 @@ export const LIGHT = /* glsl */ `
     direct *= vis;
     float sky = 0.36 * mix(0.5, 1.0, skyVis) * (0.72 + 0.28 * n.y);
     vec3 bounce = vec3(0.075, 0.045, 0.025) * (1.0 - n.y) * max(uSunDir.y, 0.0);
-    vec3 light = sky * vec3(1.0, 0.95, 0.9) + 0.88 * direct * vec3(1.0, 0.985, 0.96) + bounce;
+    vec3 light = sky * uDust.y * vec3(1.0, 0.95, 0.9) + (0.88 * direct * vec3(1.0, 0.985, 0.96) + bounce) * uDust.x;
     return light * mix(0.25, 1.0, day);
   }
 
@@ -599,6 +600,7 @@ export interface ShadowUniforms {
   uShadowRegN: THREE.IUniform<number>;
   /** 1 while the post-processing pipeline is on: shaders write linear colour, the final pass encodes it */
   uLinearOut: THREE.IUniform<number>;
+  uDust: THREE.IUniform<THREE.Vector2>;
 }
 
 /** Heights (metres above `zRef`) as a half-float texture: hardware-filtered and precise to ~0.25 m. */
@@ -640,6 +642,7 @@ export function makeShadowUniforms(): ShadowUniforms {
     uShadowReg: { value: null },
     uShadowRegN: { value: 2 },
     uLinearOut: { value: 0 },
+    uDust: { value: new THREE.Vector2(1, 1) },
   };
 }
 
@@ -1023,7 +1026,13 @@ export interface SkyBodyDir {
 export function buildSky(
   sunDir: THREE.IUniform<THREE.Vector3>,
   linearOut: THREE.IUniform<number>,
-): { mesh: THREE.Mesh; setMapMode: (k: number) => void; setSunElevation: (deg: number) => void; setBodies: (earth: SkyBodyDir, phobos: SkyBodyDir, deimos: SkyBodyDir) => void } {
+): {
+  mesh: THREE.Mesh;
+  setMapMode: (k: number) => void;
+  setSunElevation: (deg: number) => void;
+  setBodies: (earth: SkyBodyDir, phobos: SkyBodyDir, deimos: SkyBodyDir) => void;
+  setDust: (haze: number, brightness: number, sunVisible: number) => void;
+} {
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
@@ -1041,11 +1050,13 @@ export function buildSky(
       uEarth: { value: new THREE.Vector3(0, -1, 0) },
       uDeimos: { value: new THREE.Vector3(0, -1, 0) },
       uPhobos: { value: new THREE.Vector4(0, -1, 0, 0.0017) },
+      uDustSky: { value: new THREE.Vector3(0, 1, 1) },
     },
     vertexShader: /* glsl */ `varying vec3 vDir; void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */ `
       uniform vec3 uHorizon; uniform vec3 uZenith; uniform vec3 uMapBg; uniform float uMap; uniform float uDay; uniform vec3 uSunDir;
       uniform float uLinearOut; uniform vec3 uEarth; uniform vec3 uDeimos; uniform vec4 uPhobos;
+      uniform vec3 uDustSky; // dust storm: haze 0..1, sky brightness, Sun disc visibility
       varying vec3 vDir;
       // a point of light about a pixel across, wherever the camera's zoom puts it
       float star(vec3 d, vec3 at, float px) {
@@ -1065,11 +1076,14 @@ export function buildSky(
         float up = smoothstep(-0.06, 0.02, uSunDir.y);
         float low = 1.0 - smoothstep(0.05, 0.5, uSunDir.y);
         float m = max(mu, 0.0);
-        float glow = (pow(m, 18.0) * (0.16 + 0.6 * low) + pow(m, 300.0) * 0.45) * up;
+        float glow = (pow(m, 18.0) * (0.16 + 0.6 * low) + pow(m, 300.0) * 0.45) * up * uDustSky.z;
         c = mix(c, vec3(0.6, 0.72, 0.9) * mix(0.55, 1.0, uDay), clamp(glow, 0.0, 0.85));
-        c = mix(c, vec3(1.0, 0.98, 0.94), smoothstep(0.9999893, 0.9999953, mu) * up);
+        c = mix(c, vec3(1.0, 0.98, 0.94), smoothstep(0.9999893, 0.9999953, mu) * up * uDustSky.z);
+        // a dust storm turns the sky into one dim, even butterscotch haze down to the ground
+        c = mix(c, uHorizon * 1.04 * mix(0.22, 1.0, uDay), uDustSky.x) * uDustSky.y;
+        c += uHorizon * pow(m, 6.0) * 0.25 * uDustSky.x * up * uDustSky.y; // the Sun a brighter patch in the haze
         // Earth (a bright blue evening or morning star, lost in the daylight) and Deimos (a faint star)
-        float dark = 1.0 - smoothstep(0.05, 0.6, uDay);
+        float dark = (1.0 - smoothstep(0.05, 0.6, uDay)) * (1.0 - uDustSky.x);
         c += vec3(0.62, 0.78, 1.0) * star(d, uEarth, px * 1.1) * mix(0.18, 1.0, dark);
         c += vec3(0.9, 0.86, 0.8) * star(d, uDeimos, px * 0.8) * 0.55 * dark;
         // Phobos: a lumpy grey disc about a third of the Moon's size from Earth, lit by the Sun on one side
@@ -1096,6 +1110,7 @@ export function buildSky(
     mesh,
     setMapMode: (k) => (material.uniforms.uMap.value = k),
     setSunElevation: (deg) => (material.uniforms.uDay.value = Math.min(1, Math.max(0, (deg + 2) / 14))),
+    setDust: (haze, brightness, sunVisible) => (material.uniforms.uDustSky.value as THREE.Vector3).set(haze, brightness, sunVisible),
     setBodies: (earth, phobos, deimos) => {
       (material.uniforms.uEarth.value as THREE.Vector3).fromArray(earth.dir);
       (material.uniforms.uDeimos.value as THREE.Vector3).fromArray(deimos.dir);

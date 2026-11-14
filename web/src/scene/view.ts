@@ -10,6 +10,7 @@ import { esc } from "../ui/dom";
 import { ic } from "../ui/icons";
 import { PostFX } from "./post";
 import { Rocks } from "./rocks";
+import { dustEffect } from "../eva/dust";
 import { buildRegion, buildSky, buildTerrain, byteTexture, packedGridTexture, geologyLut, heightTexture, rgbaTexture, LAYER_IDS, LayerId, makeShadowUniforms, ShadowBaker, ShadowUniforms, SKY_HORIZON, Terrain } from "./terrain";
 
 export interface SceneTextures {
@@ -112,6 +113,8 @@ export class SceneView {
   private readonly poiGroup = new THREE.Group();
   private readonly relayGroup = new THREE.Group();
   private readonly spotGroup = new THREE.Group();
+  /** The real rover's drive replayed as a translucent ghost (built on first use). */
+  private ghost: { group: THREE.Group; label: HTMLElement } | null = null;
   private readonly lineMaterials = new Set<LineMaterial>();
   private shelterTex: THREE.DataTexture | null = null;
   /** Objects kept at a readable size: `px` screen pixels per model unit, never smaller than real size. */
@@ -139,6 +142,8 @@ export class SceneView {
 
   onPoiClick: (id: string) => void = () => {};
   onGroundClick: (p: XY, clientX: number, clientY: number) => void = () => {};
+  onNoteClick: (id: string) => void = () => {};
+  private readonly noteGroup = new THREE.Group();
   onHover: (p: XY | null, clientX: number, clientY: number) => void = () => {};
 
   constructor(private readonly host: HTMLElement, private readonly site: SiteData, tex: SceneTextures, quality: "high" | "low") {
@@ -221,7 +226,7 @@ export class SceneView {
     sun.position.set(-720, 620, -120);
     this.scene.add(sun);
 
-    this.scene.add(this.trackGroup, this.routeGroup, this.poiGroup, this.relayGroup, this.spotGroup);
+    this.scene.add(this.trackGroup, this.routeGroup, this.poiGroup, this.relayGroup, this.spotGroup, this.noteGroup);
 
     this.astronaut = this.makeAstronaut(0x3fe8ff);
     this.buddy = this.makeAstronaut(0xffc247);
@@ -335,7 +340,7 @@ export class SceneView {
     }
     this.camera.updateMatrixWorld();
     const moved = this.cameraMoved();
-    const fading = Math.abs(this.fogTarget - this.fog.density) > 1e-7;
+    const fading = Math.abs(this.fogGoal() - this.fog.density) > 1e-7;
     if (!moved && !fading && !this.dirty) return false;
     this.dirty = false;
     this.drawScene();
@@ -616,8 +621,10 @@ export class SceneView {
     this.updateDetail();
     const cp = this.camera.position;
     this.rocks.update(this.camera, cp.y - this.groundYBelow(cp.x, cp.z), this.rocksOn && this.mode !== "plan" && this.exag === 1);
-    this.fog.density += (this.fogTarget - this.fog.density) * Math.min(1, dt * 3);
-    if (Math.abs(this.fogTarget - this.fog.density) < 1e-7) this.fog.density = this.fogTarget;
+    // a dust storm thickens the haze in the 3D views (never on the flat map)
+    const fogGoal = this.fogGoal();
+    this.fog.density += (fogGoal - this.fog.density) * Math.min(1, dt * 3);
+    if (Math.abs(fogGoal - this.fog.density) < 1e-7) this.fog.density = fogGoal;
     this.sky.mesh.position.copy(this.camera.position);
     this.skyLabels.position.copy(this.camera.position);
     for (const t of this.skyTags.values()) t.obj.visible = t.up && this.mode === "walk";
@@ -1064,14 +1071,120 @@ export class SceneView {
   }
 
   /** Light the terrain with the Sun at this elevation / azimuth (degrees, azimuth clockwise from north). */
+  /** Field notebook pins: a flag per note or sample, its label clickable to open it. */
+  setNotes(notes: { id: string; label: string; x: number; y: number; sample: boolean; text: string }[]): void {
+    for (const child of [...this.noteGroup.children]) {
+      this.noteGroup.remove(child);
+      child.traverse((o) => {
+        if (o instanceof CSS2DObject) o.element.remove();
+      });
+    }
+    for (const n of notes) {
+      const el = document.createElement("button");
+      el.className = `note-pin${n.sample ? " sample" : ""}`;
+      el.title = n.text || (n.sample ? "Sample" : "Note");
+      el.innerHTML = `<b>${esc(n.label)}</b>`;
+      el.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        this.onNoteClick(n.id);
+      });
+      el.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+      const tag = new CSS2DObject(el);
+      tag.position.copy(this.ground(n.x, n.y, 0.4));
+      tag.center.set(0.5, 1);
+      this.noteGroup.add(tag);
+    }
+    this.dirty = true;
+  }
+
+  /** Place the ghost of the real rover (local metres, heading in radians from east, counter-clockwise), or hide it. */
+  setGhost(pose: { x: number; y: number; heading: number; label: string } | null): void {
+    if (!pose) {
+      if (this.ghost?.group.visible) {
+        this.ghost.group.visible = false;
+        this.dirty = true;
+      }
+      return;
+    }
+    if (!this.ghost) this.ghost = this.buildGhost();
+    const g = this.ghost;
+    g.group.visible = true;
+    g.group.position.copy(this.ground(pose.x, pose.y));
+    g.group.rotation.y = pose.heading;
+    if (g.label.textContent !== pose.label) g.label.textContent = pose.label;
+    this.dirty = true;
+  }
+
+  /** A rover the size of Perseverance / Curiosity (3 m long, 2.7 m wide, 2.2 m to the mast top), as a glowing ghost. */
+  private buildGhost(): { group: THREE.Group; label: HTMLElement } {
+    const mat = new THREE.MeshBasicMaterial({ color: 0xbfe8ff, transparent: true, opacity: 0.5, depthWrite: false, fog: false });
+    const body = new THREE.Group();
+    const box = (w: number, h: number, d: number, x: number, y: number, z: number) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      m.position.set(x, y, z);
+      body.add(m);
+    };
+    box(2.6, 0.55, 1.6, 0, 1.0, 0); // body
+    box(0.18, 1.1, 0.18, 0.95, 1.8, 0.45); // mast
+    box(0.5, 0.3, 0.35, 1.0, 2.35, 0.45); // mast head
+    box(0.9, 0.12, 0.9, -0.95, 1.4, 0); // power source
+    const wheel = new THREE.CylinderGeometry(0.26, 0.26, 0.4, 14).rotateX(Math.PI / 2);
+    for (const x of [-1.1, 0, 1.1]) for (const z of [-1.15, 1.15]) {
+      const w = new THREE.Mesh(wheel, mat);
+      w.position.set(x, 0.26, z);
+      body.add(w);
+    }
+    const group = new THREE.Group();
+    group.add(body);
+    group.renderOrder = 22;
+    const el = document.createElement("div");
+    el.className = "poi-label ghost";
+    const label = document.createElement("span");
+    el.appendChild(label);
+    const tag = new CSS2DObject(el);
+    tag.position.set(0, 3.2, 0);
+    tag.center.set(0.5, 1);
+    group.add(tag);
+    this.scene.add(group);
+    this.scaled.push({ obj: group, px: 10 });
+    return { group, label };
+  }
+
+  /** Dust optical depth τ in the air (eva/dust.ts): dims and flattens the light, hazes the sky and the distance. */
+  private dustTau = 0.5;
+  private dustFog = 0;
+  private sunEl = 30;
+  setDust(tau: number): void {
+    this.dustTau = tau;
+    this.applyDust();
+  }
+
+  private fogGoal(): number {
+    return this.mode === "plan" ? this.fogTarget : Math.max(this.fogTarget, this.dustFog);
+  }
+
+  private applyDust(): void {
+    const d = dustEffect(this.dustTau, this.sunEl);
+    // eyes and cameras adapt: show about √ of the real drop in light (the panel gives the real numbers)
+    const adapt = 1 / Math.sqrt(Math.max(0.02, d.sunlight));
+    this.shared.uDust.value.set(d.direct * adapt, Math.min(1.2, d.diffuse * adapt));
+    const ex = Math.max(0, this.dustTau - 0.5);
+    this.sky.setDust(1 - Math.exp(-0.45 * ex), 0.3 + 0.7 * Math.exp(-0.16 * ex), Math.sqrt(d.direct));
+    // exponential-squared fog that is ~63% thick at one extinction length (1 / k)
+    this.dustFog = ex > 0 ? d.extinction * 0.8 : 0;
+    this.fog.color.copy(this.fogBase).multiplyScalar(this.dayK * (0.35 + 0.65 * d.diffuse));
+    this.dirty = true;
+  }
+
   setSun(elevationDeg: number, azimuthDeg: number): void {
+    this.sunEl = elevationDeg;
     const el = THREE.MathUtils.degToRad(elevationDeg);
     const az = THREE.MathUtils.degToRad(azimuthDeg);
     const dir = this.shared.uSunDir.value.set(Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
     this.sky.setSunElevation(elevationDeg);
     // the haze dims with the sky at dusk (it stayed daylight-bright before, so far hills glowed at sunset)
     this.dayK = THREE.MathUtils.lerp(0.22, 1, THREE.MathUtils.clamp((elevationDeg + 2) / 14, 0, 1));
-    this.fog.color.copy(this.fogBase).multiplyScalar(this.dayK);
+    this.applyDust();
     if (this.region && this.mode !== "plan") (this.region.uniforms.uEdgeColor.value as THREE.Color).setHex(SKY_HORIZON, THREE.LinearSRGBColorSpace).multiplyScalar(this.dayK);
     this.dirty = true;
     // shadows move with the Sun: re-bake once it has moved by more than ~0.1 degrees

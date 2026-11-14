@@ -2,7 +2,7 @@ import {
   ArrowRight, Bandage, BookOpen, Box, CalendarClock, Check, ChevronDown, ChevronUp, Clock, Compass, Database, Download,
   Footprints, GitCompareArrows, HardDriveDownload, Home, Image, Info, Keyboard, Layers, Link, LocateFixed, Map, RadioReceiver, Minus, Pause, Play, Plus, Radiation,
   RadioTower, RotateCcw, RotateCw, Route, ScanEye, Siren, SkipForward, SlidersHorizontal, Square, Telescope,
-  TriangleAlert, Video, Volume2, VolumeX, Wind, X, createElement, type IconNode,
+  TriangleAlert, Video, NotebookPen, FlaskConical, Mic, Ghost, CloudFog, Volume2, VolumeX, Wind, X, createElement, type IconNode,
 } from "lucide";
 
 /** Lucide icons (ISC licence) as SVG strings, for use in HTML templates. */
@@ -63,4 +63,9 @@ export const ic = {
   locate: svg(LocateFixed, 12),
   keyboard: svg(Keyboard, 15),
   noRadio: svg(RadioReceiver, 12),
+  note: svg(NotebookPen, 15),
+  sample: svg(FlaskConical, 15),
+  mic: svg(Mic, 15),
+  ghost: svg(Ghost, 15),
+  dust: svg(CloudFog, 15),
 };
