@@ -41,3 +41,39 @@ export function hideAnimated(el: HTMLElement, ms = 220, done?: () => void): void
   }, ms);
   leaving.set(el, t);
 }
+
+type ViewTransitionDoc = Document & { startViewTransition?: (update: () => void) => { finished: Promise<void> } };
+
+/**
+ * Change screens with a View Transition (styles/motion.css): `kind` names the transition, so the CSS can
+ * give the morphing elements their names on the old screen (`<kind>-from`) and the new one (`<kind>-to`).
+ * Browsers without View Transitions (or with reduce motion) just switch.
+ */
+export function pageTransition(kind: string, update: () => void): void {
+  const doc = document as ViewTransitionDoc;
+  if (!doc.startViewTransition || reduce()) {
+    update();
+    return;
+  }
+  const root = document.documentElement;
+  root.dataset.vt = `${kind}-from`;
+  const vt = doc.startViewTransition(() => {
+    update();
+    root.dataset.vt = `${kind}-to`;
+  });
+  vt.finished.finally(() => {
+    if (root.dataset.vt === `${kind}-to`) delete root.dataset.vt;
+  });
+}
+
+/** Links to another site: name the logo on this page so it flies into the next one (cross-document). */
+export function markSiteLinks(): void {
+  document.addEventListener("click", (ev) => {
+    const a = (ev.target as HTMLElement).closest?.("a[href^='?site=']");
+    if (!a) return;
+    const briefingOpen = !(document.getElementById("briefing")?.hidden ?? true);
+    document.documentElement.dataset.vt = briefingOpen ? "site-brief-from" : "site-app-from";
+  }, true);
+  // back from the bfcache: no stale names
+  window.addEventListener("pageshow", () => delete document.documentElement.dataset.vt);
+}

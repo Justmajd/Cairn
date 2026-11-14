@@ -1,6 +1,6 @@
 import type { SiteData, SiteEntry } from "../data/loaders";
 import { $, esc, LOGO_SVG } from "./dom";
-import { hideAnimated, showAnimated } from "./motion";
+import { pageTransition } from "./motion";
 
 /**
  * Mission briefing: the site's story, a regional orbital map with the rover's real traverse and the
@@ -77,11 +77,9 @@ export function showBriefing(site: SiteData, onEnter: () => void, sites: SiteEnt
           : `Global map: ${esc(c.global.source)}.`}</p>
       </section>
     </div>`;
-  showAnimated(host);
-  const close = () => {
-    hideAnimated(host, 550); // descend into the map
-    showAnimated($("#app"));
-  };
+  host.hidden = false;
+  // into the planner: the headline becomes the site name in the top bar, the logo flies there too
+  const close = () => pageTransition("enter", () => (host.hidden = true));
   $("#brief-enter", host).addEventListener("click", () => {
     close();
     onEnter();

@@ -12,7 +12,7 @@ import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "./styles/main.css";
 import "./styles/motion.css";
-import { hideAnimated, showAnimated } from "./ui/motion";
+import { markSiteLinks, pageTransition } from "./ui/motion";
 import { showBriefing } from "./ui/briefing";
 import { initOffline } from "./ui/offline";
 import { $ } from "./ui/dom";
@@ -129,11 +129,13 @@ async function boot(): Promise<void> {
   // a shared plan link opens straight on the plan; ?demo=1 plays the guided demo (for a booth screen or recording)
   const sharedPlan = /(^#|&)(stops|add)=/.test(location.hash);
   const briefing = query.get("demo") !== "1" && query.get("skip") !== "1" && !sharedPlan;
+  // leave the loading screen: the CAIRN logo flies onto the briefing, or into the planner's top bar
+  pageTransition(briefing ? "load-brief" : "load-app", () => {
+    $("#loading").hidden = true;
+    if (briefing) showBriefing(site, () => {}, sites);
+  });
   if (query.get("demo") === "1") void app.startDemo();
-  else if (briefing) showBriefing(site, () => {}, sites);
-  // leave the loading screen at light speed: onto the briefing, or straight onto Mars
-  hideAnimated($("#loading"), 700);
-  if (!briefing) showAnimated($("#app"));
+  markSiteLinks();
 
   // close-up ground materials (CC0 photo scans, shared by all sites): after the planner is up
   void (async () => {
