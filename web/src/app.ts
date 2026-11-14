@@ -162,7 +162,7 @@ export class App {
       return { timeS: field.time[node], energyJ: field.energy[node] };
     };
 
-    this.radio = radioShadow(site.grid, this.rover);
+    this.radio = field.radio; // computed by the routing worker at start-up
     view.setRadioShadow(this.radio);
 
     setText($("#site-name"), site.meta.name);

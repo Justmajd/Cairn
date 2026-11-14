@@ -8,6 +8,7 @@ export interface FieldResult {
   energy: Float32Array; // J to walk back to the shelter from each node
   ms: number;
   reachablePct: number;
+  radio: Uint8Array; // radio shadow of the shelter's antenna (see eva/radio)
 }
 
 /** Promise-based wrapper around the routing Web Worker. */
@@ -22,7 +23,7 @@ export class Router {
     this.worker.onmessage = (ev: MessageEvent<WorkerResponse>) => {
       const msg = ev.data;
       if (msg.type === "ready") {
-        this.onReady?.({ time: msg.time, energy: msg.energy, ms: msg.ms, reachablePct: msg.reachablePct });
+        this.onReady?.({ time: msg.time, energy: msg.energy, ms: msg.ms, reachablePct: msg.reachablePct, radio: msg.radio });
         this.onReady = null;
         return;
       }

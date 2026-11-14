@@ -2,6 +2,7 @@
 import { TerrainGrid } from "../data/grid";
 import type { EvaParams } from "../eva/params";
 import type { XY } from "../types";
+import { radioShadow } from "../eva/radio";
 import { astar, buildReturnField, pathToShelter, ReturnField } from "./search";
 import { smoothPath } from "./smooth";
 
@@ -24,7 +25,7 @@ export type WorkerRequest =
   | { type: "shelter"; id: number; from: XY };
 
 export type WorkerResponse =
-  | { type: "ready"; time: Float32Array; energy: Float32Array; ms: number; reachablePct: number }
+  | { type: "ready"; time: Float32Array; energy: Float32Array; ms: number; reachablePct: number; radio: Uint8Array }
   | { type: "route"; id: number; legs: (XY[] | null)[]; ms: number }
   | { type: "shelter"; id: number; path: XY[] | null; ms: number };
 
@@ -48,9 +49,13 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
     // send copies; the worker keeps its own field for path extraction
     const time = field.time.slice();
     const energy = field.energy.slice();
-    post({ type: "ready", time, energy, ms: performance.now() - t0, reachablePct: (100 * reachable) / field.cost.length }, [
+    const ms = performance.now() - t0;
+    // the rover's radio shadow, here rather than on the main thread while the page starts
+    const radio = radioShadow(grid, msg.shelter);
+    post({ type: "ready", time, energy, ms, reachablePct: (100 * reachable) / field.cost.length, radio }, [
       time.buffer,
       energy.buffer,
+      radio.buffer,
     ]);
     return;
   }
