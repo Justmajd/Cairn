@@ -14,7 +14,7 @@ import { showBriefing } from "./ui/briefing";
 import { DoseChartHandle, ProfileHandle, renderDoseChart, renderProfile } from "./ui/charts";
 import { $, esc, fmtClock, fmtDist, fmtDose, fmtDur, fmtRate, setText } from "./ui/dom";
 import { ic } from "./ui/icons";
-import { showAssumptions, showSources, stopCardHtml } from "./ui/modals";
+import { openModal, showAssumptions, showSources, stopCardHtml } from "./ui/modals";
 import { openPanorama } from "./ui/panorama";
 import { DemoRunner, DemoStep } from "./ui/demo";
 import { CueRow, showCueCard } from "./ui/cuecard";
@@ -195,7 +195,8 @@ export class App {
       <button data-about="briefing">${ic.book}<span><b>Mission briefing</b><small>The site, the story and why it matters</small></span></button>
       <button data-about="sources">${ic.data}<span><b>Data sources</b><small>Where every layer and number comes from</small></span></button>
       <button data-about="model">${ic.sliders}<span><b>Suit and model assumptions</b><small>Oxygen, walking and radiation models</small></span></button>
-      <button data-about="offline">${ic.offline}<span><b>Use offline</b><small>Save this site to the device and install CAIRN as an app. No network needed after that.</small></span></button>`;
+      <button data-about="offline">${ic.offline}<span><b>Use offline</b><small>Save this site to the device and install CAIRN as an app. No network needed after that.</small></span></button>
+      <button data-about="keys" class="fine-pointer">${ic.keyboard}<span><b>Keyboard shortcuts</b><small>Views, zoom, pause — press ? any time</small></span></button>`;
     $("#nav").innerHTML = `
       <button data-menu="view" title="Display settings">${ic.sliders}</button>
       <i></i>
@@ -239,6 +240,7 @@ export class App {
       if (item === "briefing") showBriefing(this.site, () => {}, this.sites);
       else if (item === "sources") showSources(this.site);
       else if (item === "offline") void this.goOffline();
+      else if (item === "keys") this.showShortcuts();
       else showAssumptions(this.site, this.P);
     });
     // the gesture hint goes away once it has been used
@@ -344,6 +346,8 @@ export class App {
       else if (act === "model") showAssumptions(this.site, this.P);
     });
 
+    window.addEventListener("keydown", (ev) => this.onKey(ev));
+
     $("#bottom").addEventListener("click", (ev) => {
       const t = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]");
       if (!t) return;
@@ -365,6 +369,53 @@ export class App {
         this.renderBottom();
       }
     });
+  }
+
+  /** Keyboard shortcuts (the 3D camera keys live in the scene view). */
+  private onKey(ev: KeyboardEvent): void {
+    const t = ev.target as HTMLElement | null;
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+    if (!$("#pano").hidden) return; // the panorama has its own keys
+    if (ev.key === "Escape") {
+      if (!$("#modal").hidden) $("#modal").hidden = true;
+      else if (!$("#card").hidden) this.closeCard();
+      else if (!$("#pin-menu").hidden) $("#pin-menu").hidden = true;
+      return;
+    }
+    if (!$("#briefing").hidden || !$("#modal").hidden) return;
+    const views: Record<string, "plan" | "orbit" | "walk"> = { "1": "plan", "2": "orbit", "3": "walk" };
+    if (views[ev.key]) {
+      ev.preventDefault();
+      this.setView(views[ev.key]);
+    } else if (ev.key === " " && this.phase === "eva" && (!t || t === document.body || t.tagName === "CANVAS")) {
+      ev.preventDefault();
+      this.paused = !this.paused;
+      this.renderBottom();
+    } else if (ev.key === "?") {
+      ev.preventDefault();
+      this.showShortcuts();
+    }
+  }
+
+  private showShortcuts(): void {
+    const row = (keys: string[], what: string) => `<tr><td>${keys.map((k) => `<kbd>${esc(k)}</kbd>`).join(" ")}</td><td>${what}</td></tr>`;
+    openModal(
+      "Keyboard shortcuts",
+      `<table class="keys">
+        ${row(["1"], "Map")}
+        ${row(["2"], "3D")}
+        ${row(["3"], "Visor (first person)")}
+        ${row(["+", "−"], "Zoom in and out")}
+        ${row(["←", "→", "↑", "↓"], "3D: rotate and tilt")}
+        ${row(["N"], "3D: face north")}
+        ${row(["Space"], "Pause or resume the EVA")}
+        ${row(["Esc"], "Close the open card or dialog")}
+        ${row(["?"], "This list")}
+      </table>
+      <p class="hint">Mouse: drag to move (map) or rotate (3D), scroll to zoom, click to add a stop, double-click to fly there.</p>`,
+      false,
+    );
   }
 
   private setView(mode: "plan" | "orbit" | "fly" | "walk"): void {
@@ -426,6 +477,31 @@ export class App {
 
   private sunAtEva(tS: number): SunPosition {
     return sunAt(this.lat, this.lmstAt(tS), this.solar);
+  }
+
+  /**
+   * Start times (06:00–17:00 on the slider) that keep the Sun above 8° for the whole walk:
+   * a gradient for the slider track and one line of text.
+   */
+  private daylightTrack(totalS: number): { gradient: string; text: string } {
+    const ok: boolean[] = [];
+    for (let t = 6; t <= 17.0001; t += 0.25) {
+      ok.push(sunAt(this.lat, t, this.solar).elevation >= 8 && sunAt(this.lat, t + totalS / MARS_HOUR_S, this.solar).elevation >= 8);
+    }
+    const good = "rgba(90, 212, 138, 0.6)";
+    const bad = "rgba(255, 255, 255, 0.12)";
+    const stops: string[] = [];
+    ok.forEach((v, i) => {
+      const a = (i / ok.length) * 100;
+      const b = ((i + 1) / ok.length) * 100;
+      stops.push(`${v ? good : bad} ${a.toFixed(1)}% ${b.toFixed(1)}%`);
+    });
+    const first = ok.indexOf(true);
+    const last = ok.lastIndexOf(true);
+    const text = first < 0
+      ? "No start time keeps the Sun above 8° for the whole walk: shorten it."
+      : `Daylight the whole way when leaving ${fmtLmst(6 + first * 0.25)}–${fmtLmst(6 + last * 0.25)} (green).`;
+    return { gradient: `linear-gradient(90deg, ${stops.join(", ")})`, text };
   }
 
   private static compass(az: number): string {
@@ -845,8 +921,9 @@ export class App {
           </div>
           ${this.radioLine()}
           <label class="slider start"><span>Leave the rover at <b id="start-val">${fmtLmst(this.startLmst)} LMST</b></span>
-            <input type="range" id="start" min="6" max="17" step="0.25" value="${this.startLmst}"/>
-            <small id="sun-val">Sun ${this.sunText(sunStart)} → ${this.sunText(sunEnd)} at ${fmtLmst(this.lmstAt(b.totalTimeS))}</small></label>
+            <input type="range" id="start" min="6" max="17" step="0.25" value="${this.startLmst}" style="--track:${this.daylightTrack(b.totalTimeS).gradient}"/>
+            <small id="sun-val">Sun ${this.sunText(sunStart)} → ${this.sunText(sunEnd)} at ${fmtLmst(this.lmstAt(b.totalTimeS))}</small>
+            <small class="daylight">${this.daylightTrack(b.totalTimeS).text}</small></label>
           <div class="vs">
             <p>${vs}</p>
             <label class="switch"><span>Show the straight line on the map</span><input class="sr" type="checkbox" id="opt-straight" ${this.showStraight ? "checked" : ""}/><i></i></label>
@@ -1412,6 +1489,7 @@ export class App {
     this.mission = new Mission(segs, this.rad, this.P, this.lookup, onset, (x, y) => grid.shieldAt(x, y));
     this.phase = "eva";
     this.paused = false;
+    void this.keepAwake(true);
     this.shelterPath = null;
     this.shelteredAtS = null;
     this.radioLost = false;
@@ -1430,6 +1508,7 @@ export class App {
   }
 
   private backToPlanning(): void {
+    void this.keepAwake(false);
     this.mission = null;
     this.voice.stop();
     this.phase = "planning";
@@ -1516,6 +1595,7 @@ export class App {
   }
 
   private async onAlert(rate: number): Promise<void> {
+    this.buzz([300, 120, 300, 120, 300]);
     const m = this.mission!;
     this.closeCard();
     const pose = m.pose();
@@ -1569,6 +1649,7 @@ export class App {
 
   private onComplete(aborted: boolean): void {
     this.phase = "summary";
+    void this.keepAwake(false);
     this.clearAlert();
     this.closeCard();
     if (this.viewMode === "walk") this.setView("orbit");
@@ -1660,6 +1741,42 @@ export class App {
     this.spotTimer = window.setTimeout(() => this.view.setSpot(null), 9000);
   }
 
+  // ================================================================ field use: screen and haptics
+  private wakeLock: WakeLockSentinel | null = null;
+  private wakeWatch = false;
+
+  /** Keep a phone or tablet screen on during the EVA (the visor is useless if it goes dark). */
+  private async keepAwake(on: boolean): Promise<void> {
+    if (!("wakeLock" in navigator)) return;
+    if (!this.wakeWatch) {
+      this.wakeWatch = true;
+      // the lock drops when the page is hidden; take it again on return if the EVA is still on
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && this.phase === "eva" && !this.wakeLock) void this.keepAwake(true);
+      });
+    }
+    try {
+      if (on && !this.wakeLock) {
+        this.wakeLock = await navigator.wakeLock.request("screen");
+        this.wakeLock.addEventListener("release", () => (this.wakeLock = null));
+      } else if (!on && this.wakeLock) {
+        await this.wakeLock.release();
+        this.wakeLock = null;
+      }
+    } catch {
+      /* not allowed here (e.g. battery saver): the EVA runs anyway */
+    }
+  }
+
+  /** Vibrate a phone for alerts: a glove-friendly cue that does not need eyes on the screen. */
+  private buzz(pattern: number[] = [180, 90, 180]): void {
+    try {
+      navigator.vibrate?.(pattern);
+    } catch {
+      /* no vibration motor */
+    }
+  }
+
   /** Out of radio contact at a sample of the planned route (counting the relay once it is up). */
   private lostOnPlan(x: number, y: number, leg: number, i: number): boolean {
     const r = this.useRelay ? this.plan?.relay : null;
@@ -1707,6 +1824,7 @@ export class App {
     if (lost === this.radioLost) return;
     this.radioLost = lost;
     if (lost) {
+      this.buzz([120]);
       this.toast("Radio contact with the rover lost: the terrain blocks the line of sight.", 4000);
       this.voice.say("Radio contact with the rover lost. Terrain is blocking the line of sight.");
     } else {
@@ -1754,6 +1872,7 @@ export class App {
   private async triggerEmergency(kind: EmergencyKind): Promise<void> {
     const m = this.mission;
     if (!m || m.phase !== "eva" || m.emergency || m.alertS !== null || !m.segment) return;
+    this.buzz([300, 120, 300]);
     m.hold();
     this.closeCard();
     const pose = m.pose();

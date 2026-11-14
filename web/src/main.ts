@@ -27,10 +27,17 @@ function loadTexture(url: string): Promise<THREE.Texture> {
 
 function maxTextureSize(): number {
   const gl = document.createElement("canvas").getContext("webgl2");
-  return gl ? (gl.getParameter(gl.MAX_TEXTURE_SIZE) as number) : 0;
+  if (!gl) return 0;
+  const size = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+  gl.getExtension("WEBGL_lose_context")?.loseContext(); // free it: browsers cap live contexts
+  return size;
 }
 
 async function boot(): Promise<void> {
+  const maxTex = maxTextureSize(); // one throwaway context, not two
+  if (!maxTex) {
+    throw new Error("this browser has no WebGL 2, which the 3D terrain needs. Try a current Chrome, Edge, Firefox or Safari, and check that hardware acceleration is on.");
+  }
   const query = new URLSearchParams(location.search);
   const quality = query.get("q") === "low" ? "low" : "high";
 
@@ -58,7 +65,7 @@ async function boot(): Promise<void> {
   // Start on the 50 cm HiRISE image; the full 25 cm one streams in after the planner is up,
   // when the GPU can hold an 8192 px texture.
   const hi = site.meta.texture.hi;
-  const useHi = !!hi && quality === "high" && query.get("tex") !== "4k" && maxTextureSize() >= hi.px;
+  const useHi = !!hi && quality === "high" && query.get("tex") !== "4k" && maxTex >= hi.px;
   const chosen = site.meta.texture;
 
   // the way home from every point is worked out in the background while the images finish
