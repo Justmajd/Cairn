@@ -142,7 +142,7 @@ Space Apps typically judges on the five criteria below (confirm against the 2026
                                          │ static assets
                                          ▼
 ┌──────────────────────────────────── Web app (browser) ────────────────────────────────────────┐
-│  2D Planner (MapLibre GL + Mars Trek tiles)  ◄──── shared route state ────►  3D View (Three.js)│
+│  Scene (Three.js): top-down 2D planner ◄─ camera tween ─► 3D view · Context map (OpenLayers)  │
 │  Routing engine (A* on cost grid, Web Worker)                                                │
 │  EVA budget model (time, O₂, walk-back, dose)                                                │
 │  Live panels: MEDA weather · RAD dose · DONKI alerts · Data provenance                       │
@@ -155,7 +155,8 @@ Space Apps typically judges on the five criteria below (confirm against the 2026
 | Part | Choice | Why |
 |---|---|---|
 | Frontend | **Vite + TypeScript** (React optional for panels) | Fast setup, type safety |
-| 2D map | **MapLibre GL JS** with Mars Trek tiles | Open source, handles raster tile layers |
+| 2D planner | **Three.js** top-down orthographic view of the same scene | 2D and 3D stay perfectly aligned; "tilt into 3D" is a camera move |
+| Regional context map | **OpenLayers** with Mars Trek tiles | Supports Mars Trek's equirectangular tiles (MapLibre only supports Web Mercator) |
 | 3D terrain | **Three.js** | Full visual control, cinematic look, runs offline at the venue |
 | Routing | **A\*** on a cost grid in a **Web Worker** | Fast re-planning without freezing the UI (needed for Act 3) |
 | Charts | Lightweight chart library or plain SVG | Elevation profile, dose curve |
@@ -188,7 +189,7 @@ Space Apps typically judges on the five criteria below (confirm against the 2026
 1. Get the **HiRISE DTM** (~1 m/post) and matching **orthoimage** (~25 cm/px) of the Jezero EVA area.
 2. Crop with GDAL to a few km²; export a 16-bit heightmap + texture.
 3. In Three.js: a `PlaneGeometry` displaced by the heightmap and textured with the HiRISE image; soft lighting; dusty sky; route as a glowing line slightly above the surface; hazard zones as translucent red overlays.
-4. 2D planning stays in MapLibre; a toggle switches between 2D and 3D using the same route data.
+4. The 2D planner is the same Three.js scene seen from directly above; switching to 3D is a camera animation, so route and layers always line up. (Full details in [plan.md](plan.md).)
 
 **Why Three.js over CesiumJS:** full control, offline-capable, more cinematic. Cesium is better for planet-scale globes, which a few-kilometer walk doesn't need.
 

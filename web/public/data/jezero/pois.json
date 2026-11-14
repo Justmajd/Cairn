@@ -1,0 +1,260 @@
+{
+ "source": "Positions from the Mars 2020 MMGIS waypoint layer; images from the Mars 2020 raw-image feed",
+ "pois": [
+  {
+   "id": "rover",
+   "kind": "shelter",
+   "name": "Pressurised rover",
+   "short": "Rover",
+   "x": 1452,
+   "y": 914,
+   "rmc": "52_2638",
+   "sols": "1150–1154",
+   "lon": 77.31359,
+   "lat": 18.490711,
+   "description": "EVA start, end and radiation shelter. Parked on the south bank of Neretva Vallis, where Perseverance stopped on sols 1150–1154.",
+   "science": "Firm, elevated ground with a view over the channel. The crew walks from here; the rover does not enter the dune field.",
+   "whyHumans": "A crewed rover can reposition in minutes when the plan changes — no overnight command cycle from Earth.",
+   "dwellMin": 0,
+   "images": [
+    {
+     "id": "NLF_1151_0769112624_722ECM_N0522638NCAM14150_01_195J",
+     "file": "images/NLF_1151_0769112624_722ECM_N0522638NCAM14150_01_195J.jpg",
+     "sol": 1151,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-01151M10:31:59.970",
+     "utc": "2024-05-16T06:38:45.199",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_1151_0769112624_722ECM_N0522638NCAM14150_01_195J"
+    },
+    {
+     "id": "ZL0_1155_0769468584_831EBY_N0522644ZCAM09193_0480LMJ",
+     "file": "images/ZL0_1155_0769468584_831EBY_N0522644ZCAM09193_0480LMJ.jpg",
+     "sol": 1155,
+     "camera": "MCZ_LEFT",
+     "cameraName": "Mastcam-Z (left)",
+     "lmst": "Sol-01155M10:46:10.724",
+     "utc": "2024-05-20T09:31:39.206",
+     "credit": "NASA/JPL-Caltech/ASU",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_1155_0769468584_831EBY_N0522644ZCAM09193_0480LMJ"
+    },
+    {
+     "id": "NLF_1154_0769389547_755ECM_N0522644NCAM03154_09_095J",
+     "file": "images/NLF_1154_0769389547_755ECM_N0522644NCAM03154_09_095J.jpg",
+     "sol": 1154,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-01154M13:23:55.876",
+     "utc": "2024-05-19T11:34:11.047",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_1154_0769389547_755ECM_N0522644NCAM03154_09_095J"
+    }
+   ]
+  },
+  {
+   "id": "cheyava",
+   "kind": "objective",
+   "name": "Cheyava Falls · Bright Angel",
+   "short": "Cheyava Falls",
+   "x": 965.8,
+   "y": 1306.8,
+   "rmc": "56_0",
+   "sols": "1210–1219",
+   "lon": 77.305191,
+   "lat": 18.497484,
+   "description": "Arrowhead-shaped rock, about 1 m × 0.6 m, on the northern edge of Neretva Vallis. White calcium-sulfate veins cut reddish mudstone dotted with pale 'leopard spots' ringed in dark minerals.",
+   "science": "Perseverance detected organic compounds here and cored the sample 'Sapphire Canyon' on sol 1215 (21 July 2024). In September 2025 NASA reported the spots as a potential biosignature — the strongest candidate found on Mars so far. It is not proof of life.",
+   "whyHumans": "A field geologist can split the rock along a vein, sample both sides of one reaction front, and pick the next target in minutes instead of sols.",
+   "dwellMin": 30,
+   "images": [
+    {
+     "id": "NLF_1211_0774440401_066ECM_N0560000NCAM15210_04_195J",
+     "file": "images/NLF_1211_0774440401_066ECM_N0560000NCAM15210_04_195J.jpg",
+     "sol": 1211,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-01211M10:53:09.137",
+     "utc": "2024-07-16T22:35:43.309",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_1211_0774440401_066ECM_N0560000NCAM15210_04_195J"
+    },
+    {
+     "id": "NLF_1210_0774361908_130ECM_N0560000NCAM03210_10_195J",
+     "file": "images/NLF_1210_0774361908_130ECM_N0560000NCAM03210_10_195J.jpg",
+     "sol": 1210,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-01210M13:39:55.728",
+     "utc": "2024-07-16T00:47:30.414",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_1210_0774361908_130ECM_N0560000NCAM03210_10_195J"
+    },
+    {
+     "id": "ZL0_1217_0774980058_772EBY_N0560000ZCAM09264_1100LMJ",
+     "file": "images/ZL0_1217_0774980058_772EBY_N0560000ZCAM09264_1100LMJ.jpg",
+     "sol": 1217,
+     "camera": "MCZ_LEFT",
+     "cameraName": "Mastcam-Z (left)",
+     "lmst": "Sol-01217M12:47:06.925",
+     "utc": "2024-07-23T04:30:20.019",
+     "credit": "NASA/JPL-Caltech/ASU",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_1217_0774980058_772EBY_N0560000ZCAM09264_1100LMJ"
+    },
+    {
+     "id": "SIF_1212_0774536757_953EBY_N0560000SRLC01024_0000LMJ",
+     "file": "images/SIF_1212_0774536757_953EBY_N0560000SRLC01024_0000LMJ.jpg",
+     "sol": 1212,
+     "camera": "SHERLOC_WATSON",
+     "cameraName": "SHERLOC WATSON close-up camera",
+     "lmst": "Sol-01212M12:56:23.333",
+     "utc": "2024-07-18T01:21:56.488",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/SIF_1212_0774536757_953EBY_N0560000SRLC01024_0000LMJ"
+    }
+   ]
+  },
+  {
+   "id": "serpentine",
+   "kind": "objective",
+   "name": "Serpentine Rapids",
+   "short": "Serpentine Rapids",
+   "x": 719.7,
+   "y": 976.0,
+   "rmc": "56_3368",
+   "sols": "1230–1244",
+   "lon": 77.30104,
+   "lat": 18.491903,
+   "description": "Red outcrop on the south side of Neretva Vallis. Perseverance's abrasion patch exposed white, black and olive-green spots inside the rock (August 2024).",
+   "science": "The green spots resemble reduction spots in red rocks on Earth, where chemical reactions — sometimes involving microbes — strip iron of its colour. Comparing them with Cheyava Falls tests whether one process acted along the whole channel.",
+   "whyHumans": "Humans can trace a single layer across the outcrop by eye and hand, and collect a fresh, unweathered piece with a hammer.",
+   "dwellMin": 30,
+   "images": [
+    {
+     "id": "NLF_1231_0776216101_776ECM_N0563368NCAM15230_01_195J",
+     "file": "images/NLF_1231_0776216101_776ECM_N0563368NCAM15230_01_195J.jpg",
+     "sol": 1231,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-01231M10:56:33.466",
+     "utc": "2024-08-06T11:50:58.653",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_1231_0776216101_776ECM_N0563368NCAM15230_01_195J"
+    },
+    {
+     "id": "ZL0_1234_0776478674_473EBY_N0563438ZCAM09288_1100LMJ",
+     "file": "images/ZL0_1234_0776478674_473EBY_N0563438ZCAM09288_1100LMJ.jpg",
+     "sol": 1234,
+     "camera": "MCZ_LEFT",
+     "cameraName": "Mastcam-Z (left)",
+     "lmst": "Sol-01234M09:56:32.056",
+     "utc": "2024-08-09T12:48:02.929",
+     "credit": "NASA/JPL-Caltech/ASU",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_1234_0776478674_473EBY_N0563438ZCAM09288_1100LMJ"
+    },
+    {
+     "id": "SIF_1239_0776967346_765EBY_N0563438SRLC08050_0000LMJ",
+     "file": "images/SIF_1239_0776967346_765EBY_N0563438SRLC08050_0000LMJ.jpg",
+     "sol": 1239,
+     "camera": "SHERLOC_WATSON",
+     "cameraName": "SHERLOC WATSON close-up camera",
+     "lmst": "Sol-01239M22:02:28.309",
+     "utc": "2024-08-15T04:31:52.825",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/SIF_1239_0776967346_765EBY_N0563438SRLC08050_0000LMJ"
+    }
+   ]
+  },
+  {
+   "id": "washburn",
+   "kind": "optional",
+   "name": "Mount Washburn boulder field",
+   "short": "Mount Washburn",
+   "x": 1476.5,
+   "y": 1223.1,
+   "rmc": "52_5032",
+   "sols": "1168–1169",
+   "lon": 77.313807,
+   "lat": 18.496073,
+   "description": "Hill covered in boulders at the eastern end of the channel. One light-toned, speckled boulder, 'Atoko Point' (about 45 cm wide), is unlike other rocks seen in Jezero.",
+   "science": "The boulders were carried here from elsewhere — possibly from deep in the crater rim. They are free samples of rocks the rover could not otherwise reach.",
+   "whyHumans": "Sorting dozens of boulders by type takes a trained eye a few minutes; a rover needs days of imaging to do the same.",
+   "dwellMin": 20,
+   "images": [
+    {
+     "id": "NLF_1169_0770713652_145ECM_N0525032NCAM14168_04_195J",
+     "file": "images/NLF_1169_0770713652_145ECM_N0525032NCAM14168_04_195J.jpg",
+     "sol": 1169,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-01169M11:22:03.168",
+     "utc": "2024-06-03T19:22:45.391",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_1169_0770713652_145ECM_N0525032NCAM14168_04_195J"
+    },
+    {
+     "id": "ZL0_1168_0770638741_646EBY_N0525032ZCAM07125_1100LMJ",
+     "file": "images/ZL0_1168_0770638741_646EBY_N0525032ZCAM07125_1100LMJ.jpg",
+     "sol": 1168,
+     "camera": "MCZ_LEFT",
+     "cameraName": "Mastcam-Z (left)",
+     "lmst": "Sol-01168M15:08:01.934",
+     "utc": "2024-06-02T22:35:20.510",
+     "credit": "NASA/JPL-Caltech/ASU",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_1168_0770638741_646EBY_N0525032ZCAM07125_1100LMJ"
+    }
+   ]
+  },
+  {
+   "id": "channel",
+   "kind": "optional",
+   "name": "Neretva Vallis floor",
+   "short": "Channel floor",
+   "x": 1151.6,
+   "y": 1171.5,
+   "rmc": "52_6980",
+   "sols": "1171–1173",
+   "lon": 77.308325,
+   "lat": 18.495201,
+   "description": "Floor of the ancient river channel that once carried water into Jezero's lake. Perseverance drove along it on sols 1171–1175 to avoid a boulder field.",
+   "science": "Smooth, light bedrock exposed between dunes records the last water to flow through the valley.",
+   "whyHumans": "On foot the crew can cross dune gaps that would trap a wheeled rover.",
+   "dwellMin": 15,
+   "images": [
+    {
+     "id": "NLF_1172_0770979129_113ECM_N0526980NCAM14171_01_195J",
+     "file": "images/NLF_1172_0770979129_113ECM_N0526980NCAM14171_01_195J.jpg",
+     "sol": 1172,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-01172M11:08:19.166",
+     "utc": "2024-06-06T21:07:24.714",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_1172_0770979129_113ECM_N0526980NCAM14171_01_195J"
+    },
+    {
+     "id": "ZL0_1171_0770903225_928EBY_N0526980ZCAM09210_0630LMJ",
+     "file": "images/ZL0_1171_0770903225_928EBY_N0526980ZCAM09210_0630LMJ.jpg",
+     "sol": 1171,
+     "camera": "MCZ_LEFT",
+     "cameraName": "Mastcam-Z (left)",
+     "lmst": "Sol-01171M14:38:19.305",
+     "utc": "2024-06-06T00:03:34.606",
+     "credit": "NASA/JPL-Caltech/ASU",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_1171_0770903225_928EBY_N0526980ZCAM09210_0630LMJ"
+    },
+    {
+     "id": "ZL0_1171_0770903573_928EBY_N0526980ZCAM09210_0630LMJ",
+     "file": "images/ZL0_1171_0770903573_928EBY_N0526980ZCAM09210_0630LMJ.jpg",
+     "sol": 1171,
+     "camera": "MCZ_LEFT",
+     "cameraName": "Mastcam-Z (left)",
+     "lmst": "Sol-01171M14:43:01.552",
+     "utc": "2024-06-06T00:08:24.612",
+     "credit": "NASA/JPL-Caltech/ASU",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_1171_0770903573_928EBY_N0526980ZCAM09210_0630LMJ"
+    }
+   ]
+  }
+ ]
+}

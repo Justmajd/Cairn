@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="description" content="CAIRN — a Marswalk route planner for the first human explorers at Jezero Crater, built on NASA, USGS and JPL data." />
+    <title>CAIRN — Marswalk Route Planner</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0d10'/%3E%3Cellipse cx='16' cy='24' rx='10' ry='4.4' fill='%23e8a15c'/%3E%3Cellipse cx='16' cy='16.5' rx='7.2' ry='3.8' fill='%23f0b878'/%3E%3Cellipse cx='16' cy='9.8' rx='4.6' ry='3.2' fill='%23f7d2a0'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="loading">
+      <div class="load-box">
+        <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><ellipse cx="16" cy="24" rx="10" ry="4.4" fill="#e8a15c" /><ellipse cx="16" cy="16.5" rx="7.2" ry="3.8" fill="#f0b878" /><ellipse cx="16" cy="9.8" rx="4.6" ry="3.2" fill="#f7d2a0" /></svg>
+        <h1>CAIRN</h1>
+        <p class="tagline">Crew Assisted Integrated Route Navigator</p>
+        <div class="bar"><i id="load-bar"></i></div>
+        <p id="load-label">Starting…</p>
+      </div>
+    </div>
+
+    <div id="app" hidden>
+      <main id="stage">
+        <div id="scene"></div>
+        <div id="hud" hidden></div>
+        <div id="probe" hidden></div>
+        <div id="pin-menu" hidden></div>
+      </main>
+
+      <header id="topbar">
+        <div class="brand pill">
+          <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><ellipse cx="16" cy="24" rx="10" ry="4.4" fill="#e8a15c" /><ellipse cx="16" cy="16.5" rx="7.2" ry="3.8" fill="#f0b878" /><ellipse cx="16" cy="9.8" rx="4.6" ry="3.2" fill="#f7d2a0" /></svg>
+          <strong>CAIRN</strong>
+          <span class="sep"></span>
+          <span id="site-name"></span>
+        </div>
+        <nav id="views" class="pill seg" aria-label="View"></nav>
+        <div class="top-actions pill"></div>
+      </header>
+
+      <aside id="left" class="panel"></aside>
+      <aside id="right" class="panel"></aside>
+      <section id="bottom" class="panel"></section>
+
+      <div id="mapwidgets">
+        <div id="compass" title="North"><i></i><b>N</b></div>
+        <div id="scalebar"><i></i><span></span></div>
+        <div id="exag-tag" hidden></div>
+      </div>
+      <div id="nav" class="pill" aria-label="Camera controls"></div>
+      <div id="nav-hint"></div>
+      <div id="alert" hidden></div>
+      <div id="card" hidden></div>
+      <div id="toast" hidden></div>
+    </div>
+
+    <div id="briefing" hidden></div>
+    <div id="modal" hidden></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

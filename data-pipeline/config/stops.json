@@ -1,0 +1,91 @@
+{
+ "order": [
+  "rover",
+  "cheyava",
+  "serpentine",
+  "washburn",
+  "channel"
+ ],
+ "stops": {
+  "rover": {
+   "kind": "shelter",
+   "name": "Pressurised rover",
+   "short": "Rover",
+   "rmc": "52_2638",
+   "sols": "1150–1154",
+   "dwellMin": 0,
+   "description": "EVA start, end and radiation shelter. Parked on the south bank of Neretva Vallis, where Perseverance stopped on sols 1150–1154.",
+   "science": "Firm, elevated ground with a view over the channel. The crew walks from here; the rover does not enter the dune field.",
+   "whyHumans": "A crewed rover can reposition in minutes when the plan changes — no overnight command cycle from Earth.",
+   "images": [
+    "NLF_1151_0769112624_722ECM_N0522638NCAM14150_01_195J",
+    "ZL0_1155_0769468584_831EBY_N0522644ZCAM09193_0480LMJ",
+    "NLF_1154_0769389547_755ECM_N0522644NCAM03154_09_095J"
+   ]
+  },
+  "cheyava": {
+   "kind": "objective",
+   "name": "Cheyava Falls · Bright Angel",
+   "short": "Cheyava Falls",
+   "rmc": "56_0",
+   "sols": "1210–1219",
+   "dwellMin": 30,
+   "description": "Arrowhead-shaped rock, about 1 m × 0.6 m, on the northern edge of Neretva Vallis. White calcium-sulfate veins cut reddish mudstone dotted with pale 'leopard spots' ringed in dark minerals.",
+   "science": "Perseverance detected organic compounds here and cored the sample 'Sapphire Canyon' on sol 1215 (21 July 2024). In September 2025 NASA reported the spots as a potential biosignature — the strongest candidate found on Mars so far. It is not proof of life.",
+   "whyHumans": "A field geologist can split the rock along a vein, sample both sides of one reaction front, and pick the next target in minutes instead of sols.",
+   "images": [
+    "NLF_1211_0774440401_066ECM_N0560000NCAM15210_04_195J",
+    "NLF_1210_0774361908_130ECM_N0560000NCAM03210_10_195J",
+    "ZL0_1217_0774980058_772EBY_N0560000ZCAM09264_1100LMJ",
+    "SIF_1212_0774536757_953EBY_N0560000SRLC01024_0000LMJ"
+   ]
+  },
+  "serpentine": {
+   "kind": "objective",
+   "name": "Serpentine Rapids",
+   "short": "Serpentine Rapids",
+   "rmc": "56_3368",
+   "sols": "1230–1244",
+   "dwellMin": 30,
+   "description": "Red outcrop on the south side of Neretva Vallis. Perseverance's abrasion patch exposed white, black and olive-green spots inside the rock (August 2024).",
+   "science": "The green spots resemble reduction spots in red rocks on Earth, where chemical reactions — sometimes involving microbes — strip iron of its colour. Comparing them with Cheyava Falls tests whether one process acted along the whole channel.",
+   "whyHumans": "Humans can trace a single layer across the outcrop by eye and hand, and collect a fresh, unweathered piece with a hammer.",
+   "images": [
+    "NLF_1231_0776216101_776ECM_N0563368NCAM15230_01_195J",
+    "ZL0_1234_0776478674_473EBY_N0563438ZCAM09288_1100LMJ",
+    "SIF_1239_0776967346_765EBY_N0563438SRLC08050_0000LMJ"
+   ]
+  },
+  "washburn": {
+   "kind": "optional",
+   "name": "Mount Washburn boulder field",
+   "short": "Mount Washburn",
+   "rmc": "52_5032",
+   "sols": "1168–1169",
+   "dwellMin": 20,
+   "description": "Hill covered in boulders at the eastern end of the channel. One light-toned, speckled boulder, 'Atoko Point' (about 45 cm wide), is unlike other rocks seen in Jezero.",
+   "science": "The boulders were carried here from elsewhere — possibly from deep in the crater rim. They are free samples of rocks the rover could not otherwise reach.",
+   "whyHumans": "Sorting dozens of boulders by type takes a trained eye a few minutes; a rover needs days of imaging to do the same.",
+   "images": [
+    "NLF_1169_0770713652_145ECM_N0525032NCAM14168_04_195J",
+    "ZL0_1168_0770638741_646EBY_N0525032ZCAM07125_1100LMJ"
+   ]
+  },
+  "channel": {
+   "kind": "optional",
+   "name": "Neretva Vallis floor",
+   "short": "Channel floor",
+   "rmc": "52_6980",
+   "sols": "1171–1173",
+   "dwellMin": 15,
+   "description": "Floor of the ancient river channel that once carried water into Jezero's lake. Perseverance drove along it on sols 1171–1175 to avoid a boulder field.",
+   "science": "Smooth, light bedrock exposed between dunes records the last water to flow through the valley.",
+   "whyHumans": "On foot the crew can cross dune gaps that would trap a wheeled rover.",
+   "images": [
+    "NLF_1172_0770979129_113ECM_N0526980NCAM14171_01_195J",
+    "ZL0_1171_0770903225_928EBY_N0526980ZCAM09210_0630LMJ",
+    "ZL0_1171_0770903573_928EBY_N0526980ZCAM09210_0630LMJ"
+   ]
+  }
+ }
+}

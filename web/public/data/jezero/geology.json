@@ -1,0 +1,78 @@
+{
+ "source": "USGS SIM 3464 (Sun & Stack, 2020), GeoUnits_v1",
+ "mapScale": "1:75,000",
+ "units": [
+  {
+   "id": 4,
+   "unit": "10",
+   "name": "Upper etched unit",
+   "symbol": "Nue",
+   "color": [
+    240,
+    228,
+    66
+   ],
+   "areaPct": 34.7
+  },
+  {
+   "id": 1,
+   "unit": "7",
+   "name": "Eolian bedform unit",
+   "symbol": "Aeb",
+   "color": [
+    230,
+    159,
+    0
+   ],
+   "areaPct": 28.9
+  },
+  {
+   "id": 2,
+   "unit": "11",
+   "name": "Crater riim unit",
+   "symbol": "cr",
+   "color": [
+    86,
+    180,
+    233
+   ],
+   "areaPct": 20.1
+  },
+  {
+   "id": 6,
+   "unit": "8",
+   "name": "Smooth unit, undivided",
+   "symbol": "su",
+   "color": [
+    213,
+    94,
+    0
+   ],
+   "areaPct": 8.5
+  },
+  {
+   "id": 3,
+   "unit": "0",
+   "name": "Jezero fan 2 unit",
+   "symbol": "NHjf2",
+   "color": [
+    0,
+    158,
+    115
+   ],
+   "areaPct": 4.8
+  },
+  {
+   "id": 5,
+   "unit": "6",
+   "name": "Nili Planum 1 unit",
+   "symbol": "Nnp1",
+   "color": [
+    0,
+    114,
+    178
+   ],
+   "areaPct": 3.0
+  }
+ ]
+}

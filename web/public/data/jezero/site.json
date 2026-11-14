@@ -1,0 +1,63 @@
+{
+ "id": "jezero",
+ "name": "Jezero Crater — Neretva Vallis / Bright Angel",
+ "crs": "Equirectangular, Mars 2000 sphere (R = 3,396,190 m), lat_ts = 0, lon0 = 0",
+ "originEqc": {
+  "x": 4581276,
+  "y": 1095126
+ },
+ "boundsLonLat": {
+  "west": 77.288897,
+  "south": 18.475438,
+  "east": 77.323448,
+  "north": 18.509989
+ },
+ "sizeM": 2048,
+ "grid": {
+  "n": 1025,
+  "cellM": 2
+ },
+ "height": {
+  "file": "height.u16",
+  "zMin": -2408.0,
+  "zMax": -1985.0
+ },
+ "texture": {
+  "file": "texture.jpg",
+  "px": 4096,
+  "mPerPx": 0.5,
+  "hi": {
+   "file": "texture_8k.jpg",
+   "px": 8192,
+   "mPerPx": 0.25
+  }
+ },
+ "relief": {
+  "file": "relief.png",
+  "range": 1.5
+ },
+ "grids": {
+  "slope": "slope.u8",
+  "sand": "sand.u8",
+  "effort": "effort.u8",
+  "risk": "risk.u8",
+  "thermal": "thermal.u8",
+  "geology": "geology.u8"
+ },
+ "model": {
+  "slopeLimitDeg": 25.0,
+  "slopeRiskStartDeg": 8.0,
+  "slopeRiskMax": 3.0,
+  "sandEffort": 1.1,
+  "roughEffort": 0.4,
+  "effortScale": 50,
+  "riskScale": 50,
+  "themisNativeResM": 100.0
+ },
+ "stats": {
+  "slopeMedianDeg": 9.5,
+  "blockedPct": 3.2,
+  "sandPct": 19.6,
+  "reliefM": 423.0
+ }
+}
