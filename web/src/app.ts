@@ -550,6 +550,17 @@ export class App {
     return { gradient: `linear-gradient(90deg, ${stops.join(", ")})`, text };
   }
 
+  /** Season at the site from the solar longitude, and whether it is the dust-storm season (Ls 180–360). */
+  private seasonText(): string {
+    const ls = this.solar.ls;
+    const north = ["spring", "summer", "autumn", "winter"][Math.floor(ls / 90) % 4];
+    const south = ["autumn", "winter", "spring", "summer"][Math.floor(ls / 90) % 4];
+    const season = `${this.lat >= 0 ? "northern" : "southern"} ${this.lat >= 0 ? north : south}`;
+    return ls >= 180
+      ? `Season: Ls ${Math.round(ls)}°, ${season} — dust-storm season (Ls 180–360): regional storms can cut visibility.`
+      : `Season: Ls ${Math.round(ls)}°, ${season} — outside the dust-storm season.`;
+  }
+
   private static compass(az: number): string {
     return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(az / 45) % 8];
   }
@@ -1058,7 +1069,8 @@ export class App {
           <label class="slider start"><span>Leave the rover at <b id="start-val">${fmtLmst(this.startLmst)} LMST</b></span>
             <input type="range" id="start" min="6" max="17" step="0.25" value="${this.startLmst}" style="--track:${this.daylightTrack(b.totalTimeS).gradient}"/>
             <small id="sun-val">Sun ${this.sunText(sunStart)} → ${this.sunText(sunEnd)} at ${fmtLmst(this.lmstAt(b.totalTimeS))}</small>
-            <small class="daylight">${this.daylightTrack(b.totalTimeS).text}</small></label>
+            <small class="daylight">${this.daylightTrack(b.totalTimeS).text}</small>
+            <small class="daylight">${this.seasonText()}</small></label>
           <div class="vs">
             <p>${vs}</p>
             <label class="switch"><span>Show the straight line on the map</span><input class="sr" type="checkbox" id="opt-straight" ${this.showStraight ? "checked" : ""}/><i></i></label>
