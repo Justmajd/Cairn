@@ -783,6 +783,7 @@ export class App {
   private async moveRover(p: XY): Promise<void> {
     if (this.phase !== "planning") return;
     const at = { x: Math.round(p.x), y: Math.round(p.y) };
+    const was = this.plan ? { km: this.plan.budget.distanceM / 1000, home: this.plan.budget.walkBack.maxReturnMin, radio: this.plan.radio.coveredFraction } : null;
     this.busy = true;
     this.renderRight();
     this.toast("Moving the rover: working out the way home from every point…", 2500);
@@ -797,7 +798,11 @@ export class App {
     this.busy = false;
     this.renderLeft();
     await this.replan();
-    this.toast(this.roverMoved() ? `Rover parked here. Way home from every point recomputed in ${Math.max(0.1, field.ms / 1000).toFixed(1)} s.` : "Rover back at its planned spot.", 3500);
+    const now = this.plan ? { km: this.plan.budget.distanceM / 1000, home: this.plan.budget.walkBack.maxReturnMin, radio: this.plan.radio.coveredFraction } : null;
+    const change = was && now
+      ? ` Walk ${was.km.toFixed(2)} → ${now.km.toFixed(2)} km, longest way home ${Math.round(was.home)} → ${Math.round(now.home)} min, radio ${Math.floor(was.radio * 100)}% → ${Math.floor(now.radio * 100)}%.`
+      : "";
+    this.toast(`${this.roverMoved() ? "Rover parked here." : "Rover back at its planned spot."}${change}`, 5000);
   }
 
   private addCustom(p: XY): void {
