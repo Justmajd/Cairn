@@ -48,9 +48,20 @@ export function openPanorama(
     const norm = ((deg % 360) + 360) % 360;
     marks.push(`<span class="${NAMES[norm] ? "card" : ""}" style="left:${(deg + 180) * PX_PER_DEG}px">${NAMES[norm] ?? norm}</span>`);
   }
-  for (const t of targets) {
+  // nearest targets get a label; one that would overlap a nearer label shows as a dot (name on hover)
+  const placed: [number, number][] = []; // label extents in degrees
+  for (const t of targets.slice().sort((a, b) => a.distM - b.distM)) {
+    const text = `${t.name} · ${Math.round(t.distM)} m`;
+    const halfDeg = (text.length * 6 + 14) / 2 / PX_PER_DEG; // approximate label width
+    const b = ((t.bearing % 360) + 360) % 360;
+    const clash = placed.some(([c, h]) => {
+      const d = Math.abs(((b - c + 540) % 360) - 180);
+      return d < halfDeg + h + 1;
+    });
+    if (!clash) placed.push([b, halfDeg]);
     for (const off of [-360, 0, 360]) {
-      marks.push(`<em style="left:${(t.bearing + off + 180) * PX_PER_DEG}px" title="${esc(t.name)}">${esc(t.name)} · ${Math.round(t.distM)} m</em>`);
+      const left = (t.bearing + off + 180) * PX_PER_DEG;
+      marks.push(clash ? `<em class="dot" style="left:${left}px" title="${esc(text)}"></em>` : `<em style="left:${left}px" title="${esc(t.name)}">${esc(text)}</em>`);
     }
   }
   host.innerHTML = `

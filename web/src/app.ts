@@ -1263,7 +1263,7 @@ export class App {
       if (grid.isBlocked(node) || !Number.isFinite(this.field.time[node])) continue;
       ids.push(this.customPoi({ x, y }).id);
     }
-    this.selected = [...new Set(ids)];
+    if (ids.length) this.selected = [...new Set(ids)]; // a link made for another site keeps the default stops
     const t = Number(q.get("t"));
     if (q.has("t") && Number.isFinite(t) && t >= 5 && t <= 19) this.startLmst = t;
     if (q.get("storm") === "0") this.storm = false;
