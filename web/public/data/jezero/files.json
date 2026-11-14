@@ -45,6 +45,14 @@
 "bytes": 93784
 },
 {
+"path": "images/NLF_1178_0771519627_488ECM_N0540000NCAM14177_01_195J.jpg",
+"bytes": 75970
+},
+{
+"path": "images/NLF_1178_0771519884_550ECM_N0540000NCAM14177_01_195J.jpg",
+"bytes": 136580
+},
+{
 "path": "images/NLF_1210_0774361908_130ECM_N0560000NCAM03210_10_195J.jpg",
 "bytes": 167705
 },
@@ -81,6 +89,10 @@
 "bytes": 227019
 },
 {
+"path": "images/ZL0_1178_0771516618_269EBY_N0540000ZCAM09220_0630LMJ.jpg",
+"bytes": 171310
+},
+{
 "path": "images/ZL0_1217_0774980058_772EBY_N0560000ZCAM09264_1100LMJ.jpg",
 "bytes": 180497
 },
@@ -101,8 +113,16 @@
 "bytes": 1012
 },
 {
+"path": "panoramas.json",
+"bytes": 757
+},
+{
+"path": "panoramas/brightangel.jpg",
+"bytes": 1235276
+},
+{
 "path": "pois.json",
-"bytes": 11312
+"bytes": 13654
 },
 {
 "path": "provenance.json",
@@ -169,5 +189,5 @@
 "bytes": 2929
 }
 ],
-"totalBytes": 18749211
+"totalBytes": 20371446
 }

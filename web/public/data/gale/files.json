@@ -94,7 +94,7 @@
 },
 {
 "path": "panoramas.json",
-"bytes": 9146
+"bytes": 7943
 },
 {
 "path": "panoramas/midbox.jpg",
@@ -114,7 +114,7 @@
 },
 {
 "path": "panoramas/sajama.jpg",
-"bytes": 964966
+"bytes": 1123959
 },
 {
 "path": "pois.json",
@@ -181,5 +181,5 @@
 "bytes": 2832
 }
 ],
-"totalBytes": 27393857
+"totalBytes": 27551647
 }

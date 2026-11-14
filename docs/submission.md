@@ -44,6 +44,7 @@ The challenge asks for a map that helps people survive on Mars. CAIRN answers th
 | THEMIS night IR | 2001 Mars Odyssey · THEMIS | Thermal layer, loose-sand detection (Jezero) |
 | Rover traverses and positions | Mars 2020 Perseverance, MSL Curiosity | Stop positions, the rover check |
 | Raw images and Navcam camera models | Mars 2020 Perseverance, MSL Curiosity | Photos at each stop; 360° panoramas stitched at Gale |
+| Photojournal panoramas PIA26369, PIA26696 | Mars 2020 Mastcam-Z, MSL Mastcam | NASA's 360° colour views at Bright Angel and Nevado Sajama, pointed north by CAIRN from the terrain |
 | MEDA and REMS | Mars 2020 Perseverance, MSL Curiosity | Weather during the walk |
 | RAD dose rates | MSL Curiosity · Radiation Assessment Detector | Radiation background and the 20 May 2024 storm replay |
 | DONKI | NASA CCMC | The real space-weather alert for the storm |

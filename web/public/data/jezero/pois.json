@@ -255,6 +255,57 @@
      "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_1171_0770903573_928EBY_N0526980ZCAM09210_0630LMJ"
     }
    ]
+  },
+  {
+   "id": "brightangel",
+   "kind": "optional",
+   "name": "Bright Angel 360° viewpoint",
+   "short": "Bright Angel view",
+   "x": 885.5,
+   "y": 1225.5,
+   "rmc": "54_0",
+   "sols": "1177–1181",
+   "lon": 77.303836,
+   "lat": 18.496112,
+   "description": "Where Perseverance stopped on sol 1178 (12 June 2024) and took the Mastcam-Z 360° panorama of Bright Angel: pale, fractured bedrock below Mount Washburn's slopes, with Cheyava Falls about 110 m to the north-east.",
+   "science": "A full view of the light-toned Bright Angel rocks where the river once flowed, from the spot the rover's scientists used to choose Cheyava Falls as the next target.",
+   "whyHumans": "From one stand-point a geologist can sketch the contacts between the light bedrock, the dark sand and the slope above, and decide where to walk next on sight.",
+   "dwellMin": 15,
+   "images": [
+    {
+     "id": "ZL0_1178_0771516618_269EBY_N0540000ZCAM09220_0630LMJ",
+     "file": "images/ZL0_1178_0771516618_269EBY_N0540000ZCAM09220_0630LMJ.jpg",
+     "sol": 1178,
+     "camera": "MCZ_LEFT",
+     "cameraName": "Mastcam-Z (left)",
+     "lmst": "Sol-01178M12:27:03.009",
+     "utc": "2024-06-13T02:25:48.489",
+     "credit": "NASA/JPL-Caltech/ASU",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_1178_0771516618_269EBY_N0540000ZCAM09220_0630LMJ"
+    },
+    {
+     "id": "NLF_1178_0771519884_550ECM_N0540000NCAM14177_01_195J",
+     "file": "images/NLF_1178_0771519884_550ECM_N0540000NCAM14177_01_195J.jpg",
+     "sol": 1178,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-01178M13:19:50.496",
+     "utc": "2024-06-13T03:20:04.107",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_1178_0771519884_550ECM_N0540000NCAM14177_01_195J"
+    },
+    {
+     "id": "NLF_1178_0771519627_488ECM_N0540000NCAM14177_01_195J",
+     "file": "images/NLF_1178_0771519627_488ECM_N0540000NCAM14177_01_195J.jpg",
+     "sol": 1178,
+     "camera": "NAVCAM_LEFT",
+     "cameraName": "Navigation Camera (left)",
+     "lmst": "Sol-01178M13:15:40.310",
+     "utc": "2024-06-13T03:15:46.429",
+     "credit": "NASA/JPL-Caltech",
+     "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_1178_0771519627_488ECM_N0540000NCAM14177_01_195J"
+    }
+   ]
   }
  ]
 }

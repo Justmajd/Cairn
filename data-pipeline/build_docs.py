@@ -38,7 +38,8 @@ def site_section(sid):
         L += ["", "**Notes**", ""] + [f"- *{e['layer']}:* {e['note']}" for e in notes]
     L += ["", "### Stops", "", "| Stop | Rover position (RMC) | Sols | Lon °E | Lat °N | Photos | 360° |", "|---|---|---|---|---|---|---|"] if site.get("rover") else ["", "### Stops", "", "| Stop | Lon °E | Lat °N |", "|---|---|---|"]
     for p in pois:
-        has = "yes" if pano and p["id"] in pano["panoramas"] else "—"
+        pv = pano["panoramas"].get(p["id"]) if pano else None
+        has = (f"NASA {pv['nasa']['pia']}" if pv.get("nasa") else "stitched") if pv else "—"
         L.append(f"| {p['name']} | {p['rmc']} | {p['sols']} | {p['lon']} | {p['lat']} | {len(p['images'])} | {has} |" if site.get("rover")
                  else f"| {p['name']} | {p['lon']} | {p['lat']} |")
     if any(p["images"] for p in pois):
@@ -51,9 +52,19 @@ def site_section(sid):
             L += ["", "### Science references for this site", ""]
         L.append(f"- {ref}")
     if pano:
-        L += ["", "### 360° panoramas", "", pano["source"] + ".", "", "| Stop | Frames | Sols | Imaged | Horizon |", "|---|---|---|---|---|"]
-        for k, v in pano["panoramas"].items():
-            L.append(f"| {k} | {v['frames']} | {v['sols'][0]}–{v['sols'][-1]} | {round(v['coverage'] * 100)}% | {round(v.get('horizonCoverage', 1) * 100)}% |")
+        own = {k: v for k, v in pano["panoramas"].items() if not v.get("nasa")}
+        nasa = {k: v for k, v in pano["panoramas"].items() if v.get("nasa")}
+        L += ["", "### 360° panoramas"]
+        if own:
+            L += ["", pano["source"] + ".", "", "| Stop | Frames | Sols | Imaged | Horizon |", "|---|---|---|---|---|"]
+            for k, v in own.items():
+                L.append(f"| {k} | {v['frames']} | {v['sols'][0]}–{v['sols'][-1]} | {round(v['coverage'] * 100)}% | {round(v.get('horizonCoverage', 1) * 100)}% |")
+        if nasa:
+            L += ["", "NASA/JPL-Caltech Photojournal panoramas (public domain), pointed north by CAIRN by matching the skyline with the horizon computed from the HiRISE terrain at the rover's position; sky and ground beyond the mosaic's edges are filled.",
+                  "", "| Stop | Panorama | Camera | Sols | Rover position | Skyline match |", "|---|---|---|---|---|---|"]
+            for k, v in nasa.items():
+                n = v["nasa"]
+                L.append(f"| {k} | [{n['pia']}]({n['link']}) {n['title']} | {v['camera']} | {v['sols'][0]}–{v['sols'][-1]} | {v['rmc']} | {n['alignErrDeg']}° median |")
     return L
 
 

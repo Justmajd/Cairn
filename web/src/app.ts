@@ -1492,7 +1492,7 @@ export class App {
     const card = $("#card");
     const tex = this.site.meta.texture;
     const orbital = tex.hi ? { url: this.site.base + tex.hi.file, sizeM: this.site.meta.sizeM, mPerPx: tex.hi.mPerPx } : { url: this.site.base + tex.file, sizeM: this.site.meta.sizeM, mPerPx: tex.mPerPx };
-    card.innerHTML = stopCardHtml(poi, this.site.base, this.unitAt(poi.x, poi.y), arrived, this.roverName, !!this.site.panoramas?.panoramas[poi.id], orbital);
+    card.innerHTML = stopCardHtml(poi, this.site.base, this.unitAt(poi.x, poi.y), arrived, this.roverName, this.panoLabel(poi.id), orbital);
     card.hidden = false;
     card.classList.toggle("arrived", arrived);
     this.cardPoi = id;
@@ -1866,6 +1866,13 @@ export class App {
     this.layer = id;
     this.view.setLayer(id, this.opacity);
     this.renderLeft();
+  }
+
+  /** Who made a stop's 360° view, for its button (null: none). */
+  private panoLabel(id: string): string | null {
+    const info = this.site.panoramas?.panoramas[id];
+    if (!info) return null;
+    return info.nasa ? `NASA · ${this.roverName} ${info.camera.replace(/ \(.*\)/, "")}` : `${this.roverName} Navcam`;
   }
 
   /** Open the stitched 360° panorama for a stop; other stops appear as bearings on the compass. */

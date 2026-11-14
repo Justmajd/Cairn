@@ -106,7 +106,14 @@ export function showAssumptions(site: SiteData, p: EvaParams): void {
        <li>Strength is scaled to these observations; CRISM imaged ${Math.round(site.meta.minerals.coveragePct ?? 0)}% of the walk area. Band depths indicate likely minerals, not certainties.</li>
      </ul>` : ""}
      ${site.panoramas ? `<h3>360° panoramas</h3>
-     <ul><li>${esc(site.panoramas.source)}. Each pixel's viewing ray is projected through every frame's published camera model; frames are feathered and exposure-matched. Unimaged sky and the ground under the rover are filled smoothly.</li></ul>` : ""}
+     <ul>${
+       Object.values(site.panoramas.panoramas).some((p) => !p.nasa)
+         ? `<li>${esc(site.panoramas.source)}. Each pixel's viewing ray is projected through every frame's published camera model; frames are feathered and exposure-matched. Unimaged sky and the ground under the rover are filled smoothly.</li>`
+         : ""
+     }${Object.entries(site.panoramas.panoramas)
+       .filter(([, p]) => p.nasa)
+       .map(([id, p]) => `<li>${esc(id)}: NASA/JPL-Caltech panorama <a href="${esc(p.nasa!.link)}" target="_blank" rel="noopener">${esc(p.nasa!.pia)}</a>, "${esc(p.nasa!.title)}" (${esc(p.nasa!.credit)}). CAIRN aligned it to north by matching its skyline with the horizon computed from the HiRISE terrain at the rover's position (median difference ${p.nasa!.alignErrDeg.toFixed(1)}°) and filled the sky and ground beyond the mosaic's edges.</li>`)
+       .join("")}</ul>` : ""}
      <h3>Display</h3>
      <ul>
        <li>HiRISE is a grey image; the Mars colour is a display tint. Fine grain near the camera in the Visor view is a rendering effect.</li>
@@ -139,7 +146,7 @@ function orbitalTile(poi: Poi, img: OrbitalImage, widthM = 150): string {
     </figure>`;
 }
 
-export function stopCardHtml(poi: Poi, base: string, unitName: string | null, arrived: boolean, rover = "Perseverance", panorama = false, orbital: OrbitalImage | null = null): string {
+export function stopCardHtml(poi: Poi, base: string, unitName: string | null, arrived: boolean, rover = "Perseverance", panorama: string | null = null, orbital: OrbitalImage | null = null): string {
   const imgs = poi.images
     .map(
       (im, i) => `<figure class="${i === 0 ? "on" : ""}" data-i="${i}">
@@ -150,7 +157,7 @@ export function stopCardHtml(poi: Poi, base: string, unitName: string | null, ar
     .join("");
   const dots = poi.images.length > 1 ? `<div class="dots">${poi.images.map((_, i) => `<button data-i="${i}" class="${i === 0 ? "on" : ""}" aria-label="Photo ${i + 1}"></button>`).join("")}</div>` : "";
   const look = panorama
-    ? `<button class="look" data-pano="${esc(poi.id)}">${ic.visor}<span>Look around 360°</span><small>${esc(rover)} Navcam</small></button>`
+    ? `<button class="look" data-pano="${esc(poi.id)}">${ic.visor}<span>Look around 360°</span><small>${esc(panorama)}</small></button>`
     : "";
   return `
     <header><span class="kicker">${arrived ? "Arrived — this is what you see" : poi.kind === "shelter" ? "Rover and shelter" : "What you will see"}</span>

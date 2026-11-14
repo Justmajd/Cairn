@@ -49,6 +49,7 @@ Rover: **Perseverance** (Mars 2020). EVA date: sol 1215 (Sol Perseverance cored 
 | Serpentine Rapids | 56_3368 | 1230–1244 | 77.30104 | 18.491903 | 3 | — |
 | Mount Washburn boulder field | 52_5032 | 1168–1169 | 77.313807 | 18.496073 | 2 | — |
 | Neretva Vallis floor | 52_6980 | 1171–1173 | 77.308325 | 18.495201 | 3 | — |
+| Bright Angel 360° viewpoint | 54_0 | 1177–1181 | 77.303836 | 18.496112 | 3 | NASA PIA26369 |
 
 ### Photos
 
@@ -69,6 +70,17 @@ Rover: **Perseverance** (Mars 2020). EVA date: sol 1215 (Sol Perseverance cored 
 | Channel floor | Navigation Camera (left) | 1172 | [NLF_1172_0770979129_113ECM_N0526980NCAM14171_01_195J](https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_1172_0770979129_113ECM_N0526980NCAM14171_01_195J) |
 | Channel floor | Mastcam-Z (left) | 1171 | [ZL0_1171_0770903225_928EBY_N0526980ZCAM09210_0630LMJ](https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_1171_0770903225_928EBY_N0526980ZCAM09210_0630LMJ) |
 | Channel floor | Mastcam-Z (left) | 1171 | [ZL0_1171_0770903573_928EBY_N0526980ZCAM09210_0630LMJ](https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_1171_0770903573_928EBY_N0526980ZCAM09210_0630LMJ) |
+| Bright Angel view | Mastcam-Z (left) | 1178 | [ZL0_1178_0771516618_269EBY_N0540000ZCAM09220_0630LMJ](https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_1178_0771516618_269EBY_N0540000ZCAM09220_0630LMJ) |
+| Bright Angel view | Navigation Camera (left) | 1178 | [NLF_1178_0771519884_550ECM_N0540000NCAM14177_01_195J](https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_1178_0771519884_550ECM_N0540000NCAM14177_01_195J) |
+| Bright Angel view | Navigation Camera (left) | 1178 | [NLF_1178_0771519627_488ECM_N0540000NCAM14177_01_195J](https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_1178_0771519627_488ECM_N0540000NCAM14177_01_195J) |
+
+### 360° panoramas
+
+NASA/JPL-Caltech Photojournal panoramas (public domain), pointed north by CAIRN by matching the skyline with the horizon computed from the HiRISE terrain at the rover's position; sky and ground beyond the mosaic's edges are filled.
+
+| Stop | Panorama | Camera | Sols | Rover position | Skyline match |
+|---|---|---|---|---|---|
+| brightangel | [PIA26369](https://science.nasa.gov/photojournal/perseverance-captures-bright-angel-in-360-degrees/) Perseverance Captures 'Bright Angel' in 360 Degrees | Mastcam-Z | 1178–1178 | 54_0 | 1.76° median |
 
 ## Gale Crater — Mount Sharp boxwork
 
@@ -106,11 +118,11 @@ Rover: **Curiosity** (Mars Science Laboratory). EVA date: sol 4605 (Sol Curiosit
 
 | Stop | Rover position (RMC) | Sols | Lon °E | Lat °N | Photos | 360° |
 |---|---|---|---|---|---|---|
-| Pressurised rover | 116_2214 | 4571 | 137.382987 | -4.800407 | 3 | yes |
-| Boxwork ridge · main exposure | 117_2538 | 4602–4606 | 137.379557 | -4.804433 | 4 | yes |
-| Nevado Sajama drill site | 120_574 | 4752–4804 | 137.380992 | -4.808005 | 4 | yes |
-| Ridge-top route | 118_372 | 4614–4621 | 137.379513 | -4.805414 | 3 | yes |
-| Inside the boxwork | 118_2268 | 4647–4650 | 137.379812 | -4.806891 | 3 | yes |
+| Pressurised rover | 116_2214 | 4571 | 137.382987 | -4.800407 | 3 | stitched |
+| Boxwork ridge · main exposure | 117_2538 | 4602–4606 | 137.379557 | -4.804433 | 4 | stitched |
+| Nevado Sajama drill site | 120_574 | 4752–4804 | 137.380992 | -4.808005 | 4 | NASA PIA26696 |
+| Ridge-top route | 118_372 | 4614–4621 | 137.379513 | -4.805414 | 3 | stitched |
+| Inside the boxwork | 118_2268 | 4647–4650 | 137.379812 | -4.806891 | 3 | stitched |
 
 ### Photos
 
@@ -142,9 +154,14 @@ Stitched by CAIRN from Curiosity Navcam raw images using their CAHVOR(E) camera 
 |---|---|---|---|---|
 | rover | 19 | 4571–4571 | 61% | 100% |
 | ridge | 19 | 4605–4605 | 62% | 100% |
-| sajama | 19 | 4789–4789 | 61% | 100% |
 | ridgetop | 19 | 4621–4621 | 61% | 100% |
 | midbox | 19 | 4647–4647 | 61% | 100% |
+
+NASA/JPL-Caltech Photojournal panoramas (public domain), pointed north by CAIRN by matching the skyline with the horizon computed from the HiRISE terrain at the rover's position; sky and ground beyond the mosaic's edges are filled.
+
+| Stop | Panorama | Camera | Sols | Rover position | Skyline match |
+|---|---|---|---|---|---|
+| sajama | [PIA26696](https://science.nasa.gov/photojournal/curiosity-captures-a-360-degree-view-at-nevado-sajama/) Curiosity Captures a 360-Degree View at 'Nevado Sajama' | Mastcam (right, 100 mm) | 4714–4741 | 120_82 | 0.45° median |
 
 ## Deuteronilus Mensae — buried glacier
 

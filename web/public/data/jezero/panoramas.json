@@ -1,0 +1,29 @@
+{
+ "source": "NASA/JPL-Caltech Photojournal 360\u00b0 panoramas, aligned by CAIRN to the HiRISE terrain",
+ "pxPerDeg": 12,
+ "panoramas": {
+  "brightangel": {
+   "file": "panoramas/brightangel.jpg",
+   "azMin": 0,
+   "azMax": 360,
+   "elMin": -55.0,
+   "elMax": 35.0,
+   "frames": 0,
+   "coverage": 0.742,
+   "horizonCoverage": 1.0,
+   "sols": [
+    1178
+   ],
+   "camera": "Mastcam-Z",
+   "rmc": "54_0",
+   "nasa": {
+    "pia": "PIA26369",
+    "title": "Perseverance Captures 'Bright Angel' in 360 Degrees",
+    "link": "https://science.nasa.gov/photojournal/perseverance-captures-bright-angel-in-360-degrees/",
+    "note": "346 images, colour enhanced by the Mastcam-Z team",
+    "credit": "NASA/JPL-Caltech/ASU/MSSS",
+    "alignErrDeg": 1.76
+   }
+  }
+ }
+}

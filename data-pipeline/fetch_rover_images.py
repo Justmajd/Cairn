@@ -11,6 +11,7 @@ STOPS = {
     "channel":    (52, {6980}, range(1171, 1174)),
     "cheyava":    (56, {0}, range(1210, 1219)),
     "serpentine": (56, {3368, 3438}, range(1230, 1244)),
+    "brightangel": (54, {0}, range(1177, 1182)),   # where the Mastcam-Z 360° of Bright Angel was taken
 }
 CAMERAS = ["NAVCAM_LEFT", "MCZ_LEFT", "SHERLOC_WATSON", "FRONT_HAZCAM_LEFT_A"]
 
@@ -42,8 +43,13 @@ def query(sol, camera):
 
 
 if __name__ == "__main__":
-    index = {}
+    # CAIRN_ONLY=a,b refreshes just those stops and keeps the rest of the existing index
+    only = [s for s in os.environ.get("CAIRN_ONLY", "").split(",") if s]
+    path = os.path.join(RAW, "images_index.json")
+    index = json.load(open(path)) if only and os.path.exists(path) else {}
     for stop, (site, drives, sols) in STOPS.items():
+        if only and stop not in only:
+            continue
         rows = []
         for sol in sols:
             for cam in CAMERAS:

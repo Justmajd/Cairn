@@ -15,6 +15,8 @@ export interface PanoramaInfo {
   sols: number[];
   camera: string;
   rmc: string;
+  /** A NASA/JPL Photojournal panorama (aligned by CAIRN) rather than one CAIRN stitched from raw frames. */
+  nasa?: { pia: string; title: string; link: string; note: string; credit: string; alignErrDeg: number };
 }
 
 export interface PanoramaSet {
@@ -71,12 +73,16 @@ export function openPanorama(
       <b class="pano-head">000°</b>
     </div>
     <header class="pano-bar">
-      <div><span class="kicker">360° · ${esc(rover)} Navcam</span><h3>${esc(poi.name)}</h3></div>
+      <div><span class="kicker">${info.nasa ? `360° · ${esc(rover)} ${esc(info.camera)} · ${esc(info.nasa.credit)}` : `360° · ${esc(rover)} Navcam`}</span><h3>${esc(poi.name)}</h3></div>
       <button class="close icon" aria-label="Close panorama">${ic.close}</button>
     </header>
     <footer class="pano-foot">
-      <span>${ic.info}Stitched by CAIRN from ${info.frames} ${esc(rover)} ${esc(info.camera)} frames, ${sols}, using each frame's camera model.
-      ${Math.round(info.coverage * 100)}% of the view was imaged; the high sky and the ground under the rover are filled.</span>
+      <span>${ic.info}${
+        info.nasa
+          ? `<span>NASA panorama <a href="${esc(info.nasa.link)}" target="_blank" rel="noopener">${esc(info.nasa.pia)} ↗</a>, ${sols} (${esc(info.nasa.note)}). CAIRN pointed it north by matching its skyline to the HiRISE terrain (within ${info.nasa.alignErrDeg.toFixed(1)}°); sky and ground beyond the mosaic's edges are filled.</span>`
+          : `Stitched by CAIRN from ${info.frames} ${esc(rover)} ${esc(info.camera)} frames, ${sols}, using each frame's camera model.
+      ${Math.round(info.coverage * 100)}% of the view was imaged; the high sky and the ground under the rover are filled.`
+      }</span>
       <span class="hint-k"><b>Drag</b> look around · <b>Scroll</b> zoom · <b>Esc</b> close</span>
     </footer>`;
   host.hidden = false;
