@@ -22,8 +22,16 @@ Pick a site, pick the stops, and CAIRN plans the walk from the pressurised rover
 4. **Shows what you will see**: rover photos taken at each stop, and at Gale a **360° panorama** CAIRN stitched from Curiosity's Navcam frames.
 5. **Walks the route** in a first-person visor view with compass, oxygen, dose, weather and a minimap.
 6. **Replays a real solar storm** (20 May 2024, measured by Curiosity's RAD). CAIRN finds the way back to the rover in milliseconds, names the nearest natural cover, and reports the dose avoided.
-7. **Prints a one-page EVA cue card**: map, timeline, turn-back oxygen per stop, storm protocol.
-8. **Plays a two-minute guided demo** of all of the above (Demo button or the briefing).
+7. **Checks radio contact.** A line-of-sight model of the rover's antenna over the real terrain shows where hills cut the link, how much of the walk stays in contact, and — where it does not — the best spot on the route for the crew to stand up a portable relay (on Jezero's default walk: 85% → 100%).
+8. **Practises emergencies.** During a walk, *Suit leak* doubles oxygen use and *Twisted ankle* halves the walking speed; CAIRN finds the quickest safe way home from where the astronaut stands and checks the oxygen.
+9. **Talks the crew through it.** Spoken directions in the visor: distance, turns, steep ground and sand ahead, arrivals, alerts, radio loss.
+10. **Checks itself against the real rovers.** 68% of Perseverance's drive at Jezero (70% of Curiosity's at Gale) is on ground CAIRN rates easy or moderate, against 45% (41%) of the area: the rover drivers avoided what CAIRN avoids.
+11. **Prints a one-page EVA cue card**: map with radio blackouts, timeline, turn-back oxygen per stop, storm protocol.
+12. **Shares and exports the plan.** The plan lives in the link (stops, start time, options, relay), so it survives a reload and can be sent to a teammate; the route exports to KML (Google Earth in Mars mode) and GeoJSON (Mars 2000 coordinates).
+13. **Works offline and installs as an app.** About → Use offline saves a whole site on the device — astronauts on Mars will not have the internet.
+14. **Plays a two-minute guided demo** of the core story (Demo button or the briefing).
+
+Colour-blind safe throughout: map layers and charts use the Okabe-Ito palette, and impassable ground is also hatched.
 
 Every layer, photo and reading names its mission, instrument and product in the **Data sources** panel and in [docs/data-sources.md](docs/data-sources.md).
 
@@ -42,20 +50,22 @@ Open the address Vite prints (normally http://localhost:5173).
 | Command | What it does |
 |---|---|
 | `npm run dev` | Development server |
-| `npm test` | 35 unit and integration tests |
+| `npm test` | 55 unit and integration tests |
 | `npm run build` | Type-check and build to `web/dist/` |
 | `npm run preview` | Serve the built app |
 
-URL options: `?site=gale` opens Gale Crater (default `jezero`), `?skip=1` skips the briefing, `?q=low` uses a lighter mesh and the 50 cm texture for slow GPUs, `?tex=4k` forces the 50 cm texture.
+URL options: `?site=gale` opens Gale Crater (default `jezero`), `?skip=1` skips the briefing, `?q=low` uses a lighter mesh and the 50 cm texture for slow GPUs, `?tex=4k` stays on the 50 cm texture. The part after `#` is the plan, e.g. `#stops=cheyava,serpentine&t=9.5&relay=1`; links with a plan open straight on it.
 
-Works on desktop and tablets: below 1180 px the route and layers panel becomes a drawer (layers button, top right); in portrait the plan becomes a bottom sheet.
+Works on desktop, tablets and phones: below 1180 px the route and layers panel becomes a drawer (layers button, top right); in portrait the plan becomes a bottom sheet, and during a walk the controls sit in a strip above it.
+
+Offline mode needs the built app (`npm run build`, then `npm run preview` or any static host): the service worker is not registered by the development server.
 
 ## Controls
 
 | View | Mouse / trackpad | Keys |
 |---|---|---|
-| **Map** | Drag to move · scroll to zoom · double-click to centre · click to add a stop | `+` `−` |
-| **3D** | Drag to rotate and tilt · Shift-drag or right-drag to move · scroll to zoom · double-click to centre | Arrow keys rotate and tilt · `+` `−` · `N` faces north |
+| **Map** | Drag to move · scroll to zoom · double-click to fly there · click to add a stop | `+` `−` |
+| **3D** | Drag to rotate and tilt · Shift-drag or right-drag to move · scroll to zoom · double-click to fly there (also outside the walk area) | Arrow keys rotate and tilt · `+` `−` · `N` faces north |
 | **Visor** | Drag to look around | |
 
 The buttons at the bottom-right of the map do the same things.
@@ -77,7 +87,9 @@ data-pipeline/  (Python)                     web/  (TypeScript + Three.js, fully
   build_weather.py MEDA weather                ui/        briefing, panels, charts, dialogs
   build_context.py regional + global maps      app.ts     controller
         │
-        └──► web/public/data/jezero/   (32 MB, committed)
+  pack_web.py    compress grids for the web
+        │
+        └──► web/public/data/<site>/   (Jezero 26 MB, Gale 35 MB with photos and panoramas; committed)
 ```
 
 - **Sharp at every distance.** The 25 cm HiRISE image is sampled with Catmull-Rom filtering, lighting uses the full 1 m elevation gradient per pixel, and map layers are coloured on the GPU from the raw data grids, so they stay smooth instead of pixelated.
@@ -89,6 +101,9 @@ data-pipeline/  (Python)                     web/  (TypeScript + Three.js, fully
 - **Routing.** A\* over a 1025 × 1025 grid (2 m cells) minimises *walking energy × fall risk*. Energy uses the Minetti (2002) cost of walking on slopes with the real elevation of every step; loose sand and rough ground cost more; slopes above 25° are impassable.
 - **The way home.** One Dijkstra pass from the rover stores the best route home from every grid point. The emergency re-route is then a lookup, and the same data draws the *Minutes to shelter* layer and the walk-back margin.
 - **One measuring function.** `measurePath()` produces every number shown about a route, so the router, the budget, the chart and the simulation cannot disagree.
+- **Radio line of sight.** Rays from the rover's mast antenna (3 m) to every edge of the grid keep the steepest terrain angle seen so far, with the curvature of Mars; each point stores how far a suit antenna (1.8 m) would have to rise to see the rover. The relay search tries every ~8 m of the route where a 2.5 m mast still sees the rover and counts the blackout time it covers *after* the crew gets there.
+- **Fast first load.** Grids are row-delta coded and gzipped (Gale: 6.3 → 3.2 MB), the relief map is WebP, and all files load in parallel with the return-to-shelter calculation. The planner opens on the 50 cm image; the 25 cm one streams in afterwards.
+- **Offline.** A service worker keeps the app and every file of a site; its data cache is versioned by the data, so app updates do not throw away a saved site.
 
 ## Rebuilding the data
 
@@ -98,7 +113,7 @@ Only needed to change the site or the processing. Requires Python 3.11+.
 cd data-pipeline
 make setup     # virtual environment + dependencies
 make fetch     # downloads from USGS, NASA PDS, mars.nasa.gov, DONKI, Mars Trek (several GB of range requests; resumable)
-make build     # writes web/public/data/jezero/
+make build     # writes web/public/data/jezero/  (make gale for Gale; both end with pack_web.py)
 ```
 
 `python progress.py --watch` shows download progress. DONKI uses `DEMO_KEY` unless `NASA_API_KEY` is set.
@@ -114,7 +129,8 @@ make build     # writes web/public/data/jezero/
 | Photos at each stop | Mars colour in the 3D view — a display tint; HiRISE is a grey image |
 | Weather (Perseverance MEDA, sol 1215) | Rover shielding factor (0.5) |
 | Radiation background and storm readings (Curiosity RAD) | The first ~13 hours of the storm's dose-rate curve (see below) |
-| The eruption record and alert (NASA DONKI) | |
+| The eruption record and alert (NASA DONKI) | Antenna heights (rover mast 3 m, suit 1.8 m, relay mast 2.5 m) and line-of-sight radio with no reflections |
+| Perseverance and Curiosity drive paths (rover check) | Practice emergencies: suit leak doubles oxygen use, twisted ankle halves the speed |
 
 **The storm replay.** Curiosity's archived RAD data holds 2–4 hours of dosimetry per sol, so the start of the 20 May 2024 storm is not recorded. CAIRN shows the real readings as dots (background 5.4 µGy/h before the storm, 34.7 µGy/h at 19:08 UTC on 20 May) and fills the gap with a model: the tail is fitted to those readings and the peak is scaled so the total equals the 8,100 micrograys NASA reported. The chart labels measured and modelled values separately. Curiosity is in Gale crater, about 3,700 km from Jezero.
 
