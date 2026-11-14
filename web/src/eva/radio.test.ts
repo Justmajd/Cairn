@@ -63,6 +63,16 @@ describe("relay", () => {
     expect(r!.at.x).toBeLessThan(140); // on or near the wall top, the only spot that sees both sides
   });
 
+  it("counts the time spent at a stop with no contact", () => {
+    const s = radioShadow(g, rover);
+    // a short hop over the wall to a stop right behind it, 30 min of work there, and back
+    const out = measurePath(g, [rover, { x: 150, y: 100 }], DEFAULT_PARAMS);
+    const back = measurePath(g, [{ x: 150, y: 100 }, rover], DEFAULT_PARAMS);
+    const r = bestRelay(s, g, [out, back], undefined, [{ x: 150, y: 100, seconds: 1800, afterLeg: 0 }]);
+    expect(r).not.toBeNull();
+    expect(lineOfSight(g, r!.at, 2.5, { x: 150, y: 100 }, 1.8)).toBe(true);
+  });
+
   it("suggests nothing when the whole walk is in contact", () => {
     const s = radioShadow(g, rover);
     const near = measurePath(g, [{ x: 60, y: 30 }, { x: 60, y: 170 }], DEFAULT_PARAMS);

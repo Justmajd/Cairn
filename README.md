@@ -50,7 +50,7 @@ Open the address Vite prints (normally http://localhost:5173).
 | Command | What it does |
 |---|---|
 | `npm run dev` | Development server |
-| `npm test` | 58 unit and integration tests |
+| `npm test` | 59 unit and integration tests |
 | `npm run build` | Type-check and build to `web/dist/` |
 | `npm run preview` | Serve the built app |
 
