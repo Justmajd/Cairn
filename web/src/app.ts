@@ -301,12 +301,13 @@ export class App {
       if (t.id === "more-layers") this.moreLayersOpen = t.open;
     }, true); // toggle does not bubble
     left.addEventListener("click", (ev) => {
-      const t = (ev.target as HTMLElement).closest<HTMLElement>("[data-info],[data-src],[data-remove],[data-rover-reset]");
+      const t = (ev.target as HTMLElement).closest<HTMLElement>("[data-info],[data-src],[data-remove],[data-rover-reset],[data-rover-closer]");
       if (!t) return;
       if (t.dataset.info) this.openCard(t.dataset.info, false);
       else if (t.dataset.src) showSources(this.site, t.dataset.src);
       else if (t.dataset.remove) this.removeCustom(t.dataset.remove);
       else if (t.dataset.roverReset) void this.moveRover(this.roverHome);
+      else if (t.dataset.roverCloser) this.parkCloser();
     });
 
     const right = $("#right");
@@ -725,6 +726,52 @@ export class App {
     };
   }
 
+  /**
+   * Park the rover on flat ground as close as possible to the chosen stops: the point with the smallest
+   * sum of distances to them (Weiszfeld's geometric median), moved to the nearest spot where the rover
+   * can park.  The crew can undo it like any other change.
+   */
+  private parkCloser(): void {
+    const stops = this.selected.map((id) => this.poi(id)).filter((p): p is Poi => !!p);
+    if (!stops.length) return;
+    let x = stops.reduce((a, p) => a + p.x, 0) / stops.length;
+    let y = stops.reduce((a, p) => a + p.y, 0) / stops.length;
+    for (let k = 0; k < 50; k++) {
+      let wx = 0;
+      let wy = 0;
+      let w = 0;
+      for (const p of stops) {
+        const d = Math.max(1, Math.hypot(p.x - x, p.y - y));
+        wx += p.x / d;
+        wy += p.y / d;
+        w += 1 / d;
+      }
+      x = wx / w;
+      y = wy / w;
+    }
+    // nearest node that is flat, passable and can still reach every stop
+    const grid = this.site.grid;
+    let best: XY | null = null;
+    let bestD = Infinity;
+    for (let r = 0; r <= 300 && !best; r += 8) {
+      for (let a = 0; a < 360; a += r ? Math.max(4, 360 / (r / 4)) : 360) {
+        const px = x + r * Math.cos((a * Math.PI) / 180);
+        const py = y + r * Math.sin((a * Math.PI) / 180);
+        if (!grid.inside(px, py)) continue;
+        const node = grid.nodeAt(px, py);
+        if (grid.isBlocked(node) || grid.slope[node] > ROVER_PARK_MAX_SLOPE || !Number.isFinite(this.field.time[node])) continue;
+        const d = Math.hypot(px - x, py - y);
+        if (d < bestD) {
+          bestD = d;
+          best = { x: px, y: py };
+        }
+      }
+    }
+    if (!best) return this.toast("No flat ground near the stops to park the rover on.");
+    if (Math.hypot(best.x - this.rover.x, best.y - this.rover.y) < 40) return this.toast("The rover is already about as close as it can park.");
+    void this.moveRover(best);
+  }
+
   private roverMoved(): boolean {
     return Math.hypot(this.rover.x - this.roverHome.x, this.rover.y - this.roverHome.y) > 1;
   }
@@ -875,7 +922,11 @@ export class App {
         <ul class="stops">
           <li class="stop shelter">
             <span class="pin home">${ic.home}</span>
-            <span class="txt"><b>${esc(this.rover.name)}</b><small>${this.roverMoved() ? `Parked ${fmtDist(Math.hypot(this.rover.x - this.roverHome.x, this.rover.y - this.roverHome.y))} from the planned spot · <button class="link" data-rover-reset="1">put back</button>` : "Start, end and radiation shelter"}</small></span>
+            <span class="txt"><b>${esc(this.rover.name)}</b><small>${
+              this.roverMoved()
+                ? `Parked ${fmtDist(Math.hypot(this.rover.x - this.roverHome.x, this.rover.y - this.roverHome.y))} from the planned spot · <button class="link" data-rover-reset="1">put back</button>`
+                : `Start, end and radiation shelter${locked ? "" : ` · <button class="link" data-rover-closer="1" title="Park the rover on flat ground closest to the chosen stops">park closer</button>`}`
+            }</small></span>
             <button class="icon" data-info="${this.rover.id}" title="Photos">${ic.image}</button>
           </li>
           ${stops}
