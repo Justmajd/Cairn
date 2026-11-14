@@ -397,6 +397,11 @@ const AOI_FRAG = /* glsl */ `
     }
     gl_FragColor = vec4(c, 1.0);
     #include <fog_fragment>
+    #ifdef USE_FOG
+      // distant haze is lit from behind when looking toward the Sun (forward scattering, as in the sky)
+      float sg = pow(max(dot(normalize(vWorld - cameraPosition), uSunDir), 0.0), 14.0) * smoothstep(-0.06, 0.02, uSunDir.y);
+      gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.6, 0.72, 0.9), fogFactor * sg * 0.45);
+    #endif
   }
 `;
 
@@ -427,6 +432,11 @@ const REGION_FRAG = /* glsl */ `
     c = mix(uEdgeColor, c, smoothstep(0.0, uFade, min(e.x, e.y)));
     gl_FragColor = vec4(c, 1.0);
     #include <fog_fragment>
+    #ifdef USE_FOG
+      // distant haze is lit from behind when looking toward the Sun (forward scattering, as in the sky)
+      float sg = pow(max(dot(normalize(vWorld - cameraPosition), uSunDir), 0.0), 14.0) * smoothstep(-0.06, 0.02, uSunDir.y);
+      gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.6, 0.72, 0.9), fogFactor * sg * 0.45);
+    #endif
   }
 `;
 
@@ -551,6 +561,9 @@ export class ShadowBaker {
   private readonly material: THREE.ShaderMaterial;
   private readonly aoiTarget: THREE.WebGLRenderTarget;
   private readonly regTarget: THREE.WebGLRenderTarget | null;
+  // quarter-cost versions (one texel per grid node) used while the Sun is being dragged
+  private readonly aoiFast: THREE.WebGLRenderTarget;
+  private readonly regFast: THREE.WebGLRenderTarget | null;
 
   constructor(private readonly shared: ShadowUniforms) {
     const target = (n: number) => new THREE.WebGLRenderTarget(n, n, {
@@ -559,14 +572,19 @@ export class ShadowBaker {
     });
     const aoiN = (shared.uAoiN.value - 1) * SHADOW_UPSAMPLE + 1;
     this.aoiTarget = target(aoiN);
+    this.aoiFast = target(shared.uAoiN.value);
     shared.uShadowAoi.value = this.aoiTarget.texture;
     shared.uShadowAoiN.value = aoiN;
     if (shared.uHasRegion.value > 0.5) {
       const regN = (shared.uRegN.value - 1) * SHADOW_UPSAMPLE + 1;
       this.regTarget = target(regN);
+      this.regFast = target(shared.uRegN.value);
       shared.uShadowReg.value = this.regTarget.texture;
       shared.uShadowRegN.value = regN;
-    } else this.regTarget = null;
+    } else {
+      this.regTarget = null;
+      this.regFast = null;
+    }
 
     this.material = new THREE.ShaderMaterial({
       uniforms: { ...shared, uOrigin: { value: new THREE.Vector2() }, uStep: { value: 1 } },
@@ -593,20 +611,28 @@ export class ShadowBaker {
     this.scene.add(quad);
   }
 
-  bake(renderer: THREE.WebGLRenderer): void {
+  /** Bake cast shadows for the current Sun.  `fast`: one texel per grid node (a quarter of the work), for while the Sun moves. */
+  bake(renderer: THREE.WebGLRenderer, fast = false): void {
     const sh = this.shared;
     const u = this.material.uniforms;
     const prev = renderer.getRenderTarget();
+    const up = fast ? 1 : SHADOW_UPSAMPLE;
+    const aoi = fast ? this.aoiFast : this.aoiTarget;
     const half = sh.uAoiHalf.value;
     u.uOrigin.value.set(-half, -half);
-    u.uStep.value = sh.uAoiCell.value / SHADOW_UPSAMPLE;
-    renderer.setRenderTarget(this.aoiTarget);
+    u.uStep.value = sh.uAoiCell.value / up;
+    renderer.setRenderTarget(aoi);
     renderer.render(this.scene, this.camera);
-    if (this.regTarget) {
+    sh.uShadowAoi.value = aoi.texture;
+    sh.uShadowAoiN.value = aoi.width;
+    const reg = fast ? this.regFast : this.regTarget;
+    if (reg) {
       u.uOrigin.value.copy(sh.uRegOrigin.value);
-      u.uStep.value = sh.uRegCell.value / SHADOW_UPSAMPLE;
-      renderer.setRenderTarget(this.regTarget);
+      u.uStep.value = sh.uRegCell.value / up;
+      renderer.setRenderTarget(reg);
       renderer.render(this.scene, this.camera);
+      sh.uShadowReg.value = reg.texture;
+      sh.uShadowRegN.value = reg.width;
     }
     renderer.setRenderTarget(prev);
   }
@@ -890,7 +916,7 @@ export function buildRegion(region: RegionMeta, heights: Float32Array, zRef: num
 }
 
 /** Sky dome: butterscotch haze at the horizon, darker overhead; a flat dark backdrop in the map view. */
-export function buildSky(): { mesh: THREE.Mesh; setMapMode: (k: number) => void; setSunElevation: (deg: number) => void } {
+export function buildSky(sunDir: THREE.IUniform<THREE.Vector3>): { mesh: THREE.Mesh; setMapMode: (k: number) => void; setSunElevation: (deg: number) => void } {
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
@@ -903,15 +929,27 @@ export function buildSky(): { mesh: THREE.Mesh; setMapMode: (k: number) => void;
       uMapBg: { value: new THREE.Color().setHex(MAP_BG, THREE.LinearSRGBColorSpace) },
       uMap: { value: 1 },
       uDay: { value: 1 },
+      uSunDir: sunDir,
     },
     vertexShader: /* glsl */ `varying vec3 vDir; void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */ `
-      uniform vec3 uHorizon; uniform vec3 uZenith; uniform vec3 uMapBg; uniform float uMap; uniform float uDay; varying vec3 vDir;
+      uniform vec3 uHorizon; uniform vec3 uZenith; uniform vec3 uMapBg; uniform float uMap; uniform float uDay; uniform vec3 uSunDir;
+      varying vec3 vDir;
       void main() {
-        float t = pow(clamp(vDir.y, 0.0, 1.0), 0.45);
+        vec3 d = normalize(vDir);
+        float t = pow(clamp(d.y, 0.0, 1.0), 0.45);
         vec3 c = mix(uHorizon, uZenith, t);
-        c = mix(c, uHorizon * 0.82, smoothstep(0.0, -0.25, vDir.y));
+        c = mix(c, uHorizon * 0.82, smoothstep(0.0, -0.25, d.y));
         c *= mix(0.22, 1.0, uDay); // dusk and night
+        // Fine dust scatters blue light forward: the sky around the Sun is bluish, most of all near sunset
+        // (as the rovers photograph it).  Then the Sun's disc, 0.35 deg across from Mars.
+        float mu = dot(d, uSunDir);
+        float up = smoothstep(-0.06, 0.02, uSunDir.y);
+        float low = 1.0 - smoothstep(0.05, 0.5, uSunDir.y);
+        float m = max(mu, 0.0);
+        float glow = (pow(m, 18.0) * (0.16 + 0.6 * low) + pow(m, 300.0) * 0.45) * up;
+        c = mix(c, vec3(0.6, 0.72, 0.9) * mix(0.55, 1.0, uDay), clamp(glow, 0.0, 0.85));
+        c = mix(c, vec3(1.0, 0.98, 0.94), smoothstep(0.9999893, 0.9999953, mu) * up);
         gl_FragColor = vec4(mix(c, uMapBg, uMap), 1.0);
       }`,
   });

@@ -19,7 +19,53 @@ function progress(label: string, fraction: number): void {
   $("#load-bar").style.width = `${Math.round(fraction * 100)}%`;
 }
 
-function loadTexture(url: string): Promise<THREE.Texture> {
+/**
+ * Load an image as a texture, decoded off the main thread (ImageBitmap): an 8192 px image decoded
+ * through an <img> blocks the page for ~0.7 s when it is first drawn, an ImageBitmap for ~0.08 s.
+ * Same pixels: no colour conversion, flipped like TextureLoader's default.  Falls back to <img>.
+ */
+let flipWorks: Promise<boolean> | null = null;
+/** Does this engine honour ImageBitmap's imageOrientation: "flipY"?  (Some ignore it: the map would be upside down.) */
+function bitmapFlipWorks(): Promise<boolean> {
+  return (flipWorks ??= (async () => {
+    try {
+      const c = document.createElement("canvas");
+      c.width = 1;
+      c.height = 2;
+      const g = c.getContext("2d")!;
+      g.fillStyle = "#f00";
+      g.fillRect(0, 0, 1, 1); // top red
+      g.fillStyle = "#00f";
+      g.fillRect(0, 1, 1, 1); // bottom blue
+      const b = await createImageBitmap(c, { imageOrientation: "flipY" });
+      const d = document.createElement("canvas");
+      d.width = 1;
+      d.height = 2;
+      const h = d.getContext("2d")!;
+      h.drawImage(b, 0, 0);
+      b.close();
+      return h.getImageData(0, 0, 1, 1).data[2] > 128; // flipped: blue on top
+    } catch {
+      return false;
+    }
+  })());
+}
+
+async function loadTexture(url: string): Promise<THREE.Texture> {
+  if (typeof createImageBitmap === "function" && (await bitmapFlipWorks())) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Could not load ${url} (HTTP ${res.status})`);
+    const blob = await res.blob();
+    try {
+      const bitmap = await createImageBitmap(blob, { imageOrientation: "flipY", premultiplyAlpha: "none", colorSpaceConversion: "none" });
+      const texture = new THREE.Texture(bitmap);
+      texture.flipY = false; // already flipped while decoding
+      texture.needsUpdate = true;
+      return texture;
+    } catch {
+      // older engines without ImageBitmap options: fall through to <img>
+    }
+  }
   return new Promise((resolve, reject) => {
     new THREE.TextureLoader().load(url, resolve, undefined, () => reject(new Error(`Could not load ${url}`)));
   });
@@ -67,8 +113,8 @@ async function boot(): Promise<void> {
   const [site, sites] = await Promise.all([
     loadSite(progress, (meta) => {
       early.images = Promise.all([
-        loadTexture(DATA_BASE + meta.texture.file).then(grey),
-        loadTexture(dataUrl(meta.relief?.file ?? "relief.png")),
+        loadTexture(DATA_BASE + meta.texture.file).then(grey).then((t) => (performance.mark("cairn:texture"), t)),
+        loadTexture(dataUrl(meta.relief?.file ?? "relief.png")).then((t) => (performance.mark("cairn:relief"), t)),
       ]);
       early.images.catch(() => {}); // awaited below
     }),
@@ -87,22 +133,29 @@ async function boot(): Promise<void> {
   const rover = site.pois.find((p) => p.kind === "shelter");
   if (!rover) throw new Error("Site has no shelter");
   const router = new Router();
-  const [[texture, relief], regionMap, field] = await Promise.all([
+  // the worker computes while the terrain is built and its shaders compile on this thread
+  const fieldReady = router.init(site.grid, DEFAULT_PARAMS, { x: rover.x, y: rover.y }).then((f) => (performance.mark("cairn:field"), f));
+  const [[texture, relief], regionMap] = await Promise.all([
     early.images!,
-    site.region ? loadTexture(site.base + site.region.meta.texture.file).then(grey) : Promise.resolve(null),
-    router.init(site.grid, DEFAULT_PARAMS, { x: rover.x, y: rover.y }),
+    site.region ? loadTexture(site.base + site.region.meta.texture.file).then(grey).then((t) => (performance.mark("cairn:region"), t)) : Promise.resolve(null),
   ]);
   relief.generateMipmaps = true;
   relief.minFilter = THREE.LinearMipmapLinearFilter;
-  performance.mark("cairn:images+field");
+  performance.mark("cairn:images");
 
-  progress("Building the terrain", 0.95);
+  progress("Building the terrain", 0.9);
   $("#app").hidden = false;
+  performance.mark("cairn:view-start");
   const view = new SceneView($("#scene"), site, {
     map: texture,
     relief,
     region: site.region && regionMap ? { ...site.region, map: regionMap } : null,
   }, quality);
+  // compile the shaders in parallel (KHR_parallel_shader_compile) instead of stalling the first frame
+  await view.compileShaders();
+  performance.mark("cairn:shaders");
+  progress("The way home from every point", 0.95);
+  const field = await fieldReady;
   view.setShelterTimes(field.time);
   // a graphics driver reset leaves a black map: say so instead
   view.renderer.domElement.addEventListener("webglcontextlost", (ev) => {
@@ -114,6 +167,7 @@ async function boot(): Promise<void> {
   });
   texture.anisotropy = view.renderer.capabilities.getMaxAnisotropy();
   if (regionMap) regionMap.anisotropy = texture.anisotropy;
+  performance.mark("cairn:view-built");
   const app = new App(site, view, router, field, sites);
   view.start((dt) => app.tick(dt));
   const debug = { app, view, site, field, textureMPerPx: chosen.mPerPx };

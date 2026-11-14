@@ -86,6 +86,10 @@ export class SceneView {
   // ---- render on demand: draw only when the camera, the scene or the light changed
   private dirty = true;
   private shadowDirty = true;
+  private bakedFast = false;
+  private fogBase = new THREE.Color();
+  private dayK = 1;
+  private sunChangedAt = 0;
   private lastBake = -1e9;
   private readonly bakedSun = new THREE.Vector3(0, -1, 0);
   private readonly lastCam = new Float64Array(32);
@@ -148,9 +152,10 @@ export class SceneView {
 
     this.camera = new THREE.PerspectiveCamera(30, 1, 0.3, 60000);
     this.fog = new THREE.FogExp2(SKY_HORIZON, 0);
+    this.fogBase = this.fog.color.clone();
     this.scene.fog = this.fog;
 
-    this.sky = buildSky();
+    this.sky = buildSky(this.shared.uSunDir);
     this.sky.mesh.scale.setScalar(40000);
     this.scene.add(this.sky.mesh);
 
@@ -230,6 +235,15 @@ export class SceneView {
     this.resize();
   }
 
+  /** Compile every shader without blocking (KHR_parallel_shader_compile where available). */
+  async compileShaders(): Promise<void> {
+    try {
+      await this.renderer.compileAsync(this.scene, this.camera);
+    } catch {
+      // the first frame compiles them instead
+    }
+  }
+
   // ---------------------------------------------------------------- coordinates
   /** Local (x east, y north, z elevation) → world position. */
   toWorld(x: number, y: number, z: number, lift = 0): THREE.Vector3 {
@@ -263,12 +277,19 @@ export class SceneView {
 
   /** Bake shadows if the light changed, then draw the frame if anything visible changed. */
   renderIfNeeded(now = performance.now()): boolean {
-    // re-bake at most ~10 times a second while the Sun is moving; the last position is always baked
+    // re-bake at most ~10 times a second while the Sun is moving, at a quarter of the cost; once it has
+    // been still for a moment the full-resolution shadows are baked again, so a still image is unchanged
     if (this.shadowDirty && now - this.lastBake > 90) {
-      this.baker.bake(this.renderer);
+      const moving = this.lastBake > 0 && now - this.sunChangedAt < 250;
+      this.baker.bake(this.renderer, moving);
+      this.bakedFast = moving;
       this.bakedSun.copy(this.shared.uSunDir.value);
       this.lastBake = now;
       this.shadowDirty = false;
+      this.dirty = true;
+    } else if (!this.shadowDirty && this.bakedFast && now - this.sunChangedAt > 250) {
+      this.baker.bake(this.renderer);
+      this.bakedFast = false;
       this.dirty = true;
     }
     this.camera.updateMatrixWorld();
@@ -648,6 +669,7 @@ export class SceneView {
     if (this.region) {
       const edge = this.region.uniforms.uEdgeColor.value as THREE.Color;
       edge.setHex(map ? 0x0f0d0c : SKY_HORIZON, THREE.LinearSRGBColorSpace);
+      if (!map) edge.multiplyScalar(this.dayK);
     }
   }
 
@@ -999,9 +1021,16 @@ export class SceneView {
     const az = THREE.MathUtils.degToRad(azimuthDeg);
     const dir = this.shared.uSunDir.value.set(Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
     this.sky.setSunElevation(elevationDeg);
+    // the haze dims with the sky at dusk (it stayed daylight-bright before, so far hills glowed at sunset)
+    this.dayK = THREE.MathUtils.lerp(0.22, 1, THREE.MathUtils.clamp((elevationDeg + 2) / 14, 0, 1));
+    this.fog.color.copy(this.fogBase).multiplyScalar(this.dayK);
+    if (this.region && this.mode !== "plan") (this.region.uniforms.uEdgeColor.value as THREE.Color).setHex(SKY_HORIZON, THREE.LinearSRGBColorSpace).multiplyScalar(this.dayK);
     this.dirty = true;
     // shadows move with the Sun: re-bake once it has moved by more than ~0.1 degrees
-    if (dir.dot(this.bakedSun) < Math.cos(THREE.MathUtils.degToRad(0.1)) || Math.sign(dir.y) !== Math.sign(this.bakedSun.y)) this.shadowDirty = true;
+    if (dir.dot(this.bakedSun) < Math.cos(THREE.MathUtils.degToRad(0.1)) || Math.sign(dir.y) !== Math.sign(this.bakedSun.y)) {
+      this.shadowDirty = true;
+      this.sunChangedAt = performance.now();
+    }
   }
 
   setShadows(on: boolean): void {
