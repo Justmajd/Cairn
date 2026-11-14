@@ -19,6 +19,7 @@ import { $, esc, fmtClock, fmtDist, fmtDose, fmtDur, fmtRate, setText } from "./
 import { ic } from "./ui/icons";
 import { hideAnimated, showAnimated } from "./ui/motion";
 import { prefetchSite } from "./data/prefetch";
+import { dissolve } from "./ui/dissolve";
 import { openModal, showAssumptions, showSources, stopCardHtml } from "./ui/modals";
 import { openPanorama } from "./ui/panorama";
 import { DemoRunner, DemoStep } from "./ui/demo";
@@ -254,6 +255,11 @@ export class App {
     $("#btn-about").addEventListener("click", (ev) => {
       ev.stopPropagation();
       about.hidden = !about.hidden;
+    });
+    // the logo and name go back to the main menu (this site's briefing), through the dust sweep
+    $("#brand-home").addEventListener("click", () => {
+      if (!$("#briefing").hidden) return;
+      void dissolve(() => showBriefing(this.site, () => {}, this.sites));
     });
     about.addEventListener("click", (ev) => {
       const item = (ev.target as HTMLElement).closest<HTMLElement>("[data-about]")?.dataset.about;
