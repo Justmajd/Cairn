@@ -58,7 +58,7 @@ Open the address Vite prints (normally http://localhost:5173).
 | Command | What it does |
 |---|---|
 | `npm run dev` | Development server |
-| `npm test` | 63 unit and integration tests |
+| `npm test` | 66 unit and integration tests |
 | `npm run build` | Type-check and build to `web/dist/` |
 | `npm run preview` | Serve the built app |
 
@@ -108,7 +108,8 @@ data-pipeline/  (Python)                     web/  (TypeScript + Three.js, fully
 - **Stitched panoramas.** For every panorama pixel, the viewing ray is rotated into the rover frame (attitude quaternion) and projected through each Navcam frame's published CAHVOR camera model; frames are feathered and exposure-matched. Published only where the frames cover at least 85% of the horizon — all five Gale stops.
 - **One renderer for 2D and 3D.** The map is the 3D terrain seen from straight above through a narrow lens, so routes and layers always line up and switching to 3D is a camera move.
 - **Routing.** A\* over a 1025 × 1025 grid (2 m cells) minimises *walking energy × fall risk*. Energy uses the Minetti (2002) cost of walking on slopes with the real elevation of every step; loose sand and rough ground cost more; slopes above 25° are impassable.
-- **The way home.** One Dijkstra pass from the rover stores the best route home from every grid point. The emergency re-route is then a lookup, and the same data draws the *Minutes to shelter* layer and the walk-back margin.
+- **The way home.** One Dijkstra pass from the rover stores the best route home from every grid point. The emergency re-route is then a lookup, and the same data draws the *Minutes to shelter* layer and the walk-back margin. Parking the rover elsewhere reruns that pass (and the rover's radio shadow) in the routing worker in about 0.4 s; *park closer* starts from the geometric median of the stops.
+- **Undo for free.** The plan is the URL hash and every edit is a browser history entry, so Back / Ctrl+Z restore the previous plan exactly and a copied link reproduces it.
 - **One measuring function.** `measurePath()` produces every number shown about a route, so the router, the budget, the chart and the simulation cannot disagree.
 - **Radio line of sight.** Rays from the rover's mast antenna (3 m) to every edge of the grid keep the steepest terrain angle seen so far, with the curvature of Mars; each point stores how far a suit antenna (1.8 m) would have to rise to see the rover. The relay search tries every ~8 m of the route where a 2.5 m mast still sees the rover and counts the blackout time it covers *after* the crew gets there.
 - **Fast first load.** Grids are row-delta coded and gzipped (Gale: 6.3 → 3.2 MB), the HiRISE images and relief map are WebP (the 25 cm image: 14.5 → 8 MB), and all files load in parallel with the return-to-shelter calculation. The planner opens on the 50 cm image; the 25 cm one streams in afterwards.

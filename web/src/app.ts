@@ -6,6 +6,7 @@ import { DEFAULT_PARAMS, EvaParams } from "./eva/params";
 import { RadiationModel } from "./eva/radiation";
 import { bestRelay, inContact, lineOfSight, RadioCoverage, radioCoverage, radioShadow, relayFromShadow, RelaySuggestion, RELAY_MAST_M, SUIT_ANTENNA_M } from "./eva/radio";
 import { inTerrainShadow } from "./eva/shade";
+import { geometricMedian } from "./routing/median";
 import { formatPlanLink, parsePlanLink } from "./state/planLink";
 import { fmtLmst, MARS_HOUR_S, SolarGeometry, solarGeometry, sunAt, SunPosition } from "./eva/sun";
 import { EmergencyKind, Mission, MissionEvent } from "./replay/mission";
@@ -847,22 +848,9 @@ export class App {
    */
   private parkCloser(): void {
     const stops = this.selected.map((id) => this.poi(id)).filter((p): p is Poi => !!p);
-    if (!stops.length) return;
-    let x = stops.reduce((a, p) => a + p.x, 0) / stops.length;
-    let y = stops.reduce((a, p) => a + p.y, 0) / stops.length;
-    for (let k = 0; k < 50; k++) {
-      let wx = 0;
-      let wy = 0;
-      let w = 0;
-      for (const p of stops) {
-        const d = Math.max(1, Math.hypot(p.x - x, p.y - y));
-        wx += p.x / d;
-        wy += p.y / d;
-        w += 1 / d;
-      }
-      x = wx / w;
-      y = wy / w;
-    }
+    const median = geometricMedian(stops);
+    if (!median) return;
+    const { x, y } = median;
     // nearest node that is flat, passable and can still reach every stop
     const grid = this.site.grid;
     let best: XY | null = null;
