@@ -165,6 +165,33 @@ describe("hab server", () => {
     ev2.ws.close();
   });
 
+  it("lists the EVAs under way on every site, for the main menu's live card", async () => {
+    type Live = { live: { site: string; siteName: string; evaId: string; crewOnline: boolean; ev2: number; stops: number }[] };
+    const live = async () => ((await (await fetch(`${base}/api/live`)).json()) as Live).live;
+    expect(await live()).toEqual([]);
+
+    const ev1 = new Client("crew", "gale", "ev1");
+    await ev1.ready();
+    const ev2 = new Client("crew", "gale", "ev2");
+    await ev2.ready();
+    await ev1.waitFor((m) => m.type === "members" && m.ev2 === 1);
+    const stops = [
+      { id: "rover", name: "Rover", short: "Rover", x: 0, y: 0, kind: "shelter", order: 0 },
+      { id: "box", name: "Boxwork", short: "Box", x: 10, y: 10, kind: "objective", order: 1 },
+    ];
+    ev1.send({ type: "plan", plan: { site: "gale", siteName: "Gale Crater — Mount Sharp boxwork", stops, lightTimeS: 600 } as never });
+    expect(await live()).toEqual([]); // planning is not live
+    ev1.send({ type: "eva", state: "start", evaId: "e3", lightTimeS: 600 });
+    await ev2.waitFor((m) => m.type === "crew-eva" && !!m.eva?.running);
+    expect(await live()).toMatchObject([{ site: "gale", siteName: "Gale Crater — Mount Sharp boxwork", evaId: "e3", crewOnline: true, ev2: 1, stops: 1 }]);
+
+    ev1.send({ type: "eva", state: "end", evaId: "e3", aborted: false, summary: "" });
+    await ev2.waitFor((m) => m.type === "crew-eva" && !!m.eva?.ended);
+    expect(await live()).toEqual([]);
+    ev1.ws.close();
+    ev2.ws.close();
+  });
+
   it("serves only files inside the app", async () => {
     expect((await fetch(`${base}/..%2F..%2Fpackage.json`)).status).toBeGreaterThanOrEqual(400);
   });

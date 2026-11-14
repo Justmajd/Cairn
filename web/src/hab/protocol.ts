@@ -177,3 +177,21 @@ export interface EvaRecord {
 
 /** Site ids and note ids: letters, digits, dash and underscore only (they become file names). */
 export const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** An EVA under way on one site, as the hab lists it for the main menu (GET /api/live). */
+export interface LiveEva {
+  site: string;
+  siteName: string;
+  evaId: string;
+  /** EVA clock (s) when the hab answered; it moves at `speed`× while the crew is online and not paused. */
+  now: number;
+  speed: number;
+  lightTimeS: number;
+  /** EV1's planner is connected (its clock only runs then). */
+  crewOnline: boolean;
+  /** EV1's planner tab is in the background: its EVA clock is stopped. */
+  hidden: boolean;
+  ev2: number;
+  mc: number;
+  stops: number;
+}

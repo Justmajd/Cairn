@@ -1,5 +1,7 @@
 import type { BriefSite, SiteEntry } from "../data/loaders";
-import { $, esc, LOGO_SVG } from "./dom";
+import { $, esc, fmtClock, LOGO_SVG } from "./dom";
+import { liveEvas, liveNow, liveSiteName, liveState } from "../hab/live";
+import type { LiveEva } from "../hab/protocol";
 import { dissolve, dissolveTo } from "./dissolve";
 import { marsSky } from "../eva/sky";
 import { countUp, playOnce, pointerGlow, scramble } from "./fx";
@@ -59,6 +61,7 @@ export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "pa
       <section class="brief-text">
         <div class="brief-brand">${LOGO_SVG}<div><h1>CAIRN</h1><p>Crew Assisted Integrated Route Navigator</p></div></div>
         ${switcher}
+        <div id="brief-live" class="brief-live" aria-live="polite" hidden></div>
         ${eyebrow}
         <h2>${headline}</h2>
         ${story.paragraphs.map((p) => `<p>${p}</p>`).join("")}
@@ -124,4 +127,83 @@ export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "pa
     close();
     window.dispatchEvent(new CustomEvent("cairn:demo"));
   });
+  if (mode === "page") watchLive($("#brief-live", host), site.id);
+}
+
+const LIVE_POLL_MS = 10_000;
+
+/**
+ * The main menu's "live EVA" card: an EVA under way on the hab, on any site, with a way straight into
+ * that EVA's own Mission Control (or to join it as EV2).  Hidden when nothing is running or there is
+ * no hab (a static host).
+ */
+function watchLive(box: HTMLElement, here: string): void {
+  let live: LiveEva[] = [];
+  let at = 0; // when the hab answered (performance.now)
+  let shownKey = "";
+
+  const statusText = (e: LiveEva) =>
+    `T+${fmtClock(liveNow(e, performance.now() - at))} · ${liveState(e)} · Earth sees it ${Math.round(e.lightTimeS / 60)} min late`;
+
+  const draw = () => {
+    // the rows are rebuilt only when the set of EVAs changes; the clocks update in place
+    const key = live.map((e) => `${e.site}|${e.evaId}`).join(",");
+    if (key !== shownKey) {
+      shownKey = key;
+      box.innerHTML = live
+        .map((e) => {
+          const name = esc(liveSiteName(e));
+          const where = e.site === here ? "at this site" : `at ${name}`;
+          const who = [e.ev2 ? `EV1 + ${e.ev2 > 1 ? `${e.ev2} × ` : ""}EV2` : "EV1", `${e.stops} stop${e.stops === 1 ? "" : "s"}`, e.mc ? `${e.mc} watching from Earth` : ""].filter(Boolean).join(" · ");
+          return `<div class="brief-live-row" data-site="${esc(e.site)}">
+            <span class="pulse" aria-hidden="true"></span>
+            <div class="t"><small>// Live EVA ${where}</small><b>${name}</b><span class="clock"></span><span class="who">${esc(who)}</span></div>
+            <div class="acts">
+              <button class="primary" data-mc="${esc(e.site)}">Mission Control →</button>
+              <button data-ev2="${esc(e.site)}">Join as EV2</button>
+            </div>
+          </div>`;
+        })
+        .join("");
+      box.hidden = live.length === 0;
+    }
+    for (const e of live) {
+      const clock = box.querySelector(`[data-site="${CSS.escape(e.site)}"] .clock`);
+      if (clock) clock.textContent = statusText(e);
+    }
+  };
+
+  const poll = async () => {
+    if (document.hidden || !box.isConnected) return;
+    const got = await liveEvas();
+    live = got ?? [];
+    at = performance.now();
+    // the EVA at this site first, then the rest by name
+    live.sort((a, b) => Number(b.site === here) - Number(a.site === here) || a.siteName.localeCompare(b.siteName));
+    draw();
+  };
+
+  box.addEventListener("click", (ev) => {
+    const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("button");
+    if (!btn) return;
+    const mc = btn.dataset.mc;
+    const ev2 = btn.dataset.ev2;
+    if (mc) window.open(`?view=mission&site=${encodeURIComponent(mc)}`, `cairn-mc-${mc}`, "noopener");
+    if (ev2) location.href = `?site=${encodeURIComponent(ev2)}&skip=1&crew=ev2`;
+  });
+
+  void poll();
+  const pollTimer = window.setInterval(poll, LIVE_POLL_MS);
+  const clockTimer = window.setInterval(() => live.length && !document.hidden && draw(), 1000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) void poll();
+  });
+  // the briefing is drawn again into the same element (site switch): stop this one's timers then
+  const stopOnRedraw = new MutationObserver(() => {
+    if (box.isConnected) return;
+    clearInterval(pollTimer);
+    clearInterval(clockTimer);
+    stopOnRedraw.disconnect();
+  });
+  stopOnRedraw.observe(box.parentElement?.parentElement?.parentElement ?? document.body, { childList: true });
 }
