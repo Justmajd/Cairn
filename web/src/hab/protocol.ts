@@ -37,6 +37,25 @@ export interface PlanInfo {
   timeline?: [number, number, number][];
   /** "roam": the crew is walking it on foot in free roam (physics, not the planner's simulation). */
   mode?: "plan" | "roam";
+  /** Free roam: the routed legs, so EV2's device walks exactly the same mission. */
+  legs?: [number, number][][];
+  /** Free roam: the planner's oxygen estimate for the mission (L), what EV2's debrief scores against. */
+  o2PlannedL?: number;
+  walkTimeS?: number;
+}
+
+/** One astronaut's pose in free roam, sent Mars to Mars with no delay (EV2 → EV1, and EV1 → EV2 in frames). */
+export interface CrewPose {
+  x: number;
+  y: number;
+  z: number;
+  headingDeg: number;
+  gait: string;
+  vx: number;
+  vy: number;
+  vz: number;
+  downT?: number;
+  sliding?: boolean;
 }
 
 /** A change to the plan proposed by Mission Control: stops to drop (ids) and points to add. */
@@ -71,6 +90,8 @@ export interface Frame {
   hidden?: boolean;
   /** Buddy (EV2) position, in buddy mode. */
   buddy?: { x: number; y: number } | null;
+  /** Free roam: EV1's full pose, for EV2's device to draw EV1 walking. */
+  pose?: CrewPose;
 }
 
 export interface LogEntry {
@@ -127,7 +148,9 @@ export type ClientMsg =
   | { type: "log"; entries: LogEntry[] }
   | { type: "say"; text: string; change?: PlanChange }
   /** The crew's answer to a revised plan: travels back to Earth like everything else. */
-  | { type: "reply"; id: string; accepted: boolean };
+  | { type: "reply"; id: string; accepted: boolean }
+  /** Free roam, EV2: where this astronaut is (relayed to EV1 at once — both are on Mars). */
+  | { type: "pose"; pose: CrewPose };
 
 export interface McSnapshot {
   plan: PlanInfo | null;
@@ -161,7 +184,8 @@ export type ServerMsg =
   | { type: "members"; ev2: number }
   | { type: "crewplan"; plan: PlanInfo }
   | { type: "crew-eva"; eva: McSnapshot["eva"] }
-  | { type: "live"; frame: Frame };
+  | { type: "live"; frame: Frame }
+  | { type: "buddy"; pose: CrewPose };
 
 /** A finished EVA as the hab keeps it (for Mission Control's replay). */
 export interface EvaRecord {

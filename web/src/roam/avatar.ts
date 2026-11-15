@@ -170,7 +170,8 @@ export class Astronaut {
   /** how far the body is posed by a fall or a slide (0 … 1): the visor follows the head by this much */
   private overW = 0;
 
-  constructor(private readonly g = 3.721, private readonly groundAt: (x: number, z: number) => number = () => 0) {
+  /** `accent`: the ID stripes and map marker (EV1 fern, EV2 amber — real crews tell suits apart by stripes). */
+  constructor(private readonly g = 3.721, private readonly groundAt: (x: number, z: number) => number = () => 0, accent = 0xc6f432) {
     const bump = weave();
     this.suitMat = new THREE.MeshPhysicalMaterial({ color: Astronaut.CLEAN, roughness: 0.93, sheen: 0.7, sheenRoughness: 0.75, sheenColor: new THREE.Color(0xffffff), bumpMap: bump, bumpScale: 1.2 });
     this.bootMat = this.suitMat.clone();
@@ -181,7 +182,7 @@ export class Astronaut {
     const metal = new THREE.MeshStandardMaterial({ color: 0xb8bcc2, roughness: 0.3, metalness: 0.75 });
     const dark = new THREE.MeshStandardMaterial({ color: 0x3e3a36, roughness: 0.9 });
     const glove = new THREE.MeshPhysicalMaterial({ color: 0x4a4540, roughness: 0.85, sheen: 0.4, bumpMap: bump, bumpScale: 0.6 });
-    const stripe = new THREE.MeshStandardMaterial({ color: 0xc6f432, roughness: 0.7, emissive: 0x222c07 });
+    const stripe = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.7, emissive: new THREE.Color(accent).multiplyScalar(0.18) });
     const gold = new THREE.MeshPhysicalMaterial({ color: 0xe0a84a, metalness: 0.9, roughness: 0.16, clearcoat: 1, emissive: 0x3a2306 });
     const bubble = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.04, clearcoat: 1, transparent: true, opacity: 0.14, depthWrite: false });
     const lamp = new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0xfff1c4, emissiveIntensity: 1.3 });
@@ -313,9 +314,9 @@ export class Astronaut {
 
     // ---- map marker: a fern ring that keeps a readable size from far away
     this.marker = new THREE.Group();
-    const ringM = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.25, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xc6f432, transparent: true, opacity: 0.95, depthTest: false, fog: false }));
-    const dot = new THREE.Mesh(new THREE.CircleGeometry(0.5, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xc6f432, transparent: true, opacity: 0.5, depthTest: false, fog: false }));
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.9, 3).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xc6f432, depthTest: false, fog: false }));
+    const ringM = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.25, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.95, depthTest: false, fog: false }));
+    const dot = new THREE.Mesh(new THREE.CircleGeometry(0.5, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.5, depthTest: false, fog: false }));
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.9, 3).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: accent, depthTest: false, fog: false }));
     nose.position.set(0, 0, -1.6);
     for (const m of [ringM, dot, nose]) m.renderOrder = 30;
     this.marker.add(ringM, dot, nose);
