@@ -1000,3 +1000,22 @@ svg.timeline .sunt { fill: #f0e442; font: 500 9px var(--mono); }
   .brand { position: relative; }
   .crew-badge { position: absolute; top: calc(100% + 6px); left: 4px; margin: 0; padding: 2px 7px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); }
 }
+.autonomy { margin: 16px 0 0; }
+.autonomy h3 { margin: 0 0 6px; font: 500 11px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--steel); }
+.autonomy-t td { font-size: 12px; vertical-align: top; }
+.autonomy-t tr:first-child td { color: var(--text-3); font-size: 11px; }
+.autonomy-t td:first-child, .autonomy-t td:nth-child(3), .autonomy-t td:nth-child(4) { font-family: var(--mono); white-space: nowrap; }
+
+/* scenario presets (main menu and About → Scenarios) */
+.scenarios { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.scenario { display: grid; align-content: start; gap: 4px; padding: 12px 14px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--raise); }
+.scenario .eyebrow { margin: 0; font: 500 10px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--steel); }
+.scenario h3 { margin: 0; font: 600 14px var(--sans); color: var(--text); }
+.scenario p { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--text-2); }
+.scenario-acts { display: flex; gap: 8px; margin-top: 8px; }
+.scenario-acts a { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--text); font: 500 12.5px var(--sans); text-decoration: none; }
+.scenario-acts a.sc-walk { border-color: rgb(var(--fern-rgb) / 0.5); color: var(--accent); }
+.scenario-acts a:hover { background: var(--raise-2); }
+.brief-scenarios { margin: 18px 0 4px; }
+.brief-scenarios .eyebrow { margin: 0 0 8px; font: 500 11px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--steel); }
+.demo-glow { box-shadow: 0 0 0 2px var(--accent), 0 0 24px rgb(var(--fern-rgb) / 0.45) !important; }

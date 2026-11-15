@@ -5,6 +5,7 @@ import type { LiveEva } from "../hab/protocol";
 import { dissolve, dissolveTo } from "./dissolve";
 import { marsSky } from "../eva/sky";
 import { countUp, playOnce, pointerGlow, scramble } from "./fx";
+import { bindScenarios, scenariosHtml } from "./scenarios";
 
 /**
  * Mission briefing: the site's story, a regional orbital map with the rover's real traverse and the
@@ -69,11 +70,13 @@ export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "pa
         <div class="brief-cta">
           <button id="brief-enter" class="primary big">Open the EVA planner →</button>
           <button id="brief-demo" class="big">▶ Watch the 2-minute demo</button>
+          <button id="brief-roam" class="big roam" title="Walk anywhere in the suit, in Mars gravity: lope, jump, slide, and watch your oxygen">Free roam on foot</button>
         </div>
         <div class="brief-links">
           <button id="brief-mc" class="brief-mc"><b>Mission Control</b><span>Watch the EVA from Earth, ${lightText} behind Mars, and message the crew</span></button>
           <button id="brief-ev2" class="brief-mc ev2"><b>Join as EV2</b><span>The second astronaut, on another device: walk the EVA with EV1</span></button>
         </div>
+        ${mode === "page" ? `<section class="brief-scenarios" aria-label="Scenarios"><p class="eyebrow">// Scenarios · one tap sets up a story</p>${scenariosHtml()}</section>` : ""}
         <p class="fine">Every map layer, photo and reading comes from NASA, USGS or JPL archives — see About → Data sources in the planner. Suit and physiology numbers are labelled demo assumptions.</p>
       </section>
       <section class="brief-map">
@@ -107,6 +110,7 @@ export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "pa
   if (!host.dataset.glow) {
     host.dataset.glow = "1";
     pointerGlow(host, ".brief-mc");
+    bindScenarios(host);
   }
   // into the planner: the headline becomes the site name in the top bar, the logo flies there too
   const close = () => void dissolve(() => {
@@ -119,6 +123,7 @@ export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "pa
   $("#brief-ev2", host).addEventListener("click", () => {
     location.href = `?site=${id}&skip=1&crew=ev2`;
   });
+  $("#brief-roam", host).addEventListener("click", () => dissolveTo(`?site=${id}&roam=1`));
   $("#brief-mc", host).addEventListener("click", () => {
     window.open(`?view=mission&site=${id}`, `cairn-mc-${site.id}`, "noopener");
   });

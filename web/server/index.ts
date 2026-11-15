@@ -115,7 +115,16 @@ async function onMessage(c: Client, raw: string): Promise<void> {
   if (!c.site || !c.role) return;
   const r = await room(c.site);
   if (c.role === "crew") {
-    if (c.member === "ev2") return; // EV2 follows EV1's EVA: the plan, the clock and the log are EV1's
+    if (c.member === "ev2") {
+      // EV2 follows EV1's EVA (the plan, the clock and the log are EV1's); in free roam it walks on its
+      // own feet, and its pose goes straight to EV1's device
+      const p = msg.type === "pose" ? msg.pose : null;
+      if (p && [p.x, p.y, p.z, p.headingDeg, p.vx, p.vy, p.vz].every(Number.isFinite) && typeof p.gait === "string") {
+        const pose = { x: +p.x, y: +p.y, z: +p.z, headingDeg: +p.headingDeg, gait: p.gait.slice(0, 12), vx: +p.vx, vy: +p.vy, vz: +p.vz, downT: Number.isFinite(p.downT) ? +p.downT! : 0, sliding: !!p.sliding };
+        for (const e of inRoom(c.site, "crew")) if (e.member === "ev1") send(e, { type: "buddy", pose });
+      }
+      return;
+    }
     if (msg.type === "plan" && msg.plan && typeof msg.plan === "object") {
       deliver(c.site, r.setPlan(msg.plan));
       toEv2(c.site, { type: "crewplan", plan: msg.plan });

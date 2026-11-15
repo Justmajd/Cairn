@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { makeCairn, makeRover, marsEnvironment, seedOf } from "./models";
 import { MapControls } from "three/examples/jsm/controls/MapControls.js";
 import { Line2 } from "three/examples/jsm/lines/Line2.js";
 import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
@@ -19,7 +20,9 @@ export interface SceneTextures {
   region: { meta: RegionMeta; heights: Float32Array; map: THREE.Texture } | null;
 }
 
-export type ViewMode = "plan" | "orbit" | "fly" | "walk";
+export type ViewMode = "plan" | "orbit" | "fly" | "walk" | "roam";
+/** How free roam is seen: from above (map), from behind (3D) or through the helmet (visor). */
+export type RoamLook = "plan" | "orbit" | "walk";
 
 export interface RouteSet {
   safe: MeasuredPath[];
@@ -123,9 +126,17 @@ export class SceneView {
   private readonly astronaut: THREE.Group;
   private readonly buddy: THREE.Group;
   private readonly hoverRing: THREE.Mesh;
+  /** Light on the models (rover, cairns, astronauts): from the real Sun's direction, plus the dusty sky. */
+  private readonly sunLight = new THREE.DirectionalLight(0xfff0dd, 2.2);
+  private readonly skyLight = new THREE.HemisphereLight(0xffe2c4, 0x5a3a28, 1.6);
 
   private routes: RouteSet | null = null;
   private mode: ViewMode = "plan";
+  private roamLook: RoamLook = "walk";
+  /** The look that decides how the frame is drawn: free roam borrows the map, 3D or visor look. */
+  private get look(): ViewMode {
+    return this.mode === "roam" ? this.roamLook : this.mode;
+  }
   private tween: Tween | null = null;
   private fly: { curve: THREE.CatmullRomCurve3; look: THREE.CatmullRomCurve3; t: number; duration: number; done: () => void } | null = null;
   private walk = { x: 0, y: 0, heading: 0, smoothHeading: 0, yaw: 0, pitch: -0.06, init: false, bob: 0 };
@@ -222,10 +233,11 @@ export class SceneView {
     this.regionHalf = tex.region ? tex.region.meta.sizeM / 2 : this.half;
     this.addAreaOutline();
 
-    this.scene.add(new THREE.HemisphereLight(0xffe2c4, 0x5a3a28, 1.6));
-    const sun = new THREE.DirectionalLight(0xfff0dd, 2.2);
-    sun.position.set(-720, 620, -120);
-    this.scene.add(sun);
+    this.sunLight.position.set(-720, 620, -120);
+    this.scene.add(this.sunLight, this.skyLight);
+    // reflections for the models (the terrain and rocks have their own shaders and ignore it)
+    this.scene.environment = marsEnvironment(this.renderer);
+    this.scene.environmentIntensity = 0.55;
 
     this.scene.add(this.trackGroup, this.routeGroup, this.poiGroup, this.relayGroup, this.spotGroup, this.noteGroup);
 
@@ -276,7 +288,7 @@ export class SceneView {
 
   /** Draw the 3D views through the post-processing pipeline (AO, glare); the flat map directly. */
   drawScene(): void {
-    const post = this.post && !this.postSuspended && this.mode !== "plan" ? this.post : null;
+    const post = this.post && !this.postSuspended && this.look !== "plan" ? this.post : null;
     this.shared.uLinearOut.value = post ? 1 : 0;
     if (post) post.render(this.renderer, this.scene, this.camera);
     else this.renderer.render(this.scene, this.camera);
@@ -424,7 +436,7 @@ export class SceneView {
     const avg = p.sum / p.n;
     p.sum = 0;
     p.n = 0;
-    if (avg > 21 && this.post && !this.postSuspended && this.mode !== "plan") {
+    if (avg > 21 && this.post && !this.postSuspended && this.look !== "plan") {
       this.postSuspended = true; // slow GPU: drop the post effects (AO, glare) before dropping resolution
       p.good = 0;
     } else if (avg > 21 && this.dpr > 1) {
@@ -560,14 +572,14 @@ export class SceneView {
    * ground: invisible in the top-down map, and only far away in the 3D views.
    */
   private updateDetail(): void {
-    const thresholds: [number, number] = this.mode === "plan" ? [8, 4] : this.mode === "walk" ? [10, 4] : [6, 2.5];
+    const thresholds: [number, number] = this.look === "plan" ? [8, 4] : this.look === "walk" || this.mode === "roam" ? [10, 4] : [6, 2.5];
     this.terrain.updateLod?.(this.camera, Math.max(1, this.host.clientHeight) * this.dpr, thresholds);
   }
 
   /** Near plane at a fraction of the camera's height above the ground: depth precision where it is needed. */
   private updateClip(): void {
     const cam = this.camera;
-    const near = this.mode === "walk" ? 0.15 : THREE.MathUtils.clamp((cam.position.y - this.groundYBelow(cam.position.x, cam.position.z)) * 0.35, 0.3, 4000);
+    const near = this.mode === "roam" && this.roamNear > 0 ? this.roamNear : this.look === "walk" ? 0.15 : this.mode === "roam" && this.look === "orbit" ? 0.3 : THREE.MathUtils.clamp((cam.position.y - this.groundYBelow(cam.position.x, cam.position.z)) * 0.35, 0.3, 4000);
     const far = Math.max(42000, cam.position.length() + this.regionHalf * 1.5);
     if (Math.abs(near - cam.near) > cam.near * 0.1 || Math.abs(far - cam.far) > cam.far * 0.1) {
       cam.near = near;
@@ -613,6 +625,8 @@ export class SceneView {
       }
     } else if (this.mode === "walk") {
       this.updateWalkCamera(dt);
+    } else if (this.mode === "roam") {
+      // free roam places the camera itself (setRoamCamera), every frame
     } else {
       this.controls.update();
       if (this.keepAboveGround()) this.camera.lookAt(this.controls.target);
@@ -621,14 +635,14 @@ export class SceneView {
     this.updateClip();
     this.updateDetail();
     const cp = this.camera.position;
-    this.rocks.update(this.camera, cp.y - this.groundYBelow(cp.x, cp.z), this.rocksOn && this.mode !== "plan" && this.exag === 1);
+    this.rocks.update(this.camera, cp.y - this.groundYBelow(cp.x, cp.z), this.rocksOn && this.look !== "plan" && this.exag === 1);
     // a dust storm thickens the haze in the 3D views (never on the flat map)
     const fogGoal = this.fogGoal();
     this.fog.density += (fogGoal - this.fog.density) * Math.min(1, dt * 3);
     if (Math.abs(fogGoal - this.fog.density) < 1e-7) this.fog.density = fogGoal;
     this.sky.mesh.position.copy(this.camera.position);
     this.skyLabels.position.copy(this.camera.position);
-    for (const t of this.skyTags.values()) t.obj.visible = t.up && this.mode === "walk";
+    for (const t of this.skyTags.values()) t.obj.visible = t.up && this.look === "walk";
 
     const perPixel = (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2))) / Math.max(1, this.host.clientHeight);
     for (const s of this.scaled) {
@@ -636,7 +650,7 @@ export class SceneView {
       const metresPerPixel = this.camera.position.distanceTo(s.obj.position) * perPixel;
       s.obj.scale.setScalar(Math.max(1, metresPerPixel * s.px));
     }
-    const walking = this.mode === "walk";
+    const walking = this.look === "walk";
     for (const beam of this.beams) beam.visible = walking;
     // the resolution note sits at the walk area's corner: hide it while that corner is under a panel
     if (this.outline) {
@@ -816,7 +830,7 @@ export class SceneView {
    * Zoom works in both map views; rotate, tilt and "north" only in the 3D view.
    */
   nudge(action: "in" | "out" | "left" | "right" | "up" | "down" | "north"): void {
-    if (this.tween || this.fly || this.mode === "walk" || this.mode === "fly") return;
+    if (this.tween || this.fly || this.mode === "walk" || this.mode === "fly" || this.mode === "roam") return;
     const target = this.controls.target.clone();
     const sph = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(target));
     if (action === "in" || action === "out") {
@@ -889,7 +903,7 @@ export class SceneView {
    * viewing angle and moving in closer (to 50 % of the distance in 3D, 60 % on the map).
    */
   private glideTo(target: THREE.Vector3): void {
-    if (this.tween || this.fly || this.mode === "walk" || this.mode === "fly") return;
+    if (this.tween || this.fly || this.mode === "walk" || this.mode === "fly" || this.mode === "roam") return;
     const plan = this.mode === "plan";
     const to = target.clone();
     if (plan) to.y = this.controls.target.y; // the map keeps its pivot height
@@ -967,6 +981,59 @@ export class SceneView {
     this.controls.target.copy(at);
     this.camera.position.set(at.x - 60, at.y + 160, at.z + 220);
     this.astronaut.visible = this.walk.init;
+  }
+
+  // ---------------------------------------------------------------- free roam
+  /** Free roam: the camera belongs to the roam controller; `look` picks how the frame is drawn. */
+  enterRoam(look: RoamLook): void {
+    this.mode = "roam";
+    this.tween = null;
+    this.fly = null;
+    this.controls.enabled = false;
+    this.astronaut.visible = false;
+    this.buddy.visible = false;
+    this.setRoamLook(look);
+  }
+
+  setRoamLook(look: RoamLook): void {
+    this.roamLook = look;
+    this.host.dataset.mode = `roam-${look}`;
+    this.fogTarget = look === "plan" ? 0 : look === "walk" ? 0.00032 : 0.00018;
+    this.styleFor(look);
+    if (this.routes) this.setRoutes(this.routes);
+    this.dirty = true;
+  }
+
+  private roamNear = 0;
+  /** Near clipping plane for free roam's visor (the gloves are a few tens of cm from the eyes); 0 = default. */
+  setRoamNear(m: number): void {
+    this.roamNear = m;
+  }
+
+  /** Put the camera at `pos` looking at `target` (world coordinates), with a vertical field of view in degrees. */
+  setRoamCamera(pos: THREE.Vector3, target: THREE.Vector3, fov: number): void {
+    this.camera.position.copy(pos);
+    if (Math.abs(this.camera.fov - fov) > 0.01) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+    }
+    this.camera.lookAt(target);
+  }
+
+  /** Add an object to the scene (free roam's astronaut, footprints, dust). */
+  add(obj: THREE.Object3D, keepReadablePx = 0): void {
+    this.scene.add(obj);
+    if (keepReadablePx) this.scaled.push({ obj, px: keepReadablePx });
+  }
+
+  /** The camera, for projecting points on screen and listening positions. */
+  get cam(): THREE.PerspectiveCamera {
+    return this.camera;
+  }
+
+  /** Ground height in world units below a world point (walk area or the region around it). */
+  groundAt(x: number, z: number): number {
+    return this.groundYBelow(x, z);
   }
 
   private updateWalkCamera(dt: number): void {
@@ -1084,7 +1151,7 @@ export class SceneView {
 
   /** Keep the astronaut in view while following an EVA in the map views. */
   follow(x: number, y: number, dt: number): void {
-    if (this.mode === "walk" || this.tween || this.fly) return;
+    if (this.mode === "walk" || this.mode === "roam" || this.tween || this.fly) return;
     const to = this.ground(x, y);
     const delta = to.sub(this.controls.target).multiplyScalar(Math.min(1, dt * 1.5));
     this.controls.target.add(delta);
@@ -1199,7 +1266,7 @@ export class SceneView {
   }
 
   private fogGoal(): number {
-    return this.mode === "plan" ? this.fogTarget : Math.max(this.fogTarget, this.dustFog);
+    return this.look === "plan" ? this.fogTarget : Math.max(this.fogTarget, this.dustFog);
   }
 
   private applyDust(): void {
@@ -1220,11 +1287,18 @@ export class SceneView {
     const el = THREE.MathUtils.degToRad(elevationDeg);
     const az = THREE.MathUtils.degToRad(azimuthDeg);
     const dir = this.shared.uSunDir.value.set(Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
+    // the models are lit like the ground: warmer and dimmer near the horizon, off below it
+    const up = THREE.MathUtils.clamp((elevationDeg + 1) / 12, 0, 1);
+    this.sunLight.position.copy(dir).multiplyScalar(1000);
+    this.sunLight.intensity = 2.6 * up;
+    this.sunLight.color.setHSL(0.08, 0.6, THREE.MathUtils.lerp(0.62, 0.9, up));
+    this.skyLight.intensity = THREE.MathUtils.lerp(0.2, 0.8, up);
+    this.scene.environmentIntensity = THREE.MathUtils.lerp(0.12, 0.55, up);
     this.sky.setSunElevation(elevationDeg);
     // the haze dims with the sky at dusk (it stayed daylight-bright before, so far hills glowed at sunset)
     this.dayK = THREE.MathUtils.lerp(0.22, 1, THREE.MathUtils.clamp((elevationDeg + 2) / 14, 0, 1));
     this.applyDust();
-    if (this.region && this.mode !== "plan") (this.region.uniforms.uEdgeColor.value as THREE.Color).setHex(SKY_HORIZON, THREE.LinearSRGBColorSpace).multiplyScalar(this.dayK);
+    if (this.region && this.look !== "plan") (this.region.uniforms.uEdgeColor.value as THREE.Color).setHex(SKY_HORIZON, THREE.LinearSRGBColorSpace).multiplyScalar(this.dayK);
     this.dirty = true;
     // shadows move with the Sun: re-bake once it has moved by more than ~0.1 degrees
     if (dir.dot(this.bakedSun) < Math.cos(THREE.MathUtils.degToRad(0.1)) || Math.sign(dir.y) !== Math.sign(this.bakedSun.y)) {
@@ -1401,7 +1475,7 @@ export class SceneView {
 
   /** Lines hover above the ground in the map views; in the visor they lie on it, like paint. */
   private pathPoints(path: MeasuredPath, lift: number): THREE.Vector3[] {
-    const h = this.mode === "walk" ? 0.25 + lift * 0.05 : lift;
+    const h = this.look === "walk" ? 0.25 + lift * 0.05 : lift;
     return path.samples.map((s) => this.toWorld(s.x, s.y, s.z, h));
   }
 
@@ -1524,41 +1598,6 @@ export class SceneView {
   }
 
   // ---------------------------------------------------------------- stops
-  private makeCairn(color: number): THREE.Group {
-    const g = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85, flatShading: true });
-    const stones: [number, number, number, number][] = [[1.0, 0.42, 0.0, 0.2], [0.72, 0.36, 0.72, -0.3], [0.46, 0.3, 1.34, 0.5]];
-    for (const [r, squash, y, rot] of stones) {
-      const stone = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), mat);
-      stone.scale.set(1, squash, 0.86);
-      stone.position.y = y + r * squash;
-      stone.rotation.y = rot;
-      g.add(stone);
-    }
-    return g;
-  }
-
-  private makeRover(): THREE.Group {
-    const g = new THREE.Group();
-    const white = new THREE.MeshStandardMaterial({ color: 0xe9ecef, roughness: 0.55 });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x23262b, roughness: 0.8 });
-    const glass = new THREE.MeshStandardMaterial({ color: 0x3fb6d8, roughness: 0.2, metalness: 0.5 });
-    const cabin = new THREE.Mesh(new THREE.CapsuleGeometry(1.15, 2.6, 6, 14).rotateZ(Math.PI / 2), white);
-    cabin.position.y = 2.0;
-    const window = new THREE.Mesh(new THREE.SphereGeometry(0.95, 14, 10), glass);
-    window.position.set(2.0, 2.15, 0);
-    window.scale.set(0.7, 0.8, 1);
-    g.add(cabin, window);
-    for (const x of [-1.6, 0, 1.6]) {
-      for (const z of [-1.35, 1.35]) {
-        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.5, 14).rotateX(Math.PI / 2), dark);
-        wheel.position.set(x, 0.62, z);
-        g.add(wheel);
-      }
-    }
-    return g;
-  }
-
   setPois(states: PoiMarkerState[]): void {
     this.dirty = true;
     for (const child of [...this.poiGroup.children]) {
@@ -1576,9 +1615,18 @@ export class SceneView {
       const holder = new THREE.Group();
       holder.userData.poi = p;
       holder.position.copy(this.ground(p.x, p.y));
+      if (isShelter) {
+        // the rover stands on all six wheels: tilt it to the slope under its 6 × 3 m footprint
+        const h = (x: number, y: number) => this.site.grid.heightAt(x, y);
+        const dzdx = (h(p.x + 2.5, p.y) - h(p.x - 2.5, p.y)) / 5;
+        const dzdy = (h(p.x, p.y + 1.3) - h(p.x, p.y - 1.3)) / 2.6;
+        const n = new THREE.Vector3(-dzdx, 1, dzdy).normalize(); // world: X east, Y up, Z south
+        holder.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n);
+        holder.position.y -= 0.05;
+      }
 
       const color = isShelter ? 0xffffff : st.active ? 0xc6f432 : 0x9aa3ab;
-      const model = isShelter ? this.makeRover() : this.makeCairn(st.active ? 0xf4d9b0 : 0x9a8d80);
+      const model = isShelter ? makeRover() : makeCairn(st.active, seedOf(p.id));
       model.userData.poiMarker = true;
       holder.add(model);
       // markers keep a readable size on screen: scale grows with camera distance (real size up close)
@@ -1671,6 +1719,7 @@ export class SceneView {
       }
     });
     el.addEventListener("pointermove", (ev) => {
+      if (this.mode === "roam") return; // free roam reads the pointer itself
       if (this.mode === "walk") {
         if (this.drag) {
           this.walk.yaw -= (ev.clientX - this.drag.x) * 0.004;
@@ -1690,6 +1739,7 @@ export class SceneView {
     el.addEventListener("pointerleave", () => this.onHover(null, 0, 0));
     el.addEventListener("dblclick", (ev) => {
       window.clearTimeout(clickTimer);
+      if (this.mode === "roam") return;
       const p = this.pick(ev.clientX, ev.clientY);
       if (p) return this.focusOn(p);
       // outside the walk area: find the spot on the surrounding terrain
@@ -1707,14 +1757,14 @@ export class SceneView {
         ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down", "+": "in", "=": "in", "-": "out", n: "north", N: "north",
       };
       const action = map[ev.key];
-      if (action && this.mode !== "walk") {
+      if (action && this.mode !== "walk" && this.mode !== "roam") {
         ev.preventDefault();
         this.nudge(action);
       }
     });
     el.addEventListener("pointerup", (ev) => {
       this.drag = null;
-      if (!down || this.mode === "walk" || this.mode === "fly") return;
+      if (!down || this.mode === "walk" || this.mode === "fly" || this.mode === "roam") return;
       const moved = Math.hypot(ev.clientX - down.x, ev.clientY - down.y);
       if (moved < 5 && performance.now() - down.t < 450) {
         // wait a moment so a double-click (centre the view) is not also treated as a click

@@ -11,6 +11,10 @@ Built for the **2026 NASA Space Apps Challenge** — *Interplanetary Survival Gu
   <img src="docs/img/visor.jpg" width="49%" alt="CAIRN visor during a walk to Cheyava Falls: oxygen, way home, radio, dose and the minimap" />
 </p>
 
+<p>
+  <img src="docs/img/free-roam.gif" width="98%" alt="Free roam tour: walking beside the rover in 3D, the visor with gloves in view, a mission on the map, a dust storm, two astronauts, and Mission Control's best guess" />
+</p>
+
 **Live app: [cairn-mars.up.railway.app](https://cairn-mars.up.railway.app)** — Mission Control at
 [cairn-mars.up.railway.app/?view=mission](https://cairn-mars.up.railway.app/?view=mission).
 
@@ -52,6 +56,34 @@ Colour-blind safe throughout: map layers and charts use the Okabe-Ito palette, a
 
 Every layer, photo and reading names its mission, instrument and product in the **Data sources** panel and in [docs/data-sources.md](docs/data-sources.md).
 
+## Free roam: walk it yourself
+
+Plan an EVA, then walk it on foot — or just walk. *Free roam on foot* on the main menu, *Free roam* in the planner's top bar, *Walk it yourself* under *Start EVA*, or a **scenario**.
+
+<p>
+  <img src="docs/img/roam-3d.jpg" width="49%" alt="Free roam in 3D: the astronaut beside the pressurised rover at Jezero" />
+  <img src="docs/img/roam-visor.jpg" width="49%" alt="Free roam visor: inside the helmet, gloves in view, readouts on the glass" />
+  <img src="docs/img/roam-map-mission.jpg" width="49%" alt="A mission on the map: the planned route, the next stop and the oxygen against the plan" />
+  <img src="docs/img/roam-dust-storm.jpg" width="49%" alt="Gale in the 2018 global dust storm: tau 8, a tenth of the daylight" />
+</p>
+
+- **Physics, not animation**: Mars gravity, traction, a lope above 1.3 m/s, ballistic jumps, slides past the friction angle, falls that topple onto hands and knees and a 7 s suited get-up (details under *What it does*).
+- **Missions**: the planned route and numbered stops; hold E to sample after picking the target from the **rover's own photos** at that stop; the clock runs on by the planned work time; climb back in through the suitport. The debrief scores oxygen, time, safe walking and (if the storm hit) sheltering in time, and lists the **decisions made alone**.
+- **Earth one light time behind**: with the hab server, Mission Control watches the walk late, draws **Earth's best guess** of where you are now from the plan, and its messages reach your helmet only after the real delay (a revised plan can be accepted or declined).
+- **Two astronauts**: open the same page with `&crew=ev2` on a second device; each sees the other's suit (EV1 fern stripes, EV2 amber), with no delay between them.
+- **Field work on the way**: hold E anywhere for a field reading of the ground at your boots (CAIRN's sand and slope maps, the USGS geologic unit, how much sky the terrain blocks and, at Jezero, CRISM mineral strength). A task list gives each site its jobs with live hints: hunt for strong olivine, Fe/Mg clay and carbonate with a 40 m spectral signal; cross three geologic units; follow the real rover's route for 50 m; three soil tests 100 m apart; find the most sheltered 1 % of the ground for a storm; and stand up the relay mast (`R`) where it sees the rover, then talk through it from radio shadow. Finds plant a survey flag, go into Mission Control's log and the debrief. Readings and the mast cost work time and oxygen, like samples.
+- **Harder walks**: the **20 May 2024 solar storm** mid-mission (30 minutes to get inside), **suit leak** or **twisted ankle** practice, and **dust storms** at measured optical depth.
+- **Scenario presets**: a clear morning at Cheyava Falls, the 2024 storm, Gale in the 2018 global dust storm, two astronauts, a suit leak — each one tap to plan or to walk.
+- **Settings**: rebind keys, reduce camera shake, captions for sound cues. Phones start on the light quality; slow laptops are offered it.
+
+| Free roam | Keys (rebindable) |
+|---|---|
+| Walk · lope · jump | `W` `A` `S` `D` or arrows · `Shift` · `Space` (thumb stick and buttons on touch) |
+| Sample / climb in / field reading · relay mast · gold visor | hold `E` · `R` · `G` |
+| Views · sound · help · settings | `1` `2` `3` (`V` cycles) · `M` · `H` · `,` |
+
+Address options: `?roam=1` free roam, `&crew=ev2` second astronaut, `&look=3d|visor|map`, `&dust=clear|regional|global|extreme` or `&tau=<n>`, `&emergency=leak@900` (or `ankle@<s>`), `&q=low|high`; a plan after `#` (`#stops=…&storm=0`) makes it a mission.
+
 ## Run it
 
 Requires Node.js 24 or newer (the hab server runs its TypeScript directly). All data is already in the repository, so no downloads are needed.
@@ -68,7 +100,7 @@ Open the address Vite prints (normally http://localhost:5173).
 |---|---|
 | `npm run dev:all` | Development: frontend and hab server together, one terminal (Ctrl+C stops both) |
 | `npm run dev` | Development server (frontend only) |
-| `npm test` | 96 unit and integration tests (including the hab server end to end) |
+| `npm test` | 122 unit and integration tests (including the hab server end to end) |
 | `npm run build` | Type-check and build to `web/dist/` |
 | `npm run preview` | Serve the built app |
 | `npm start` | Build, then serve the app with the hab server (Mission Control, shared notebook) |
@@ -77,7 +109,7 @@ Open the address Vite prints (normally http://localhost:5173).
 | `npm run start:https` | Same as `npm start`, over https:// |
 | `npm run fetch-speech` | Once: put the speech-to-text model on the hab (about 45 MB, not committed) |
 
-URL options: `?site=gale` opens Gale Crater's main menu (default `jezero`; the menu loads only its text and two images, and nothing of the planner until you open it), `?skip=1` opens the planner straight away, `?menu=1` the main menu even with a plan in the address, `?demo=1` plays the guided demo straight away (for a booth screen or recording the video), `?q=low` uses a lighter mesh and the 50 cm texture for slow GPUs, `?tex=4k` stays on the 50 cm texture. The part after `#` is the plan, e.g. `#stops=cheyava,serpentine&t=9.5&relay=1`; links with a plan open straight on it.
+URL options: `?site=gale` opens Gale Crater's main menu (default `jezero`; the menu loads only its text and two images, and nothing of the planner until you open it), `?skip=1` opens the planner straight away, `?menu=1` the main menu even with a plan in the address, `?demo=1` plays the guided demo straight away (for a booth screen or recording the video), `?roam=1` opens free roam (add `&look=3d` to start behind the astronaut), `?q=low` uses a lighter mesh and the 50 cm texture for slow GPUs, `?tex=4k` stays on the 50 cm texture. The part after `#` is the plan, e.g. `#stops=cheyava,serpentine&t=9.5&relay=1`; links with a plan open straight on it.
 
 Works on desktop, tablets and phones: below 1180 px the route and layers panel becomes a drawer (layers button, top right); in portrait the plan becomes a bottom sheet, and during a walk the controls sit in a strip above it.
 
@@ -96,6 +128,8 @@ The server prints its network address too (e.g. `http://192.168.1.10:8787`), so 
 
 - **Mission Control** opens from the main menu (or the *Mission Control* button in the planner's top bar, or `?view=mission&site=jezero`). It shows the crew's position, oxygen, dose, log, notes and voice notes **one light time late** (13–22 min, for the EVA's real date), and messages typed there reach the crew one light time after they are sent. The delay runs on the EVA clock, so it speeds up with the simulation. While an EVA is under way on any site, every main menu shows a **Live EVA** card that opens that EVA's own Mission Control (or joins it as EV2), and a Mission Control opened for a quiet site points to the live one.
 - **Field notebook** entries and voice notes are kept on the hab (`web/hab-data/`, not committed) and appear on every crew device; edits made offline sync when the hab is back. Finished EVAs are recorded there too.
+- **Free roam.** *Free roam on foot* on the main menu (or *Free roam* in the planner's top bar) puts you in the suit at the rover's rear suitport, free to walk anywhere in the 2 × 2 km HiRISE area, seen on the map, from behind in 3D, or through the visor. The walking is physics, not animation: in 0.38 g your feet grip with 38 % of Earth's force, so you are slow to start, stop and turn; above 1.3 m/s a walk becomes a bounding lope (Froude number 0.5); jumps are ballistic (34 cm and 0.86 s in the air, against 13 cm on Earth); ground steeper than the friction angle makes you slide; hard landings can knock you down: the stiff pressurised suit topples like an inverted pendulum, 1.6× slower than on Earth, until the hands meet the real ground, settles onto the slope, slides on down if the ground is too steep to rest on, and only on steady ground gets up, taking about 7 s (sit back, one knee up, push to stand); every change of pose eases in, including breathing at rest, shuffling turns, kneeling to sample and reaching for the hatch; on steep ground you sit and slide feet first, braking with your hands. Oxygen, heart rate and breathing follow the planner's walking model. Boot prints stay in the regolith, coarse dust flies in clean arcs while the fine fraction hangs in the thin air, and you hear your breathing, footfalls and heartbeat through the suit. Suit and body numbers are labelled demo assumptions (Help in free roam lists them). WASD or a thumb stick, Shift to lope, Space to jump.
+- **Walk your plan.** *Walk it yourself* in the planner (under *Start EVA*) turns the plan into a mission in free roam: the planned route is drawn on the ground and beacons mark the stops; walk to each in CAIRN's order, hold E to collect a sample (the clock runs on by the planned time on site, at the working metabolic rate, so the Sun moves), and climb back into the rover through its suitport. The debrief sets your time, oxygen, distance, falls and time off the route against the planner's figures for that exact route, with up to three stars. In the visor you are inside the helmet: the body turns with your view, your gloves show when you look down, the gold sun visor lowers with G, and you hear your own suit (fan, breathing, footsteps through the boots, heartbeat). In the 3D and map views you hear Mars from outside instead: wind and faint, dull footsteps, since its thin CO₂ air carries little sound.
 - **Two astronauts, two devices.** Open the planner on one device (EV1) and choose *Join as EV2* on the main menu of another. EV1 plans and starts the EVA; EV2's device rebuilds the same plan and walks it in lockstep with EV1's EVA clock, from EV2's own position, each seeing the other suit. Notes taken by either appear on both. Mission Control labels EV1 and EV2 on its map.
 - **Revised plans from Earth.** In Mission Control, *Propose a plan change*: click a stop to drop it or the map to add one, then send. It reaches the crew one light time later as a card to accept or decline (during an EVA, an accepted change applies back at the rover), and the crew's answer reaches Earth one light time after that.
 - **Replay.** Every EVA recorded on the hab can be replayed in Mission Control: a timeline of Earth's clock, with what happened on Mars and when Earth found out.
@@ -140,7 +174,7 @@ The buttons at the bottom-right of the map do the same things.
 
 ## The demo
 
-Press **Demo** (top right) or **Watch the 2-minute demo** in the briefing. It walks through: the site → real terrain in 3D → traversability and the deadly straight line → the real Sun and shadows → radio contact and where to stand up a relay → a flyover → the walk, arriving at the first objective (with the 360° view at Gale) → the 20 May 2024 storm, the re-route and the dose avoided. Pause, skip or exit at any time.
+Press **Demo** (top right) or **Watch the 2-minute demo** in the briefing. It walks through: the site → real terrain in 3D → traversability and the deadly straight line → the real Sun and shadows → radio contact and where to stand up a relay → a flyover → the walk, arriving at the first objective (with the 360° view at Gale) → the 20 May 2024 storm, where Earth's last "all quiet" arrives only after the alarm → the decisions the crew made alone → walking it yourself in free roam. Pause, skip or exit at any time.
 
 ## How it works
 

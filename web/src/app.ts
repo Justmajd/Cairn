@@ -26,6 +26,9 @@ import { ic } from "./ui/icons";
 import { hideAnimated, showAnimated } from "./ui/motion";
 import { playOnce } from "./ui/fx";
 import { dissolveTo } from "./ui/dissolve";
+import { saveRoamPlan } from "./roam/plan";
+import { autonomyHtml } from "./ui/autonomy";
+import { bindScenarios, scenariosHtml } from "./ui/scenarios";
 import { openModal, stopCardHtml } from "./ui/modals";
 import type { DemoRunner, DemoStep } from "./ui/demo";
 import type { CueRow } from "./ui/cuecard";
@@ -247,6 +250,12 @@ export class App {
       this.dustSol = site.dust.eva.sol ?? site.dust.record[site.dust.record.length - 1][0];
       view.setDust(site.dust.eva.tau);
     }
+    // ?dust=<preset> (scenario presets): a measured dust level from eva/dust.ts
+    const dustQ = new URLSearchParams(location.search).get("dust");
+    if (dustQ && DUST_PRESETS.some((d) => d.id === dustQ)) {
+      this.dustId = dustQ;
+      view.setDust(this.dustTau);
+    }
     this.notebook = new Notebook(site.meta.id);
     this.pushNotes();
     this.notebook.onChange = () => {
@@ -290,12 +299,14 @@ export class App {
     $(".top-actions").innerHTML = `
       <button id="btn-panels" class="compact-only" title="Route and map layers">${ic.layers}<span>Route & layers</span></button>
       <button id="btn-hab" class="hab-chip" title="Mission Control">${ic.radio}<span>Mission Control</span><i></i></button>
+      <button id="btn-roam" title="Free roam: walk anywhere on foot, in Mars gravity">${ic.walk}<span>Free roam</span></button>
       <button id="btn-demo" class="demo-btn" title="Play the guided demo">${ic.play}<span>Demo</span></button>
       <button id="btn-about" aria-haspopup="menu" title="Briefing, data sources and assumptions">${ic.info}<span>About</span>${ic.chev}</button>`;
     $("#about-menu").innerHTML = `
       <button data-about="briefing">${ic.book}<span><b>Mission briefing</b><small>The site, the story and why it matters</small></span></button>
       <button data-about="sources">${ic.data}<span><b>Data sources</b><small>Where every layer and number comes from</small></span></button>
       <button data-about="model">${ic.sliders}<span><b>Suit and model assumptions</b><small>Oxygen, walking and radiation models</small></span></button>
+      <button data-about="scenarios">${ic.play}<span><b>Scenarios</b><small>One tap sets up a story: a clear morning, the 2024 solar storm, a global dust storm, two astronauts, a suit leak</small></span></button>
       <button data-about="offline">${ic.offline}<span><b>Use offline</b><small>Save this site to the device and install CAIRN as an app. No network needed after that.</small></span></button>
       <button data-about="keys" class="fine-pointer">${ic.keyboard}<span><b>Keyboard shortcuts</b><small>Views, zoom, pause — press ? any time</small></span></button>`;
     $("#nav").innerHTML = `
@@ -343,6 +354,10 @@ export class App {
       if (item === "briefing") showBriefing(this.site, this.sites, "overlay");
       else if (item === "sources") void this.about("sources");
       else if (item === "offline") void this.goOffline();
+      else if (item === "scenarios") {
+        openModal("Scenarios", `<p class="note">Each one is an ordinary plan with its options set. Plan it here, or walk it on foot in free roam.</p>${scenariosHtml()}`, true);
+        bindScenarios($("#modal").querySelector(".scenarios")!);
+      }
       else if (item === "keys") this.showShortcuts();
       else void this.about("model");
     });
@@ -355,6 +370,7 @@ export class App {
     $("#scene").addEventListener("pointerdown", used);
     $("#scene").addEventListener("wheel", used, { passive: true });
     $("#btn-demo").addEventListener("click", () => void this.startDemo());
+    $("#btn-roam").addEventListener("click", () => this.walkItYourself());
     $("#btn-hab").addEventListener("click", () => this.openMissionControl());
     this.renderHabChip();
     $("#btn-panels").addEventListener("click", (ev) => {
@@ -440,6 +456,7 @@ export class App {
       if (!t) return;
       const act = t.dataset.act;
       if (act === "start") this.startEva();
+      else if (act === "walk-it") this.walkItYourself();
       else if (act === "fly") this.setView("fly");
       else if (act === "cue") this.openCueCard();
       else if (act === "export") {
@@ -869,6 +886,24 @@ export class App {
     // A round trip is equally long in both directions: start with the stop listed first (primary objectives lead).
     const rank = (p: Poi) => this.pois.indexOf(p);
     return rank(best[0]) <= rank(best[best.length - 1]) ? best : best.slice().reverse();
+  }
+
+  /** Free roam with this plan as a mission: the planned route, its stops in order, the totals to beat. */
+  private walkItYourself(): void {
+    const site = encodeURIComponent(this.site.id);
+    const p = this.plan;
+    if (!p || this.phase !== "planning") return dissolveTo(`?site=${site}&roam=1`);
+    const b = p.budget;
+    saveRoamPlan({
+      site: this.site.id,
+      hash: location.hash,
+      rover: { x: this.rover.x, y: this.rover.y },
+      startLmst: this.startLmst,
+      stops: p.order.slice(1, -1).map((s) => ({ id: s.id, name: s.name, short: s.short, x: s.x, y: s.y, dwellMin: s.dwellMin })),
+      legs: p.legs.map((l) => l.points.map((q) => ({ x: q.x, y: q.y }))),
+      planned: { o2L: b.o2UsedL, timeS: b.totalTimeS, walkTimeS: b.walkTimeS, distM: b.distanceM },
+    });
+    dissolveTo(`?site=${site}&roam=1&tau=${+this.dustTau.toFixed(2)}${location.hash}`); // the planner's dust goes too
   }
 
   private async replan(): Promise<void> {
@@ -1441,7 +1476,8 @@ export class App {
           this.member === "ev2"
             ? `<button class="primary big" disabled>${ic.play}<span>${this.habState === "online" ? "EV1 starts the EVA" : "No link to the hab"}</span></button>
                <p class="crew-note">You are <b>EV2</b>. EV1 plans this EVA on their device; when they start it, you walk it with them here.</p>`
-            : `<button class="primary big" data-act="start" ${b.feasible ? "" : "disabled"}>${ic.play}<span>Start EVA</span></button>`
+            : `<button class="primary big" data-act="start" ${b.feasible ? "" : "disabled"}>${ic.play}<span>Start EVA</span></button>
+               <button class="big walk-it" data-act="walk-it" title="Walk this plan on foot in free roam: reach each stop, take the samples, get back to the rover">${ic.walk}<span>Walk it yourself</span></button>`
         }
       </footer>`;
   }
@@ -1553,6 +1589,7 @@ export class App {
               : `<p class="note">All objectives reached; the crew is back at the rover with ${Math.round(this.P.o2SupplyL - m.o2UsedL)} L of oxygen.</p>`
           }
         </section>
+        ${autonomyHtml(this.log.filter((e) => e.kind === "alert").map((e) => ({ t: e.t, text: e.text })), this.skyAt(0).lightTimeS)}
         ${this.logHtml()}
       </div>
       <footer class="panel-foot">
@@ -1834,11 +1871,38 @@ export class App {
           this.speed = 300;
           await d.until(() => !!this.mission && this.mission.alertS !== null, 60000);
           this.speed = 120;
-          await d.sleep(4500);
+          // the light-time story: Earth's last word was written before the storm, and only arrives now
+          const lt = this.skyAt(this.mission?.t ?? 0).lightTimeS;
+          const sentAgo = fmtLightTime(lt);
+          this.log.push({ t: this.mission?.t ?? 0, kind: "earth", text: `(Demo) Mission Control, sent ${sentAgo} ago: “Space weather looks quiet. Carry on.” It arrives after the alarm.` });
+          d.say(`The alarm sounds on Mars now. Earth's last message, <b>“Space weather looks quiet, carry on”</b>, was sent ${esc(sentAgo)} ago and arrives only now. Earth will not even hear about the storm for another ${esc(sentAgo)}: the crew decides alone.`);
+          await d.sleep(6500);
           this.speed = 300;
           await d.until(() => this.phase === "summary", 60000);
           lastAvoided = this.mission?.projection?.avoidedUGy ?? 0;
-          await d.sleep(3500);
+          await d.sleep(2500);
+        },
+      },
+      {
+        title: "Decisions made alone",
+        body: () => {
+          const lt = fmtLightTime(this.skyAt(0).lightTimeS);
+          return `Every call on this EVA was the crew's: Earth heard about the turn-back ${esc(lt)} later, and its first answer could not arrive for twice that. The debrief lists each decision with those times.`;
+        },
+        run: async (d) => {
+          document.querySelector(".autonomy")?.scrollIntoView({ behavior: "smooth", block: "center" });
+          await d.sleep(6000);
+        },
+      },
+      {
+        title: "Now walk it yourself",
+        body: "The same plan can be walked on foot in free roam: real Mars gravity and a stiff suit, the same storm, Earth one light time behind. Choose <b>Walk it yourself</b> under Start EVA, or a scenario under About.",
+        run: async (d) => {
+          if (this.phase !== "planning") this.backToPlanning();
+          await d.sleep(300);
+          document.querySelector<HTMLElement>("[data-act=walk-it]")?.classList.add("demo-glow");
+          await d.sleep(6000);
+          document.querySelector<HTMLElement>("[data-act=walk-it]")?.classList.remove("demo-glow");
         },
       },
     ];
@@ -1847,6 +1911,7 @@ export class App {
       title: "Robots built the cairns. Humans will follow them.",
       body: () =>
         `${lastAvoided > 0 ? `Sheltering avoided <b>${fmtDose(lastAvoided)}</b> of radiation. ` : ""}Every layer here comes from NASA, USGS and JPL archives — open <b>About → Data sources</b> to check any of them.`,
+      extra: { label: "Walk it yourself", act: () => this.walkItYourself() },
     });
     this.demo.onPause = (p) => {
       this.paused = p;
@@ -2171,7 +2236,35 @@ export class App {
       buddy: this.buddy,
       dust: { tau: dust.tau, name: dust.name },
       hash: this.planHash(),
+      timeline: this.planTimeline(),
+      mode: "plan",
     };
+  }
+
+  /** Where the plan puts the crew over the EVA, every ~20 s: Mission Control's "Earth's best guess". */
+  private planTimeline(): [number, number, number][] {
+    const out: [number, number, number][] = [];
+    if (!this.plan) return out;
+    let t = 0;
+    let at: XY = this.rover;
+    for (const seg of this.plan.budget.segments) {
+      if (seg.kind === "walk") {
+        let next = 0;
+        for (const smp of seg.path.samples) {
+          if (smp.time < next) continue;
+          out.push([Math.round(t + smp.time), Math.round(smp.x), Math.round(smp.y)]);
+          next = smp.time + 20;
+        }
+        t += seg.path.time;
+        const end = seg.path.samples[seg.path.samples.length - 1];
+        if (end) at = end;
+        out.push([Math.round(t), Math.round(at.x), Math.round(at.y)]);
+      } else {
+        t += seg.durationS;
+        out.push([Math.round(t), Math.round(at.x), Math.round(at.y)]);
+      }
+    }
+    return out;
   }
 
   private sendPlan(): void {
