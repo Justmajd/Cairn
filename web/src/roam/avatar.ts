@@ -742,6 +742,22 @@ export class Dust {
     geo.setDrawRange(0, 0);
   }
 
+  /**
+   * Dust carried on the wind around `at` (a dust storm): fine grains arriving upwind and drifting past,
+   * `perS` of them a second.  `wind` is the wind's velocity (world, m/s).
+   */
+  drift(at: V3, wind: V3, perS: number, dt: number): void {
+    let n = perS * dt;
+    while (n > 0 && this.grains.length < this.max) {
+      if (n < 1 && Math.random() > n) break;
+      n -= 1;
+      const a = Math.random() * Math.PI * 2;
+      const r = 1 + Math.random() * 9;
+      const p = at.clone().add(new THREE.Vector3(Math.cos(a) * r, 0.2 + Math.random() * 2.5, Math.sin(a) * r)).addScaledVector(wind, -1.2);
+      this.grains.push({ p, v: wind.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.6, (Math.random() - 0.4) * 0.3, (Math.random() - 0.5) * 0.6)), life: 3 + Math.random() * 3, fine: true });
+    }
+  }
+
   /** A puff at a footfall: `power` 1 for a step, more for a landing; `vel` the walker's velocity (world). */
   kick(at: V3, vel: V3, power: number, sand: number): void {
     const n = Math.round((6 + sand * 10) * power);

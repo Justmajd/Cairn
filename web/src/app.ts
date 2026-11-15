@@ -891,7 +891,7 @@ export class App {
       legs: p.legs.map((l) => l.points.map((q) => ({ x: q.x, y: q.y }))),
       planned: { o2L: b.o2UsedL, timeS: b.totalTimeS, walkTimeS: b.walkTimeS, distM: b.distanceM },
     });
-    dissolveTo(`?site=${site}&roam=1${location.hash}`);
+    dissolveTo(`?site=${site}&roam=1&tau=${+this.dustTau.toFixed(2)}${location.hash}`); // the planner's dust goes too
   }
 
   private async replan(): Promise<void> {
