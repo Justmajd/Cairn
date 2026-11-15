@@ -17,7 +17,7 @@ cd web
 npm ci                 # install
 npm run dev:all        # Vite dev server (5173) + hab server (8787) in one terminal; Ctrl+C stops both
 npm run dev:https      # same over https:// (phones need it for the microphone); local cert in web/.cert
-npm test               # vitest (134 tests: model, routing, data, hab server end to end)
+npm test               # vitest (135 tests: model, routing, data, hab server end to end)
 npm run typecheck      # app tsconfig + server tsconfig
 npm run build          # tsc + vite build → web/dist (and dist/sw.js)
 npm start              # build, then serve dist + hab on http://localhost:8787 (production-like)
@@ -174,8 +174,10 @@ assumptions). Never present them as NASA specs.
   home from the farthest point and keeping a 25 % reserve), safety checks (terrain, oxygen, time,
   shelter ≤ 30 min, radio, daylight).
 - `radio.ts` — line-of-sight radio shadow from the rover antenna; coverage along the route; best
-  relay mast position (`bestRelay`), or the crew's own spot (`relayAtPoint`: within `RELAY_MAX_OFF_ROUTE_M` of the
-  route, mast must see the rover; planner map menu → Relay here, plan link `relay=x_y`).
+  relay mast position (`bestRelay`), or the crew's own masts (`relayChain`: each within `RELAY_MAX_OFF_ROUTE_M` of the
+  route, each sees the rover or another mast (`via`), a link works once every mast to the rover is up; `radioCoverage` and
+  `inContact` take several relays). Planner: `relayManual: XY[]`, `plan.relays` / `relaysPassS` / `relaysUpS`, map menu →
+  Relay here / Remove relay, plan link `relay=x_y,x_y`; `view.setRelays`.
 - `radiation.ts` — `RadiationModel`: background dose and the storm replay (RAD archive lacks the first
   ~13 h of the 20 May 2024 event → a labelled model scaled to NASA's 8,100 µGy).
 - `sun.ts` — solar geometry, LMST, sun position; `shade.ts` — terrain shadow test.

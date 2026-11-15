@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { measurePath, TerrainGrid } from "../data/grid";
 import { DEFAULT_PARAMS } from "./params";
-import { bestRelay, lineOfSight, radioCoverage, radioDepthAt, radioShadow, relayAtPoint, RELAY_MAX_OFF_ROUTE_M } from "./radio";
+import { bestRelay, lineOfSight, radioCoverage, radioDepthAt, radioShadow, relayAtPoint, relayChain, RELAY_MAX_OFF_ROUTE_M } from "./radio";
 
 function grid(n: number, height: (col: number, row: number) => number): TerrainGrid {
   const h = new Float32Array(n * n);
@@ -78,10 +78,29 @@ describe("relay", () => {
     }
     // behind the wall: the mast cannot see the rover
     const hidden = relayAtPoint(s, g, [out, along], { x: 170, y: 100 });
-    expect("reason" in hidden && hidden.reason).toMatch(/cannot see the rover/);
+    expect("reason" in hidden && hidden.reason).toMatch(/sees neither the rover nor another relay/);
     // far from the route
     const far = relayAtPoint(s, g, [out, along], { x: 60, y: 100 + RELAY_MAX_OFF_ROUTE_M + 20 });
     expect("reason" in far && far.reason).toMatch(/from the route/);
+  });
+
+    it("chains relays: a mast behind the ridge links through a mast on top of it", () => {
+    const s = radioShadow(g, rover);
+    const out = measurePath(g, [rover, { x: 190, y: 100 }], DEFAULT_PARAMS);
+    const along = measurePath(g, [{ x: 190, y: 100 }, { x: 190, y: 30 }], DEFAULT_PARAMS);
+    // alone, the mast behind the wall sees nothing that links home
+    expect("reason" in relayChain(s, g, [out, along], [{ x: 185, y: 60 }])).toBe(true);
+    // with a mast on the wall top first, it hops: rover → wall top → far side
+    const chain = relayChain(s, g, [out, along], [{ x: 185, y: 60 }, { x: 120, y: 104 }]);
+    expect("relays" in chain).toBe(true);
+    if ("relays" in chain) {
+      const [far, top] = chain.relays;
+      expect(top.via).toBe(-1); // the wall top sees the rover
+      expect(far.via).toBe(1); // the far mast links through it
+      // the far mast's link works only from where the crew passes it (it is later on the walk than the wall top)
+      expect(far.leg * 1000 + far.sample).toBeGreaterThanOrEqual(top.leg * 1000 + top.sample);
+      expect(far.after.coveredFraction).toBeGreaterThanOrEqual(top.before.coveredFraction);
+    }
   });
 
     it("counts the time spent at a stop with no contact", () => {
