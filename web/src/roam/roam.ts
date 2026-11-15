@@ -11,7 +11,7 @@ import { inContact, radioShadow } from "../eva/radio";
 import { Astronaut, BlobShadow, Dust, Footprints, Trail } from "./avatar";
 import { ROVER_HALF } from "../scene/models";
 import { SuitAudio } from "./audio";
-import { $, esc, fmtClock, fmtDist, fmtDur } from "../ui/dom";
+import { $, esc, fmtClock, fmtDist, fmtDose, fmtDur } from "../ui/dom";
 import { ic } from "../ui/icons";
 import { dissolveTo } from "../ui/dissolve";
 import { openModal } from "../ui/modals";
@@ -21,6 +21,8 @@ import { loadRoamPlan, RoamPlan } from "./plan";
 import { RoamHab } from "./hab";
 import type { CrewPose, EarthMessage, Frame, Member, PlanInfo } from "../hab/protocol";
 import { autonomyHtml, type Decision } from "../ui/autonomy";
+import { RadiationModel } from "../eva/radiation";
+import { RoamStorm } from "./storm";
 import type { XY } from "../types";
 
 /** Close enough to a stop to work there, and to the rover's hull to climb in (m). */
@@ -117,6 +119,12 @@ export class Roam {
   private readonly hab: RoamHab;
   private lightTimeS = 0;
   private decisions: Decision[] = [];
+  // ---- a solar particle event during the mission (the 20 May 2024 replay)
+  private stormOn = true;
+  private storm: RoamStorm | null = null;
+  private stormAlarm = false;
+  private stormEarthT: number | null = null;
+  private lastT = 0;
   // ---- two astronauts on two devices
   private readonly member: Member;
   private readonly buddy: Astronaut;
@@ -138,6 +146,7 @@ export class Roam {
     if (!shelter) throw new Error("Site has no rover");
     // a plan in the address: the planner handed it over ("Walk it yourself"), or it is routed here
     const link = parsePlanLink(location.hash);
+    this.stormOn = link?.storm ?? false;
     this.plan = link ? loadRoamPlan(site.id, location.hash) : null;
     const parked = this.plan?.rover ?? link?.rover ?? null;
     const rover = parked ? { ...shelter, x: parked.x, y: parked.y } : shelter;
@@ -258,7 +267,7 @@ export class Roam {
       o2SupplyL: p.o2SupplyL,
       o2ReserveL: p.o2SupplyL * p.reserveFraction,
       lightTimeS: this.lightTimeS,
-      storm: false,
+      storm: this.stormOn,
       buddy: this.hab.ev2Online > 0,
       dust: { tau: 0.5, name: "Typical season" },
       legs: this.legs.map((leg) => leg.filter((_, k) => k % 3 === 0 || k === leg.length - 1).map((q) => [Math.round(q.x * 10) / 10, Math.round(q.y * 10) / 10] as [number, number])),
@@ -282,16 +291,16 @@ export class Roam {
       y: s.y,
       headingDeg: (s.heading * 180) / Math.PI,
       o2LeftL: DEFAULT_PARAMS.o2SupplyL - s.o2L,
-      doseUGy: 0,
-      doseRate: 0,
-      baseline: 0,
+      doseUGy: this.storm?.doseUGy ?? 0,
+      doseRate: this.storm ? this.storm.rate(this.t) : 0,
+      baseline: this.storm?.baseline ?? 0,
       status: `On foot · ${s.gait === "down" ? "down" : s.gait === "slide" ? "sliding" : s.gait === "air" ? "in the air" : s.gait === "lope" ? "loping" : s.gait === "walk" ? "walking" : "standing"}${this.finished ? " · back in the rover" : ""}`,
       next: tg ? tg.name : this.plan ? "the rover" : "exploring",
       nextDistM: tg ? Math.hypot(tg.x - s.x, tg.y - s.y) : 0,
       homeS: dr / 0.8,
       radio: this.contact ? "ok" : "lost",
       sheltered: this.finished,
-      storm: false,
+      storm: this.stormAlarm,
       lmst: fmtLmst(this.lmst()),
       sunEl: sun.elevation,
       lightTimeS: this.lightTimeS,
@@ -456,6 +465,8 @@ export class Roam {
   private useMission(stops: MissionStop[], legs: XY[][]): void {
     this.stops = stops;
     this.legs = legs;
+    // the storm starts a little under halfway through the planned EVA: a choice between science and shelter
+    if (this.stormOn && this.plan && !this.storm) this.storm = new RoamStorm(new RadiationModel(this.site.replay), Math.max(300, Math.round(this.plan.planned.timeS * 0.42)), DEFAULT_PARAMS.maxShelterMin);
     queueMicrotask(() => this.hab.plan(this.planInfo()));
     const grid = this.site.grid;
     this.view.setRoutes({ safe: legs.map((l) => measurePath(grid, l, DEFAULT_PARAMS)), straight: [], showStraight: false, shelter: null, dimSafe: false });
@@ -577,6 +588,43 @@ export class Roam {
       if (this.offM > OFF_ROUTE_M) this.offRouteS += dt;
     }
     if (DEFAULT_PARAMS.o2SupplyL - s.o2L <= 0) this.finish(true);
+    this.weather();
+  }
+
+  /** The storm: dose as it builds, the alarm on Mars, Earth's answer two light times later. */
+  private weather(): void {
+    const st = this.storm;
+    if (!st) return;
+    st.accumulate(this.lastT, this.t, this.finished);
+    this.lastT = this.t;
+    if (!this.stormAlarm && st.alarmed(this.t)) {
+      this.stormAlarm = true;
+      const rate = st.rate(this.t);
+      const skipped = this.stops.length - this.next;
+      this.next = this.stops.length; // turn back: the rover is the only target now
+      this.markStops();
+      this.renderMission();
+      this.toast(`<b>Solar particle event.</b> Your dosimeter reads ${Math.round(rate)} µGy/h, ${Math.round(rate / st.baseline)}× background. Get inside the rover within ${st.shelterMin} min.${skipped ? ` ${skipped} stop${skipped > 1 ? "s" : ""} left for another sol.` : ""}`, true);
+      this.audio.beep(true);
+      this.decided(`Radiation alarm at ${Math.round(rate)} µGy/h: turned back for the rover`);
+      // Earth hears the alarm one light time later; its first answer is back one light time after that
+      this.stormEarthT = st.alertS + 2 * this.lightTimeS;
+    }
+    if (this.stormEarthT !== null && this.t >= this.stormEarthT) {
+      this.stormEarthT = null;
+      this.fromEarth({ id: "storm-earth", text: "We have your radiation alarm. Confirm you are heading for the rover and take the shortest safe way.", sentT: st.alertS + this.lightTimeS, deliverT: this.t });
+    }
+    const panel = this.host.querySelector<HTMLElement>(".rm-storm")!;
+    panel.hidden = !this.stormAlarm;
+    if (this.stormAlarm) {
+      const left = st.leftS(this.t);
+      const inside = this.finished;
+      const html = `<p class="eyebrow">// Solar particle event</p>
+        <b>${Math.round(st.rate(this.t))} µGy/h <small>${Math.round(st.rate(this.t) / st.baseline)}× background</small></b>
+        <span>${inside ? `Inside the rover after ${fmtDur((st.shelteredS ?? this.t) - st.alertS)}` : left >= 0 ? `Inside within <em>${fmtClock(left).slice(3)}</em>` : `<em class="bad">${fmtClock(-left).slice(3)} past the shelter time</em>`} · dose ${fmtDose(st.doseUGy)}</span>`;
+      if (panel.innerHTML !== html) panel.innerHTML = html;
+      panel.classList.toggle("late", !inside && left < 0);
+    }
   }
 
   private distanceToRoute(x: number, y: number): number {
@@ -599,18 +647,23 @@ export class Roam {
   private sample(): void {
     const st = this.stops[this.next];
     const p = DEFAULT_PARAMS;
-    const dwellS = st.dwellMin * 60;
+    let dwellS = st.dwellMin * 60;
+    // the alarm cuts the work short: the clock only runs on to the moment it sounds
+    const alarmAt = this.storm && !this.stormAlarm ? this.storm.alertS : Infinity;
+    const cut = this.t + dwellS > alarmAt;
+    if (cut) dwellS = Math.max(0, alarmAt - this.t);
     const o2 = (p.workingW * dwellS) / (p.kJPerLitreO2 * 1000);
     this.walker.o2L += o2;
     this.walker.energyJ += p.workingW * dwellS;
     this.t += dwellS;
-    this.samples.push({ name: st.name, atS: this.t });
-    this.hab.note(this.t, "stop", `Sample collected at ${st.name} (${st.dwellMin} min on site)`);
+    this.samples.push({ name: cut ? `${st.name} (cut short)` : st.name, atS: this.t });
+    this.hab.note(this.t, "stop", cut ? `Sample at ${st.name} cut short by the radiation alarm after ${Math.round(dwellS / 60)} min` : `Sample collected at ${st.name} (${st.dwellMin} min on site)`);
     this.next++;
     this.markStops();
     this.renderMission();
     this.updateSky(true);
     const nextName = this.next < this.stops.length ? this.stops[this.next].short : "the rover";
+    if (cut) return; // the alarm takes over (see weather)
     this.toast(`<b>Sample collected</b> at ${esc(st.name)}. ${st.dwellMin} min of work used ${o2.toFixed(1)} L of oxygen; the Sun has moved on. Next: ${esc(nextName)}.`);
   }
 
@@ -625,20 +678,27 @@ export class Roam {
     const pl = plan.planned;
     const o2 = s.o2L;
     const off = this.walkS > 0 ? this.offRouteS / this.walkS : 0;
+    this.storm?.board(this.t);
+    this.weather();
     const checks = [
       { ok: !outOfO2 && o2 <= pl.o2L * 1.1, text: `Oxygen within 10 % of the plan (${Math.round(o2)} L used, ${Math.round(pl.o2L)} L planned)` },
       { ok: !outOfO2 && this.t <= pl.timeS * 1.15, text: `EVA time within 15 % of the plan (${fmtDur(this.t)}, ${fmtDur(pl.timeS)} planned)` },
       { ok: this.falls === 0 && off <= 0.1, text: `Safe walking: no falls, under 10 % of the walk off the planned route (${this.falls} ${this.falls === 1 ? "fall" : "falls"}, ${Math.round(off * 100)} % off route)` },
     ];
+    const st = this.storm;
+    if (st && this.stormAlarm) {
+      const took = (st.shelteredS ?? this.t) - st.alertS;
+      checks.push({ ok: !outOfO2 && st.shelteredS !== null && took <= st.shelterMin * 60, text: `Inside within ${st.shelterMin} min of the radiation alarm (${fmtDur(took)}; dose ${fmtDose(st.doseUGy)})` });
+    }
     const stars = outOfO2 ? 0 : checks.filter((c) => c.ok).length;
     if (outOfO2) this.decided("Out of oxygen before reaching the rover");
     this.hab.note(this.t, outOfO2 ? "alert" : "home", outOfO2 ? "Suit out of oxygen" : "Back in the rover through the suitport");
-    this.hab.end(outOfO2, outOfO2 ? "Free roam: out of oxygen before the rover." : `Free roam: ${this.samples.length} of ${this.stops.length} samples, ${stars} of 3 stars.`);
+    this.hab.end(outOfO2, outOfO2 ? "Free roam: out of oxygen before the rover." : `Free roam: ${this.samples.length} of ${this.stops.length} samples, ${stars} of ${checks.length} stars.`);
     const row = (k: string, plan: string, you: string) => `<tr><td>${k}</td><td>${plan}</td><td><b>${you}</b></td></tr>`;
     openModal(
       outOfO2 ? "EVA failed: out of oxygen" : "EVA complete",
       `<div class="rm-debrief">
-        <p class="rm-stars" aria-label="${stars} of 3">${"★".repeat(stars)}<i>${"★".repeat(3 - stars)}</i></p>
+        <p class="rm-stars" aria-label="${stars} of ${checks.length}">${"★".repeat(stars)}<i>${"★".repeat(checks.length - stars)}</i></p>
         <p>${outOfO2 ? "The suit ran out of oxygen before you reached the rover. In a real EVA the 25 % reserve is there so this never happens: turn back when you reach it." : `Back in the rover with ${this.samples.length} of ${this.stops.length} samples.`}</p>
         <ul class="rm-checks">${checks.map((c) => `<li class="${c.ok ? "ok" : ""}">${c.ok ? "✓" : "✗"} ${c.text}</li>`).join("")}</ul>
         <table class="keys"><tr><td></td><td>Planned</td><td>You</td></tr>
@@ -648,6 +708,7 @@ export class Roam {
           ${row("Samples", String(this.stops.length), String(this.samples.length))}
           ${row("Falls · hard landings", "0", `${this.falls} · ${this.hardLandings}`)}
           ${row("Highest jump", "—", s.maxJumpM > 0 ? `${Math.round(s.maxJumpM * 100)} cm` : "—")}
+          ${st && this.stormAlarm ? row("Radiation dose", "—", `${fmtDose(st.doseUGy)} (sheltering avoided ${fmtDose(st.avoided(st.deadlineS + 3600))} in the next hour)`) : ""}
         </table>
         <p class="fine">Planned figures come from the planner's model for this exact route; yours come from the walking physics as you walked it. Suit numbers are demo assumptions.</p>
         ${autonomyHtml(this.decisions, this.lightTimeS)}
@@ -687,6 +748,7 @@ export class Roam {
         <div class="rm-tile tr"><small>Walked</small><b data-k="dist">—</b><span data-k="steps"></span></div>
       </section>
       <section class="rm-mission panel" aria-label="Mission"></section>
+      <section class="rm-storm" role="status" hidden></section>
       <div class="rm-act" role="status" hidden><i class="rm-ring" aria-hidden="true"></i><span></span></div>
       <div class="rm-gait" aria-hidden="true"><b data-k="gaitbig"></b><span data-k="gaitsub"></span></div>
       <div class="rm-toast" role="status" aria-live="polite" hidden></div>
