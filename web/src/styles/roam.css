@@ -239,3 +239,18 @@ body.roam-on .poi-label { pointer-events: none; }
 .rm-captions { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); display: grid; justify-items: center; gap: 3px; pointer-events: none; }
 .rm-captions span { padding: 3px 10px; border-radius: 6px; background: rgba(0, 0, 0, 0.75); color: #fff; font: 500 13px var(--mono); }
 #roam[data-look="walk"] .rm-captions { bottom: 30%; }
+
+/* QA: on phones the panels stack without covering each other (readouts on top; mission, storm and
+   prompts above the thumb controls), and the walk area's resolution note stays out of the way */
+body.roam-on .area-tag { display: none; }
+@media (pointer: coarse) {
+  .rm-emergency { top: 286px; }
+  #roam[data-look="walk"] .rm-emergency { top: 286px; }
+  .rm-earth, #roam[data-look="walk"] .rm-earth { top: 330px; bottom: auto; left: var(--gap); right: var(--gap); width: auto; }
+  .rm-science, #roam[data-look="walk"] .rm-science { top: 330px; bottom: auto; left: var(--gap); right: var(--gap); width: auto; grid-template-columns: 90px 1fr; }
+  .rm-science img { width: 90px; height: 90px; }
+  .rm-storm, #roam[data-look="walk"] .rm-storm { top: auto; bottom: 318px; left: var(--gap); right: var(--gap); width: auto; }
+  .rm-act, #roam[data-look="walk"] .rm-act { bottom: 420px; }
+  .rm-captions, #roam[data-look="walk"] .rm-captions { bottom: 470px; }
+  .rm-toast { top: 286px; }
+}
