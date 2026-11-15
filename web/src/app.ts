@@ -7,6 +7,7 @@ import { RadiationModel } from "./eva/radiation";
 import type { HabMap } from "./eva/hab";
 import { DUST_PRESETS, dustEffect, fmtVisibility } from "./eva/dust";
 import { FieldNote, Notebook } from "./ui/notebook";
+import { sessionFor, sessionParam } from "./hab/session";
 import { HabLink, type LinkState } from "./hab/link";
 import type { EarthMessage, Frame, Member, PlanChange, PlanInfo, ServerMsg } from "./hab/protocol";
 import { bestRelay, inContact, lineOfSight, RadioCoverage, radioCoverage, radioShadow, relayFromShadow, RelaySuggestion, RELAY_MAST_M, SUIT_ANTENNA_M } from "./eva/radio";
@@ -264,7 +265,8 @@ export class App {
       this.pushNotes();
       this.renderLeft();
     };
-    this.habLink = new HabLink("crew", site.meta.id, this.member);
+    // one crew session per EV1 (in the address as ?s=…); EV2 joins the one its link names, or the newest
+    this.habLink = new HabLink("crew", site.meta.id, this.member, sessionFor(site.meta.id, this.member));
     this.habLink.onMessage((m) => this.onHab(m));
     // tell Mission Control at once when this tab goes to the background (its EVA clock stops) or comes back
     document.addEventListener("visibilitychange", () => this.sendFrame());
@@ -902,7 +904,7 @@ export class App {
    */
   private walkItYourself(follow = false): void {
     const site = encodeURIComponent(this.site.id);
-    const crew = this.member === "ev2" ? "&crew=ev2" : "";
+    const crew = `${this.member === "ev2" ? "&crew=ev2" : ""}${sessionParam(this.habLink.session)}`; // the same session on foot
     const p = this.plan;
     const tau = +this.dustTau.toFixed(2);
     if (!follow) this.habLink?.send({ type: "outside", hash: p && this.phase === "planning" ? location.hash : "", tau });
@@ -938,7 +940,7 @@ export class App {
       window.clearInterval(timer);
       card.remove();
       const site = encodeURIComponent(this.site.id);
-      const crew = this.member === "ev2" ? "&crew=ev2" : "";
+      const crew = `${this.member === "ev2" ? "&crew=ev2" : ""}${sessionParam(this.habLink.session)}`;
       // the same plan as this planner: hand it over as a mission (EV1 keeps the routed legs); otherwise go with theirs
       if (hash && hash === location.hash && this.plan) this.walkItYourself(true);
       else dissolveTo(`?site=${site}&roam=1${crew}${tau ? `&tau=${tau}` : ""}${hash}`);
@@ -2291,7 +2293,8 @@ export class App {
 
   /** Open Mission Control for this site, in its own window. */
   openMissionControl(): void {
-    window.open(`?view=mission&site=${encodeURIComponent(this.site.meta.id)}`, `cairn-mc-${this.site.meta.id}`, "noopener");
+    const s = this.habLink.session;
+    window.open(`?view=mission&site=${encodeURIComponent(this.site.meta.id)}${sessionParam(s)}`, `cairn-mc-${s ?? this.site.meta.id}`, "noopener");
   }
 
   private planInfo(): PlanInfo | null {

@@ -1,5 +1,6 @@
 import type { BriefSite, SiteEntry } from "../data/loaders";
 import { $, esc, fmtClock, LOGO_SVG } from "./dom";
+import { sessionParam } from "../hab/session";
 import { liveEvas, liveNow, liveSiteName, liveState } from "../hab/live";
 import type { LiveEva } from "../hab/protocol";
 import { dissolve, dissolveTo } from "./dissolve";
@@ -61,8 +62,8 @@ export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "pa
     <div class="brief">
       <section class="brief-text">
         <div class="brief-brand">${LOGO_SVG}<div><h1>CAIRN</h1><p>Crew Assisted Integrated Route Navigator</p></div></div>
-        ${switcher}
         <div id="brief-live" class="brief-live" aria-live="polite" hidden></div>
+        ${switcher}
         ${eyebrow}
         <h2>${headline}</h2>
         ${story.paragraphs.map((p) => `<p>${p}</p>`).join("")}
@@ -120,8 +121,10 @@ export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "pa
   const id = encodeURIComponent(site.id);
   // the plan in the address (#stops=…) goes along to the planner
   $("#brief-enter", host).addEventListener("click", () => (mode === "page" ? dissolveTo(`?site=${id}&skip=1${location.hash}`) : close()));
-  $("#brief-ev2", host).addEventListener("click", () => {
-    location.href = `?site=${id}&skip=1&crew=ev2`;
+  // Join as EV2 (under the planner buttons): this site's newest session; the list above has them all
+  $("#brief-ev2", host).addEventListener("click", (ev) => {
+    const b = ev.currentTarget as HTMLButtonElement;
+    if (b.dataset.session) joinAsEv2(site.id, b.dataset.session, !!b.dataset.roam);
   });
   $("#brief-roam", host).addEventListener("click", () => dissolveTo(`?site=${id}&roam=1`));
   $("#brief-mc", host).addEventListener("click", () => {
@@ -132,40 +135,47 @@ export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "pa
     close();
     window.dispatchEvent(new CustomEvent("cairn:demo"));
   });
-  if (mode === "page") watchLive($("#brief-live", host), site.id);
+  if (mode === "page") watchLive($("#brief-live", host), site.id, $<HTMLButtonElement>("#brief-ev2", host));
+}
+
+/** EV2 joins a session: in free roam beside EV1 if EV1 is walking there, otherwise in the planner. */
+function joinAsEv2(site: string, session: string, roam: boolean): void {
+  location.href = `?site=${encodeURIComponent(site)}&${roam ? "roam=1" : "skip=1"}&crew=ev2${sessionParam(session)}`;
 }
 
 const LIVE_POLL_MS = 10_000;
 
 /**
- * The main menu's "live EVA" card: an EVA under way on the hab, on any site, with a way straight into
- * that EVA's own Mission Control (or to join it as EV2).  Hidden when nothing is running or there is
- * no hab (a static host).
+ * The main menu's crew sessions: every EV1 on the hab, on any site, planning or out on an EVA, with
+ * Join as EV2 and its own Mission Control.  Hidden when there are none or there is no hab (a static
+ * host).  `ev2Button`: the menu's own Join as EV2, pointed at this site's newest session (or waiting).
  */
-function watchLive(box: HTMLElement, here: string): void {
+function watchLive(box: HTMLElement, here: string, ev2Button: HTMLButtonElement): void {
   let live: LiveEva[] = [];
   let at = 0; // when the hab answered (performance.now)
   let shownKey = "";
 
   const statusText = (e: LiveEva) =>
-    `T+${fmtClock(liveNow(e, performance.now() - at))} · ${liveState(e)} · Earth sees it ${Math.round(e.lightTimeS / 60)} min late`;
+    e.running
+      ? `EVA T+${fmtClock(liveNow(e, performance.now() - at))} · ${liveState(e)} · Earth sees it ${Math.round(e.lightTimeS / 60)} min late`
+      : e.roam ? "EV1 is out on foot in free roam" : "EV1 is planning: join before the EVA starts";
 
   const draw = () => {
     // the rows are rebuilt only when the set of EVAs changes; the clocks update in place
-    const key = live.map((e) => `${e.site}|${e.evaId}`).join(",");
+    const key = live.map((e) => `${e.session}|${e.running}|${e.roam}|${e.ev2}|${e.mc}|${e.route}`).join(",");
     if (key !== shownKey) {
       shownKey = key;
       box.innerHTML = live
         .map((e) => {
           const name = esc(liveSiteName(e));
-          const where = e.site === here ? "at this site" : `at ${name}`;
-          const who = [e.ev2 ? `EV1 + ${e.ev2 > 1 ? `${e.ev2} × ` : ""}EV2` : "EV1", e.roam ? "on foot in free roam" : "", `${e.stops} stop${e.stops === 1 ? "" : "s"}`, e.mc ? `${e.mc} watching from Earth` : ""].filter(Boolean).join(" · ");
-          return `<div class="brief-live-row" data-site="${esc(e.site)}">
+          const where = e.site === here ? "this site" : name;
+          const who = [e.ev2 ? `EV1 + ${e.ev2 > 1 ? `${e.ev2} × ` : ""}EV2` : "EV1 alone", e.route || (e.roam ? "walking freely" : ""), e.mc ? `${e.mc} watching from Earth` : ""].filter(Boolean).join(" · ");
+          return `<div class="brief-live-row${e.running ? "" : " planning"}" data-session="${esc(e.session)}">
             <span class="pulse" aria-hidden="true"></span>
-            <div class="t"><small>// Live EVA ${where}</small><b>${name}</b><span class="clock"></span><span class="who">${esc(who)}</span></div>
+            <div class="t"><small>// ${e.running ? "Live EVA" : "Crew session"} · ${esc(where)}</small><b>${name}</b><span class="clock"></span><span class="who">${esc(who)}</span></div>
             <div class="acts">
-              <button class="primary" data-mc="${esc(e.site)}">Mission Control →</button>
-              <button data-ev2="${esc(e.site)}" data-roam="${e.roam ? 1 : ""}" title="${e.roam ? "Walk beside EV1 in free roam" : "Walk the EVA with EV1 in the planner"}">Join as EV2</button>
+              <button class="primary" data-ev2="${esc(e.site)}" data-session="${esc(e.session)}" data-roam="${e.roam ? 1 : ""}" title="${e.roam ? "Walk beside EV1 in free roam" : "Walk the EVA with EV1"}">Join as EV2</button>
+              <button data-mc="${esc(e.site)}" data-session="${esc(e.session)}">Mission Control →</button>
             </div>
           </div>`;
         })
@@ -173,9 +183,16 @@ function watchLive(box: HTMLElement, here: string): void {
       box.hidden = live.length === 0;
     }
     for (const e of live) {
-      const clock = box.querySelector(`[data-site="${CSS.escape(e.site)}"] .clock`);
+      const clock = box.querySelector(`[data-session="${CSS.escape(e.session)}"] .clock`);
       if (clock) clock.textContent = statusText(e);
     }
+    // the menu's own Join as EV2: this site's newest session, or wait for an EV1
+    const mine = live.find((e) => e.site === here);
+    ev2Button.disabled = !mine;
+    ev2Button.dataset.session = mine?.session ?? "";
+    ev2Button.dataset.roam = mine?.roam ? "1" : "";
+    const sub = ev2Button.querySelector("span");
+    if (sub) sub.textContent = mine ? "The second astronaut, on another device: walk this site's newest session with its EV1" : "No EV1 at this site yet. When someone opens the planner or free roam here, their session appears above";
   };
 
   const poll = async () => {
@@ -183,8 +200,8 @@ function watchLive(box: HTMLElement, here: string): void {
     const got = await liveEvas();
     live = got ?? [];
     at = performance.now();
-    // the EVA at this site first, then the rest by name
-    live.sort((a, b) => Number(b.site === here) - Number(a.site === here) || a.siteName.localeCompare(b.siteName));
+    // this site's sessions first (live EVAs before planning ones), then the other sites; the hab sends the newest first
+    live.sort((a, b) => Number(b.site === here) - Number(a.site === here) || Number(b.running) - Number(a.running));
     draw();
   };
 
@@ -193,9 +210,9 @@ function watchLive(box: HTMLElement, here: string): void {
     if (!btn) return;
     const mc = btn.dataset.mc;
     const ev2 = btn.dataset.ev2;
-    if (mc) window.open(`?view=mission&site=${encodeURIComponent(mc)}`, `cairn-mc-${mc}`, "noopener");
-    // EV1 walking in free roam: join on foot beside them; otherwise in the planner
-    if (ev2) location.href = btn.dataset.roam ? `?site=${encodeURIComponent(ev2)}&roam=1&crew=ev2` : `?site=${encodeURIComponent(ev2)}&skip=1&crew=ev2`;
+    const session = btn.dataset.session ?? "";
+    if (mc) window.open(`?view=mission&site=${encodeURIComponent(mc)}${sessionParam(session)}`, `cairn-mc-${session || mc}`, "noopener");
+    if (ev2) joinAsEv2(ev2, session, !!btn.dataset.roam);
   });
 
   void poll();

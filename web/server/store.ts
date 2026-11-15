@@ -8,7 +8,7 @@
  *
  * Writes go to a temporary file first and are renamed into place, so a crash never leaves half a file.
  */
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SAFE_ID, type NoteRecord } from "../src/hab/protocol.ts";
 
@@ -113,13 +113,34 @@ export class Store {
     await Promise.all([rm(join(dir, `${id}.bin`), { force: true }), rm(join(dir, `${id}.type`), { force: true })]);
   }
 
-  // ---------------------------------------------------------------- the EVA under way
-  live<T>(site: string): Promise<T | null> {
-    return this.readJson<T | null>(this.dir(site, "live.json"), null);
+  // ---------------------------------------------------------------- the EVA under way, per session
+  /** The site's default session keeps live.json; other sessions live-<session>.json. */
+  private liveFile(site: string, session: string): string {
+    if (!SAFE_ID.test(session)) throw new Error("bad id");
+    return this.dir(site, session === site ? "live.json" : `live-${session}.json`);
   }
 
-  putLive(site: string, state: unknown): Promise<void> {
-    return this.writeJson(this.dir(site, "live.json"), state);
+  live<T>(site: string, session: string = site): Promise<T | null> {
+    return this.readJson<T | null>(this.liveFile(site, session), null);
+  }
+
+  putLive(site: string, state: unknown, session: string = site): Promise<void> {
+    return this.writeJson(this.liveFile(site, session), state);
+  }
+
+  /** A session closed: its live state goes (so a restarted hab does not bring it back). */
+  async dropLive(site: string, session: string): Promise<void> {
+    await rm(this.liveFile(site, session), { force: true });
+  }
+
+  /** The sessions with live state on disk for a site. */
+  async liveSessions(site: string): Promise<string[]> {
+    try {
+      const files = await readdir(this.dir(site));
+      return files.flatMap((f) => (f === "live.json" ? [site] : /^live-([A-Za-z0-9_-]{1,64})\.json$/.exec(f)?.slice(1, 2) ?? []));
+    } catch {
+      return [];
+    }
   }
 
   // ---------------------------------------------------------------- EVA records

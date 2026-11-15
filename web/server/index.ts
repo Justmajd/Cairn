@@ -39,6 +39,8 @@ interface Client {
   ws: WebSocket;
   role: Role | null;
   site: string | null;
+  /** the crew session (room) this device is in */
+  key: string | null;
   member: Member;
   alive: boolean;
   said: number[];
@@ -47,40 +49,52 @@ interface Client {
 const rooms = new Map<string, Room>();
 const clients = new Set<Client>();
 
-async function room(site: string): Promise<Room> {
-  let r = rooms.get(site);
+/** One room per crew session (an EV1 and its EV2s and Mission Control screens), keyed by session id. */
+async function room(site: string, key: string = site): Promise<Room> {
+  let r = rooms.get(key);
   if (!r) {
-    r = new Room(site);
-    rooms.set(site, r);
+    r = new Room(site, key);
+    rooms.set(key, r);
     // carry on with the EVA that was under way when the hab stopped (if any)
-    const live = await store.live<ReturnType<Room["liveState"]>>(site);
+    const live = await store.live<ReturnType<Room["liveState"]>>(site, key);
     if (live?.evaId) r.restore(live);
     r.loadNotes(await store.notes(site));
   }
   return r;
 }
 
-const send = (c: Client, msg: ServerMsg) => c.ws.readyState === c.ws.OPEN && c.ws.send(JSON.stringify(msg));
-const inRoom = (site: string, role: Role) => [...clients].filter((c) => c.site === site && c.role === role);
+const hasEv1 = (key: string) => [...clients].some((c) => c.key === key && c.role === "crew" && c.member === "ev1");
 
-function deliver(site: string, o: Out): void {
-  if (o.mc.length) for (const c of inRoom(site, "mc")) for (const m of o.mc) send(c, m);
-  if (o.crew.length) for (const c of inRoom(site, "crew")) for (const m of o.crew) send(c, m);
+/** EV1 is in it (planning or walking), or its EVA is under way: worth listing on the main menu. */
+const isOpen = (r: Room) => r.listedLive() || (!r.running && hasEv1(r.key));
+
+/** The session EV2 or Mission Control joins when the address names none: the site's newest open one. */
+function newestSession(site: string): string | null {
+  const open = [...rooms.values()].filter((r) => r.site === site && isOpen(r)).sort((a, b) => b.created - a.created);
+  return open[0]?.key ?? null;
+}
+
+const send = (c: Client, msg: ServerMsg) => c.ws.readyState === c.ws.OPEN && c.ws.send(JSON.stringify(msg));
+const inRoom = (key: string, role: Role) => [...clients].filter((c) => c.key === key && c.role === role);
+
+function deliver(key: string, o: Out): void {
+  if (o.mc.length) for (const c of inRoom(key, "mc")) for (const m of o.mc) send(c, m);
+  if (o.crew.length) for (const c of inRoom(key, "crew")) for (const m of o.crew) send(c, m);
 }
 
 /** EV2's devices: they get EV1's plan, EVA state and telemetry live (both astronauts are on Mars). */
-const ev2s = (site: string) => inRoom(site, "crew").filter((c) => c.member === "ev2");
-function toEv2(site: string, msg: ServerMsg): void {
-  for (const c of ev2s(site)) send(c, msg);
+const ev2s = (key: string) => inRoom(key, "crew").filter((c) => c.member === "ev2");
+function toEv2(key: string, msg: ServerMsg): void {
+  for (const c of ev2s(key)) send(c, msg);
 }
-function countEv2(site: string): void {
-  const ev2 = ev2s(site).length;
-  for (const c of inRoom(site, "crew")) if (c.member === "ev1") send(c, { type: "members", ev2 });
+function countEv2(key: string): void {
+  const ev2 = ev2s(key).length;
+  for (const c of inRoom(key, "crew")) if (c.member === "ev1") send(c, { type: "members", ev2 });
 }
 
-function countMc(site: string): void {
-  const online = inRoom(site, "mc").length;
-  for (const c of inRoom(site, "crew")) send(c, { type: "mc", online });
+function countMc(key: string): void {
+  const online = inRoom(key, "mc").length;
+  for (const c of inRoom(key, "crew")) send(c, { type: "mc", online });
 }
 
 async function onMessage(c: Client, raw: string): Promise<void> {
@@ -95,10 +109,16 @@ async function onMessage(c: Client, raw: string): Promise<void> {
     c.role = msg.role;
     c.site = msg.site;
     c.member = msg.member === "ev2" ? "ev2" : "ev1";
-    const r = await room(msg.site);
+    // which session: the one named (if it is this site's), else EV1 opens the site's default one and
+    // EV2 or Mission Control join the site's newest open session
+    const named = typeof msg.session === "string" && SAFE_ID.test(msg.session) && (rooms.get(msg.session)?.site ?? msg.site) === msg.site ? msg.session : null;
+    const key = named ?? (c.role === "crew" && c.member === "ev1" ? msg.site : newestSession(msg.site) ?? msg.site);
+    c.key = key;
+    const r = await room(msg.site, key);
+    send(c, { type: "joined", session: key });
     if (c.role === "mc") send(c, { type: "snapshot", snap: r.snapshot() });
     else {
-      deliver(msg.site, r.setCrewOnline(true));
+      deliver(key, r.setCrewOnline(true));
       send(c, { type: "notebook", notes: await store.notes(msg.site) });
       if (c.member === "ev2") {
         // catch up with EV1: the plan, whether an EVA is under way, and where it is now
@@ -107,20 +127,20 @@ async function onMessage(c: Client, raw: string): Promise<void> {
         const f = r.lastFrame();
         if (r.running && f) send(c, { type: "live", frame: f });
       }
-      countEv2(msg.site);
+      countEv2(key);
     }
-    countMc(msg.site);
+    countMc(key);
     return;
   }
-  if (!c.site || !c.role) return;
-  const r = await room(c.site);
+  if (!c.site || !c.key || !c.role) return;
+  const r = await room(c.site, c.key);
   if (c.role === "crew") {
     if (msg.type === "outside") {
       // going out on foot in free roam: the other astronaut's devices follow (Mars to Mars, no delay)
       const hash = typeof msg.hash === "string" && msg.hash.length <= 4000 ? msg.hash : "";
       const tau = Number.isFinite(msg.tau) ? Math.max(0, Math.min(12, +msg.tau)) : 0;
       const other = c.member === "ev1" ? "ev2" : "ev1";
-      for (const e of inRoom(c.site, "crew")) if (e.member === other) send(e, { type: "outside", from: c.member, hash, tau });
+      for (const e of inRoom(c.key, "crew")) if (e.member === other) send(e, { type: "outside", from: c.member, hash, tau });
       return;
     }
     if (c.member === "ev2") {
@@ -129,32 +149,32 @@ async function onMessage(c: Client, raw: string): Promise<void> {
       const p = msg.type === "pose" ? msg.pose : null;
       if (p && [p.x, p.y, p.z, p.headingDeg, p.vx, p.vy, p.vz].every(Number.isFinite) && typeof p.gait === "string") {
         const pose = { x: +p.x, y: +p.y, z: +p.z, headingDeg: +p.headingDeg, gait: p.gait.slice(0, 12), vx: +p.vx, vy: +p.vy, vz: +p.vz, downT: Number.isFinite(p.downT) ? +p.downT! : 0, sliding: !!p.sliding };
-        for (const e of inRoom(c.site, "crew")) if (e.member === "ev1") send(e, { type: "buddy", pose });
+        for (const e of inRoom(c.key, "crew")) if (e.member === "ev1") send(e, { type: "buddy", pose });
       }
       return;
     }
     if (msg.type === "plan" && msg.plan && typeof msg.plan === "object") {
-      deliver(c.site, r.setPlan(msg.plan));
-      toEv2(c.site, { type: "crewplan", plan: msg.plan });
+      deliver(c.key, r.setPlan(msg.plan));
+      toEv2(c.key, { type: "crewplan", plan: msg.plan });
     } else if (msg.type === "frame" && msg.frame && Number.isFinite(msg.frame.t)) {
-      deliver(c.site, r.frame(msg.frame));
-      toEv2(c.site, { type: "live", frame: msg.frame });
+      deliver(c.key, r.frame(msg.frame));
+      toEv2(c.key, { type: "live", frame: msg.frame });
     }
-    else if (msg.type === "log" && Array.isArray(msg.entries)) deliver(c.site, r.setLog(msg.entries.filter((e) => e && Number.isFinite(e.t) && typeof e.text === "string")));
+    else if (msg.type === "log" && Array.isArray(msg.entries)) deliver(c.key, r.setLog(msg.entries.filter((e) => e && Number.isFinite(e.t) && typeof e.text === "string")));
     else if (msg.type === "eva" && msg.state === "start" && typeof msg.evaId === "string") {
-      deliver(c.site, r.startEva(msg.evaId, Number(msg.lightTimeS) || 0));
-      toEv2(c.site, { type: "crew-eva", eva: { id: msg.evaId, running: true, ended: false } });
+      deliver(c.key, r.startEva(msg.evaId, Number(msg.lightTimeS) || 0));
+      toEv2(c.key, { type: "crew-eva", eva: { id: msg.evaId, running: true, ended: false } });
     }
-    else if (msg.type === "reply" && typeof msg.id === "string") deliver(c.site, r.reply(msg.id, !!msg.accepted));
+    else if (msg.type === "reply" && typeof msg.id === "string") deliver(c.key, r.reply(msg.id, !!msg.accepted));
     else if (msg.type === "eva" && msg.state === "idle") {
       if (r.running) {
-        deliver(c.site, r.endEva());
-        toEv2(c.site, { type: "crew-eva", eva: { id: r.evaId ?? "", running: false, ended: true } });
+        deliver(c.key, r.endEva());
+        toEv2(c.key, { type: "crew-eva", eva: { id: r.evaId ?? "", running: false, ended: true } });
         await store.addEva(c.site, { ...r.record(), ended: new Date().toISOString(), aborted: true, summary: "The crew's planner was closed or reloaded during the EVA." });
       }
     } else if (msg.type === "eva" && msg.state === "end") {
-      deliver(c.site, r.endEva());
-      toEv2(c.site, { type: "crew-eva", eva: { id: r.evaId ?? "", running: false, ended: true } });
+      deliver(c.key, r.endEva());
+      toEv2(c.key, { type: "crew-eva", eva: { id: r.evaId ?? "", running: false, ended: true } });
       await store.addEva(c.site, { ...r.record(), ended: new Date().toISOString(), aborted: !!msg.aborted, summary: String(msg.summary ?? "").slice(0, 2000) });
     }
   } else if (c.role === "mc" && msg.type === "say" && typeof msg.text === "string") {
@@ -171,9 +191,17 @@ async function onMessage(c: Client, raw: string): Promise<void> {
             add: ch.add.filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)).slice(0, 5).map((p) => ({ x: +p.x, y: +p.y })),
           }
         : undefined;
-    deliver(c.site, r.say(msg.text, change && (change.drop.length || change.add.length) ? change : undefined));
+    deliver(c.key, r.say(msg.text, change && (change.drop.length || change.add.length) ? change : undefined));
   }
 }
+
+/** The site's notebook is shared by its sessions: a note from an EVA goes to that EVA's session, others to all. */
+function noteRooms(site: string, eva: string | null): Room[] {
+  const all = [...rooms.values()].filter((r) => r.site === site);
+  const own = eva ? all.filter((r) => r.evaId === eva) : [];
+  return own.length ? own : all;
+}
+const siteCrew = (site: string) => [...clients].filter((c) => c.site === site && c.role === "crew");
 
 // ================================================================ HTTP API
 const json = (res: ServerResponse, status: number, body: unknown) => {
@@ -227,25 +255,30 @@ async function api(req: IncomingMessage, res: ServerResponse, parts: string[]): 
       name: "CAIRN hab",
       uptimeS: Math.round((Date.now() - started) / 1000),
       app: await stat(join(DIST, "index.html")).then(() => true, () => false),
-      sites: [...rooms.values()].map((r) => ({ site: r.site, crew: r.crewOnline, eva: r.evaId, running: r.running, mc: inRoom(r.site, "mc").length })),
+      sessions: [...rooms.values()].map((r) => ({ session: r.key, site: r.site, crew: r.crewOnline, eva: r.evaId, running: r.running, mc: inRoom(r.key, "mc").length })),
     });
   }
   if (what === "live") {
-    // EVAs under way right now, on any site: the main menu offers each one's own Mission Control
+    // the open crew sessions on every site (EV1 planning, or an EVA under way), newest first: the main
+    // menu offers each one's own Join as EV2 and Mission Control
     const live: LiveEva[] = [...rooms.values()]
-      .filter((r) => r.listedLive())
+      .filter(isOpen)
+      .sort((a, b) => b.created - a.created)
       .map((r) => ({
+        session: r.key,
+        running: r.running,
         site: r.site,
         siteName: typeof r.plan?.siteName === "string" ? r.plan.siteName : r.site,
-        evaId: r.evaId!,
+        evaId: r.evaId ?? "",
         now: r.now,
         speed: r.speed,
         lightTimeS: r.lightTimeS,
         crewOnline: r.crewOnline,
         hidden: r.crewHidden,
-        ev2: ev2s(r.site).length,
-        mc: inRoom(r.site, "mc").length,
+        ev2: ev2s(r.key).length,
+        mc: inRoom(r.key, "mc").length,
         stops: Array.isArray(r.plan?.stops) ? r.plan.stops.filter((s) => s.kind !== "shelter").length : 0,
+        route: Array.isArray(r.plan?.stops) ? r.plan.stops.filter((s) => s.kind !== "shelter").map((s) => String(s.short ?? s.name ?? "")).join(" → ").slice(0, 160) : "",
         roam: r.plan?.mode === "roam",
       }));
     return json(res, 200, { live });
@@ -259,15 +292,16 @@ async function api(req: IncomingMessage, res: ServerResponse, parts: string[]): 
       const note = cleanNote(JSON.parse((await readBody(req, 64 * 1024)).toString("utf8") || "null"), id);
       if (!note) return json(res, 400, { error: "not a field note" });
       const saved = await store.putNote(site, note);
-      const r = await room(site);
-      deliver(site, r.upsertNote(saved));
-      for (const c of inRoom(site, "crew")) send(c, { type: "notebook", notes: await store.notes(site) });
+      for (const r of noteRooms(site, saved.eva ?? null)) deliver(r.key, r.upsertNote(saved));
+      const notes = await store.notes(site);
+      for (const c of siteCrew(site)) send(c, { type: "notebook", notes });
       return json(res, 200, { note: saved });
     }
     if (method === "DELETE" && id) {
       await store.removeNote(site, id);
-      deliver(site, (await room(site)).removeNote(id));
-      for (const c of inRoom(site, "crew")) send(c, { type: "notebook", notes: await store.notes(site) });
+      for (const r of noteRooms(site, null)) deliver(r.key, r.removeNote(id));
+      const notes = await store.notes(site);
+      for (const c of siteCrew(site)) send(c, { type: "notebook", notes });
       return json(res, 200, { ok: true });
     }
   }
@@ -376,17 +410,17 @@ server.on("upgrade", (req, socket, head) => {
   wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
 });
 wss.on("connection", (ws: WebSocket) => {
-  const c: Client = { ws, role: null, site: null, member: "ev1", alive: true, said: [] };
+  const c: Client = { ws, role: null, site: null, key: null, member: "ev1", alive: true, said: [] };
   clients.add(c);
   ws.on("pong", () => (c.alive = true));
   ws.on("message", (data) => void onMessage(c, data.toString()).catch((e) => console.error("hab:", e)));
   ws.on("close", () => {
     clients.delete(c);
-    if (!c.site) return;
-    const r = rooms.get(c.site);
-    if (c.role === "crew" && r && inRoom(c.site, "crew").length === 0) deliver(c.site, r.setCrewOnline(false));
-    if (c.role === "crew") countEv2(c.site);
-    if (c.role === "mc") countMc(c.site);
+    if (!c.key) return;
+    const r = rooms.get(c.key);
+    if (c.role === "crew" && r && inRoom(c.key, "crew").length === 0) deliver(c.key, r.setCrewOnline(false));
+    if (c.role === "crew") countEv2(c.key);
+    if (c.role === "mc") countMc(c.key);
   });
 });
 
@@ -406,9 +440,9 @@ const saved = new Map<string, string>();
 const saver = setInterval(() => {
   for (const r of rooms.values()) {
     const state = JSON.stringify(r.liveState());
-    if (saved.get(r.site) === state) continue;
-    saved.set(r.site, state);
-    store.putLive(r.site, r.liveState()).catch((e) => console.error("hab: saving live state", e));
+    if (saved.get(r.key) === state) continue;
+    saved.set(r.key, state);
+    store.putLive(r.site, r.liveState(), r.key).catch((e) => console.error("hab: saving live state", e));
   }
 }, 2000);
 let lastTick = Date.now();
@@ -416,8 +450,28 @@ const ticker = setInterval(() => {
   const now = Date.now();
   const dt = (now - lastTick) / 1000;
   lastTick = now;
-  for (const r of rooms.values()) deliver(r.site, r.tick(dt));
+  for (const r of rooms.values()) deliver(r.key, r.tick(dt));
+  closeEmptySessions(now);
 }, 250);
+
+// A session nobody is in closes: after 2 min when no EVA is running (a reload or a quick walk to free
+// roam keeps it), after an hour when an abandoned EVA is still marked as running.
+const emptySince = new Map<string, number>();
+function closeEmptySessions(now: number): void {
+  for (const r of [...rooms.values()]) {
+    if ([...clients].some((c) => c.key === r.key)) {
+      emptySince.delete(r.key);
+      continue;
+    }
+    const since = emptySince.get(r.key) ?? now;
+    emptySince.set(r.key, since);
+    if (now - since < (r.running ? 3_600_000 : 120_000)) continue;
+    rooms.delete(r.key);
+    emptySince.delete(r.key);
+    saved.delete(r.key);
+    if (r.key !== r.site) store.dropLive(r.site, r.key).catch(() => {});
+  }
+}
 
 // Bring back the rooms of EVAs that were under way when the hab stopped, so /api/live lists them
 // before anyone reconnects.
@@ -425,8 +479,11 @@ void readdir(store.root, { withFileTypes: true })
   .then(async (dirs) => {
     for (const d of dirs) {
       if (!d.isDirectory() || !SAFE_ID.test(d.name)) continue;
-      const live = await store.live<{ evaId?: string; running?: boolean }>(d.name);
-      if (live?.evaId && live.running) await room(d.name);
+      for (const key of await store.liveSessions(d.name)) {
+        const live = await store.live<{ evaId?: string; running?: boolean }>(d.name, key);
+        if (live?.evaId && live.running) await room(d.name, key);
+        else if (key !== d.name) await store.dropLive(d.name, key); // a session that had closed
+      }
     }
   })
   .catch(() => {}); // no hab-data yet: nothing to resume
