@@ -28,6 +28,7 @@ import { playOnce } from "./ui/fx";
 import { dissolveTo } from "./ui/dissolve";
 import { saveRoamPlan } from "./roam/plan";
 import { autonomyHtml } from "./ui/autonomy";
+import { bindScenarios, scenariosHtml } from "./ui/scenarios";
 import { openModal, stopCardHtml } from "./ui/modals";
 import type { DemoRunner, DemoStep } from "./ui/demo";
 import type { CueRow } from "./ui/cuecard";
@@ -249,6 +250,12 @@ export class App {
       this.dustSol = site.dust.eva.sol ?? site.dust.record[site.dust.record.length - 1][0];
       view.setDust(site.dust.eva.tau);
     }
+    // ?dust=<preset> (scenario presets): a measured dust level from eva/dust.ts
+    const dustQ = new URLSearchParams(location.search).get("dust");
+    if (dustQ && DUST_PRESETS.some((d) => d.id === dustQ)) {
+      this.dustId = dustQ;
+      view.setDust(this.dustTau);
+    }
     this.notebook = new Notebook(site.meta.id);
     this.pushNotes();
     this.notebook.onChange = () => {
@@ -299,6 +306,7 @@ export class App {
       <button data-about="briefing">${ic.book}<span><b>Mission briefing</b><small>The site, the story and why it matters</small></span></button>
       <button data-about="sources">${ic.data}<span><b>Data sources</b><small>Where every layer and number comes from</small></span></button>
       <button data-about="model">${ic.sliders}<span><b>Suit and model assumptions</b><small>Oxygen, walking and radiation models</small></span></button>
+      <button data-about="scenarios">${ic.play}<span><b>Scenarios</b><small>One tap sets up a story: a clear morning, the 2024 solar storm, a global dust storm, two astronauts, a suit leak</small></span></button>
       <button data-about="offline">${ic.offline}<span><b>Use offline</b><small>Save this site to the device and install CAIRN as an app. No network needed after that.</small></span></button>
       <button data-about="keys" class="fine-pointer">${ic.keyboard}<span><b>Keyboard shortcuts</b><small>Views, zoom, pause — press ? any time</small></span></button>`;
     $("#nav").innerHTML = `
@@ -346,6 +354,10 @@ export class App {
       if (item === "briefing") showBriefing(this.site, this.sites, "overlay");
       else if (item === "sources") void this.about("sources");
       else if (item === "offline") void this.goOffline();
+      else if (item === "scenarios") {
+        openModal("Scenarios", `<p class="note">Each one is an ordinary plan with its options set. Plan it here, or walk it on foot in free roam.</p>${scenariosHtml()}`, true);
+        bindScenarios($("#modal").querySelector(".scenarios")!);
+      }
       else if (item === "keys") this.showShortcuts();
       else void this.about("model");
     });
