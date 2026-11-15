@@ -57,7 +57,9 @@ export async function startPlanner(): Promise<void> {
   }
   const query = new URLSearchParams(location.search);
   const roam = query.get("roam") === "1";
-  const quality = query.get("q") === "low" ? "low" : "high";
+  // free roam on a touch phone starts light (it renders every frame); ?q=high overrides
+  const phone = matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) < 820;
+  const quality = query.get("q") === "low" || (roam && phone && query.get("q") !== "high") ? "low" : "high";
 
   const grey = (t: THREE.Texture) => {
     t.format = THREE.RedFormat; // one grey band: a quarter of the GPU memory of RGBA
@@ -132,7 +134,7 @@ export async function startPlanner(): Promise<void> {
     document.title = `CAIRN — Free roam · ${site.meta.name.split(" — ")[0]}`;
     const { Roam } = await import("./roam/roam");
     view.enterRoam("walk");
-    const walk = new Roam(site, view);
+    const walk = new Roam(site, view, quality);
     view.start((dt) => walk.tick(dt));
     debug = { roam: walk, view, site, textureMPerPx: chosen.mPerPx };
   } else {
