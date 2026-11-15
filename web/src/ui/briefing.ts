@@ -76,7 +76,6 @@ export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "pa
           <button id="brief-mc" class="brief-mc"><b>Mission Control</b><span>Watch the EVA from Earth, ${lightText} behind Mars, and message the crew</span></button>
           <button id="brief-ev2" class="brief-mc ev2"><b>Join as EV2</b><span>The second astronaut, on another device: walk the EVA with EV1</span></button>
         </div>
-        ${mode === "page" ? `<section class="brief-scenarios" aria-label="Scenarios"><p class="eyebrow">// Scenarios · one tap sets up a story</p>${scenariosHtml()}</section>` : ""}
         <p class="fine">Every map layer, photo and reading comes from NASA, USGS or JPL archives — see About → Data sources in the planner. Suit and physiology numbers are labelled demo assumptions.</p>
       </section>
       <section class="brief-map">
@@ -102,6 +101,7 @@ export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "pa
           ? `Locator: ${esc(c.global.source)}, ${c.global.spanDeg![0]}° × ${c.global.spanDeg![1]}°. Dashed circles: ${esc(c.global.zonesSource ?? "")} (${c.global.zoneRadiusKm} km radius); the nearest centre is ${c.global.zones[0].km} km from the EVA area.`
           : `Global map: ${esc(c.global.source)}.`}</p>
       </section>
+      ${mode === "page" ? `<section class="brief-scenarios" aria-label="Scenarios"><p class="eyebrow">// Scenarios · one tap sets up a story</p>${scenariosHtml()}</section>` : ""}
     </div>`;
   host.hidden = false;
   scramble($("#brief-code", host), 1100);
