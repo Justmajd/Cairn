@@ -1871,11 +1871,38 @@ export class App {
           this.speed = 300;
           await d.until(() => !!this.mission && this.mission.alertS !== null, 60000);
           this.speed = 120;
-          await d.sleep(4500);
+          // the light-time story: Earth's last word was written before the storm, and only arrives now
+          const lt = this.skyAt(this.mission?.t ?? 0).lightTimeS;
+          const sentAgo = fmtLightTime(lt);
+          this.log.push({ t: this.mission?.t ?? 0, kind: "earth", text: `(Demo) Mission Control, sent ${sentAgo} ago: “Space weather looks quiet. Carry on.” It arrives after the alarm.` });
+          d.say(`The alarm sounds on Mars now. Earth's last message, <b>“Space weather looks quiet, carry on”</b>, was sent ${esc(sentAgo)} ago and arrives only now. Earth will not even hear about the storm for another ${esc(sentAgo)}: the crew decides alone.`);
+          await d.sleep(6500);
           this.speed = 300;
           await d.until(() => this.phase === "summary", 60000);
           lastAvoided = this.mission?.projection?.avoidedUGy ?? 0;
-          await d.sleep(3500);
+          await d.sleep(2500);
+        },
+      },
+      {
+        title: "Decisions made alone",
+        body: () => {
+          const lt = fmtLightTime(this.skyAt(0).lightTimeS);
+          return `Every call on this EVA was the crew's: Earth heard about the turn-back ${esc(lt)} later, and its first answer could not arrive for twice that. The debrief lists each decision with those times.`;
+        },
+        run: async (d) => {
+          document.querySelector(".autonomy")?.scrollIntoView({ behavior: "smooth", block: "center" });
+          await d.sleep(6000);
+        },
+      },
+      {
+        title: "Now walk it yourself",
+        body: "The same plan can be walked on foot in free roam: real Mars gravity and a stiff suit, the same storm, Earth one light time behind. Choose <b>Walk it yourself</b> under Start EVA, or a scenario under About.",
+        run: async (d) => {
+          if (this.phase !== "planning") this.backToPlanning();
+          await d.sleep(300);
+          document.querySelector<HTMLElement>("[data-act=walk-it]")?.classList.add("demo-glow");
+          await d.sleep(6000);
+          document.querySelector<HTMLElement>("[data-act=walk-it]")?.classList.remove("demo-glow");
         },
       },
     ];
@@ -1884,6 +1911,7 @@ export class App {
       title: "Robots built the cairns. Humans will follow them.",
       body: () =>
         `${lastAvoided > 0 ? `Sheltering avoided <b>${fmtDose(lastAvoided)}</b> of radiation. ` : ""}Every layer here comes from NASA, USGS and JPL archives — open <b>About → Data sources</b> to check any of them.`,
+      extra: { label: "Walk it yourself", act: () => this.walkItYourself() },
     });
     this.demo.onPause = (p) => {
       this.paused = p;
