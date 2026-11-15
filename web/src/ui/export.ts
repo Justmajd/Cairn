@@ -18,8 +18,8 @@ export interface ExportPlan {
   timeS: number;
   o2UsedL: number;
   startLmst: string;
-  /** Portable radio relay the crew stands up on the way (local metres), if planned. */
-  relay?: { x: number; y: number; mastM: number } | null;
+  /** Portable radio relays the crew stands up on the way (local metres), if planned. */
+  relays?: { x: number; y: number; mastM: number }[];
   /** Field notebook entries (ui/notebook.ts). */
   notes?: { label: string; sample: boolean; x: number; y: number; elevM: number; text: string; audio: boolean; lmst: string; evaT: number | null; voiceFile?: string }[];
 }
@@ -79,13 +79,11 @@ export function routeGeoJson(plan: ExportPlan): string {
       },
       geometry: { type: "Point", coordinates: toLonLat(plan.site, n.x, n.y).map((v) => +v.toFixed(7)) },
     })),
-    ...(plan.relay
-      ? [{
-          type: "Feature",
-          properties: { name: "Radio relay", kind: "relay", mast_m: plan.relay.mastM },
-          geometry: { type: "Point", coordinates: toLonLat(plan.site, plan.relay.x, plan.relay.y).map((v) => +v.toFixed(7)) },
-        }]
-      : []),
+    ...(plan.relays ?? []).map((r, i, all) => ({
+      type: "Feature",
+      properties: { name: all.length > 1 ? `Radio relay ${i + 1}` : "Radio relay", kind: "relay", mast_m: r.mastM },
+      geometry: { type: "Point", coordinates: toLonLat(plan.site, r.x, r.y).map((v) => +v.toFixed(7)) },
+    })),
   ];
   return JSON.stringify(
     {
@@ -122,17 +120,17 @@ export function routeKml(plan: ExportPlan): string {
     </Placemark>`;
     })
     .join("\n");
-  const relay = plan.relay
-    ? (() => {
-        const [lon, lat] = toLonLat(plan.site, plan.relay.x, plan.relay.y);
-        return `\n    <Placemark>
-      <name>Relay</name>
-      <description>Portable radio relay, ${plan.relay.mastM} m mast: the crew stands it up here on the way.</description>
+  const relay = (plan.relays ?? [])
+    .map((r, i, all) => {
+      const [lon, lat] = toLonLat(plan.site, r.x, r.y);
+      return `\n    <Placemark>
+      <name>Relay${all.length > 1 ? ` ${i + 1}` : ""}</name>
+      <description>Portable radio relay, ${r.mastM} m mast: the crew stands it up here on the way.</description>
       <styleUrl>#relay</styleUrl>
       <Point><coordinates>${lon.toFixed(7)},${lat.toFixed(7)},0</coordinates></Point>
     </Placemark>`;
-      })()
-    : "";
+    })
+    .join("");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2" hint="target=mars">
   <Document>
