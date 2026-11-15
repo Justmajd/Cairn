@@ -1,13 +1,14 @@
 import { HabLink, habApi, type LinkState } from "../hab/link";
-import type { EarthMessage, Frame, LogEntry, Member, ServerMsg } from "../hab/protocol";
+import type { CrewPose, EarthMessage, Frame, LogEntry, Member, ServerMsg } from "../hab/protocol";
 import type { PlanInfo } from "../hab/protocol";
 
 /**
  * Free roam's link to the hab (see hab/protocol.ts): the same messages the planner's EVA sends, so
  * Mission Control on Earth watches a walk in free roam exactly like a planned EVA — one light time late.
  *
- * The crew device sends the plan, the EVA's start and end, telemetry frames and the log, and gets
- * Earth's messages after the delay.  Without a hab server nothing is sent and free roam works on its own.
+ * EV1 sends the plan, the EVA's start and end, telemetry frames (with its full pose) and the log, and
+ * gets Earth's messages after the delay.  EV2 (`?crew=ev2`) gets EV1's plan and pose with no delay
+ * (both are on Mars) and sends its own pose back.  Without a hab server free roam works on its own.
  */
 export class RoamHab {
   private link: HabLink | null = null;
@@ -19,6 +20,10 @@ export class RoamHab {
   private frameT = 0;
 
   onEarth: (m: EarthMessage) => void = () => {};
+  /** The other astronaut's pose (EV1 sees EV2's; EV2 sees EV1's, from its live frames). */
+  onBuddy: (p: CrewPose) => void = () => {};
+  /** EV2: EV1's plan, to walk the same mission. */
+  onPlan: (p: PlanInfo) => void = () => {};
   onChange: () => void = () => {};
 
   constructor(readonly site: string, readonly member: Member) {
@@ -41,6 +46,9 @@ export class RoamHab {
       if (m.type === "msg") this.onEarth(m.msg);
       else if (m.type === "members") this.ev2Online = m.ev2;
       else if (m.type === "mc") this.mcOnline = m.online;
+      else if (m.type === "buddy") this.onBuddy(m.pose);
+      else if (m.type === "live" && m.frame.pose) this.onBuddy(m.frame.pose);
+      else if (m.type === "crewplan") this.onPlan(m.plan);
       this.onChange();
     });
     if (this.member === "ev1") link.send({ type: "eva", state: "idle" }); // close an EVA a reload left open
@@ -77,6 +85,15 @@ export class RoamHab {
   reply(id: string, accepted: boolean): void {
     if (this.member === "ev1") this.link?.send({ type: "reply", id, accepted });
   }
+
+  /** EV2's pose to EV1, four times a second (Mars to Mars: no delay). */
+  pose(dt: number, p: CrewPose): void {
+    this.poseT -= dt;
+    if (this.poseT > 0 || this.member !== "ev2") return;
+    this.poseT = 0.25;
+    this.link?.send({ type: "pose", pose: p });
+  }
+  private poseT = 0;
 
   /** Telemetry, at most twice a second of real time. */
   frame(dt: number, f: Frame): void {

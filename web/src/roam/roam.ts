@@ -4,7 +4,7 @@ import type { SiteData } from "../data/loaders";
 import type { RoamLook, SceneView } from "../scene/view";
 import type { Poi } from "../types";
 import { DEFAULT_PARAMS } from "../eva/params";
-import { breathsPerMin, toppleTime, EARTH_G, Ground, heartRate, jumpOf, MARS_WALKER, newWalker, stepWalker, walkRunMs, WALKER_NOTES, WalkEvent, WalkerState } from "../eva/walker";
+import { cadence, breathsPerMin, toppleTime, EARTH_G, Ground, heartRate, jumpOf, MARS_WALKER, newWalker, stepWalker, walkRunMs, WALKER_NOTES, WalkEvent, WalkerState } from "../eva/walker";
 import { fmtLmst, lmstAt as lmstAtUtc, MARS_HOUR_S, solarGeometry, SolarGeometry, sunAt } from "../eva/sun";
 import { fmtLightTime, marsSky, utcAtLmst } from "../eva/sky";
 import { inContact, radioShadow } from "../eva/radio";
@@ -19,7 +19,7 @@ import { measurePath } from "../data/grid";
 import { parsePlanLink } from "../state/planLink";
 import { loadRoamPlan, RoamPlan } from "./plan";
 import { RoamHab } from "./hab";
-import type { EarthMessage, Frame, PlanInfo } from "../hab/protocol";
+import type { CrewPose, EarthMessage, Frame, Member, PlanInfo } from "../hab/protocol";
 import { autonomyHtml, type Decision } from "../ui/autonomy";
 import type { XY } from "../types";
 
@@ -117,6 +117,13 @@ export class Roam {
   private readonly hab: RoamHab;
   private lightTimeS = 0;
   private decisions: Decision[] = [];
+  // ---- two astronauts on two devices
+  private readonly member: Member;
+  private readonly buddy: Astronaut;
+  private buddyState: WalkerState | null = null;
+  private buddyTarget: CrewPose | null = null;
+  private buddySeen = 0;
+  private apart = false;
   private heardTold = false;
   constructor(private readonly site: SiteData, private readonly view: SceneView) {
     const grid = site.grid;
@@ -138,8 +145,9 @@ export class Roam {
     this.radio = radioShadow(grid, { x: rover.x, y: rover.y });
     // start at the rover: just off its rear porch, where the suitports are, facing away from it (west);
     // the 3D camera starts beside the rover, looking over the astronaut's shoulder
+    this.member = new URLSearchParams(location.search).get("crew") === "ev2" ? "ev2" : "ev1";
     const sx = rover.x - ROVER_HALF.x - 1.1;
-    const sy = rover.y;
+    const sy = rover.y + (this.member === "ev2" ? 1.8 : 0); // EV2 climbs out of the other suitport
     this.walker = newWalker(sx, sy, grid.heightAt(sx, sy), -Math.PI / 2);
     this.yaw = -0.6;
     this.pitch = -0.3;
@@ -152,7 +160,14 @@ export class Roam {
     this.lon = site.meta.centerLonLat?.lon ?? (site.meta.boundsLonLat.west + site.meta.boundsLonLat.east) / 2;
 
     this.dust = new Dust(MARS_WALKER.g, (x, z) => view.groundAt(x, z));
-    this.avatar = new Astronaut(MARS_WALKER.g, (x, z) => view.groundAt(x, z));
+    // EV1 wears fern stripes, EV2 amber: each device draws its own suit and the other astronaut's
+    const FERN = 0xc6f432;
+    const AMBER = 0xffc247;
+    this.avatar = new Astronaut(MARS_WALKER.g, (x, z) => view.groundAt(x, z), this.member === "ev2" ? AMBER : FERN);
+    this.buddy = new Astronaut(MARS_WALKER.g, (x, z) => view.groundAt(x, z), this.member === "ev2" ? FERN : AMBER);
+    this.buddy.root.visible = false;
+    view.add(this.buddy.root);
+    view.add(this.buddy.mapMarker, 13);
     view.add(this.avatar.root);
     view.add(this.avatar.mapMarker, 13);
     view.add(this.shadow.mesh);
@@ -160,7 +175,12 @@ export class Roam {
     view.add(this.dust.points);
     view.add(this.trail.line);
     this.markStops();
-    this.hab = new RoamHab(site.id, "ev1");
+    this.hab = new RoamHab(site.id, this.member);
+    this.hab.onBuddy = (p) => {
+      this.buddyTarget = p;
+      this.buddySeen = performance.now();
+    };
+    this.hab.onPlan = (p) => this.planFromEv1(p);
     this.hab.onChange = () => this.renderLink();
     this.hab.onEarth = (m) => this.fromEarth(m);
 
@@ -239,8 +259,11 @@ export class Roam {
       o2ReserveL: p.o2SupplyL * p.reserveFraction,
       lightTimeS: this.lightTimeS,
       storm: false,
-      buddy: false,
+      buddy: this.hab.ev2Online > 0,
       dust: { tau: 0.5, name: "Typical season" },
+      legs: this.legs.map((leg) => leg.filter((_, k) => k % 3 === 0 || k === leg.length - 1).map((q) => [Math.round(q.x * 10) / 10, Math.round(q.y * 10) / 10] as [number, number])),
+      o2PlannedL: this.plan?.planned.o2L,
+      walkTimeS: this.plan?.planned.walkTimeS,
       hash: this.plan?.hash ?? location.hash,
       timeline,
       mode: "roam",
@@ -274,7 +297,68 @@ export class Roam {
       lightTimeS: this.lightTimeS,
       speed: document.hidden ? 0 : 1,
       hidden: document.hidden,
+      pose: this.selfPose(),
+      buddy: this.buddyTarget && this.buddyFresh() ? { x: this.buddyTarget.x, y: this.buddyTarget.y } : null,
     };
+  }
+
+  private selfPose(): CrewPose {
+    const s = this.walker;
+    return { x: s.x, y: s.y, z: s.z, headingDeg: (s.heading * 180) / Math.PI, gait: s.gait, vx: s.vx, vy: s.vy, vz: s.vz, downT: s.downT, sliding: s.sliding };
+  }
+
+  private buddyFresh(): boolean {
+    return performance.now() - this.buddySeen < 5000;
+  }
+
+  /** EV2: EV1's mission arrives with its plan — walk the same stops along the same route. */
+  private planFromEv1(p: PlanInfo): void {
+    if (this.member !== "ev2" || p.mode !== "roam" || !p.legs?.length || this.plan?.hash === p.hash) return;
+    const dwell = (id: string) => this.site.pois.find((x) => x.id === id)?.dwellMin ?? 20;
+    const stops = p.stops.filter((x) => x.kind !== "shelter").sort((a, b) => a.order - b.order).map((x) => ({ id: x.id, name: x.name, short: x.short, x: x.x, y: x.y, dwellMin: dwell(x.id) }));
+    const legs = p.legs.map((leg) => leg.map(([x, y]) => ({ x, y })));
+    this.plan = {
+      site: this.site.id, hash: p.hash ?? "", rover: { x: this.rover.x, y: this.rover.y }, startLmst: this.startLmst, stops, legs,
+      planned: { o2L: p.o2PlannedL ?? 0, timeS: p.timeS, walkTimeS: p.walkTimeS ?? p.timeS, distM: p.distanceM },
+    };
+    this.useMission(stops, legs);
+    this.toast(`<b>EV1's plan received:</b> ${stops.map((x) => esc(x.short)).join(" → ")}. Walk it together.`);
+  }
+
+  /** The other astronaut: eased toward the last pose received, animated like your own suit. */
+  private updateBuddy(dt: number): void {
+    const t = this.buddyTarget;
+    const visible = !!t && this.buddyFresh();
+    this.buddy.root.visible = visible;
+    if (!visible || !t) {
+      this.buddy.mapMarker.visible = false;
+      return;
+    }
+    const b = (this.buddyState ??= newWalker(t.x, t.y, t.z, (t.headingDeg * Math.PI) / 180));
+    const k = Math.min(1, dt * 8);
+    b.x += (t.x - b.x) * k;
+    b.y += (t.y - b.y) * k;
+    b.z += (t.z - b.z) * k;
+    b.vx = t.vx;
+    b.vy = t.vy;
+    b.vz = t.vz;
+    let dh = (t.headingDeg * Math.PI) / 180 - b.heading;
+    dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+    b.heading += dh * k;
+    b.gait = t.gait as WalkerState["gait"];
+    b.grounded = t.gait !== "air";
+    b.downT = t.downT ?? 0;
+    b.sliding = !!t.sliding;
+    const sp = Math.hypot(t.vx, t.vy);
+    if (b.gait === "walk") b.phase += cadence(MARS_WALKER.g, MARS_WALKER.legM, sp, 1.3) * Math.PI * dt;
+    this.buddy.update(b, this.view.toWorld(b.x, b.y, b.z), dt, 0, this.look === "plan");
+    // the buddy rule: stay within sight and reach of each other
+    const d = Math.hypot(b.x - this.walker.x, b.y - this.walker.y);
+    const other = this.member === "ev2" ? "EV1" : "EV2";
+    if (d > DEFAULT_PARAMS.buddyMaxSeparationM && !this.apart) {
+      this.apart = true;
+      this.toast(`More than ${DEFAULT_PARAMS.buddyMaxSeparationM} m from ${other}: the buddy rule keeps you within sight and reach of each other.`, true);
+    } else if (d < DEFAULT_PARAMS.buddyMaxSeparationM * 0.8) this.apart = false;
   }
 
   /** A decision the crew had to take alone (Earth is a light time away): kept for the debrief and sent to Earth. */
@@ -336,12 +420,25 @@ export class Roam {
     this.toast(`Plan changed: ${ids.length} stop${ids.length > 1 ? "s" : ""} dropped. Next: ${esc(this.target()?.name ?? "the rover")}.`);
   }
 
+  /** The same page for the second astronaut, on another device. */
+  private ev2Link(): string {
+    const q = new URLSearchParams(location.search);
+    q.set("crew", "ev2");
+    return `?${q.toString()}${location.hash}`;
+  }
+
   /** The hab link's state, in the mission panel. */
   private renderLink(): void {
     const el = this.host?.querySelector<HTMLElement>(".rm-link");
     if (!el) return;
     const h = this.hab;
-    el.innerHTML = h.online ? `<i class="on"></i>Hab linked${h.mcOnline ? ` · Mission Control watching, ${fmtLightTime(this.lightTimeS)} behind` : " · Mission Control not connected"}` : `<i></i>No hab link: walking on your own`;
+    const other = this.member === "ev2" ? "EV1" : "EV2";
+    const b = this.buddyState;
+    const pair = this.buddyTarget && this.buddyFresh() && b ? ` · ${other} ${fmtDist(Math.hypot(b.x - this.walker.x, b.y - this.walker.y))} away` : this.member === "ev1" && h.ev2Online ? ` · ${other} online` : "";
+    const invite = this.member === "ev1" && h.online && !h.ev2Online ? ` · <a href="${esc(this.ev2Link())}" target="_blank" rel="noopener">EV2 link</a>` : "";
+    el.innerHTML = h.online
+      ? `<i class="on"></i>${this.member === "ev2" ? "You are EV2" : "Hab linked"}${pair}${h.mcOnline ? ` · Mission Control watching, ${fmtLightTime(this.lightTimeS)} behind` : ""}${invite}`
+      : `<i></i>No hab link: walking on your own`;
   }
 
   /** Turn to where the first leg leaves the rover: the camera behind you, looking along the route. */
@@ -603,7 +700,8 @@ export class Roam {
       </div>
       <div class="rm-intro panel" role="dialog" aria-label="Free roam">
         <p class="eyebrow">// Free roam · ${esc(name)}</p>
-        <h2>${this.plan ? "Walk your plan" : "Walk on Mars"}</h2>
+        <h2>${this.member === "ev2" ? "You are EV2" : this.plan ? "Walk your plan" : "Walk on Mars"}</h2>
+        ${this.member === "ev2" ? `<p class="rm-goal">EV1 runs this EVA on another device. You climb out of the other suitport, see EV1's suit, and walk EV1's mission with them; EV1 sees you. Stay within ${DEFAULT_PARAMS.buddyMaxSeparationM} m of each other.</p>` : ""}
         ${this.plan ? `<p class="rm-goal">Mission: reach ${this.plan.stops.length} ${this.plan.stops.length === 1 ? "stop" : "stops"} in order (${this.plan.stops.map((s) => esc(s.short)).join(" → ")}), hold <kbd>E</kbd> at each to collect a sample, then climb back into the rover. The planner says ${fmtDur(this.plan.planned.timeS)} and ${Math.round(this.plan.planned.o2L)} L of oxygen — can you match it?</p>` : ""}
         <p>You have just climbed out of the rover through its rear suitport, onto the real 1 m HiRISE terrain. Gravity is 0.38 of Earth's: you weigh ${Math.round(DEFAULT_PARAMS.massKg * MARS_WALKER.g)} N with suit and tools instead of ${Math.round(DEFAULT_PARAMS.massKg * EARTH_G).toLocaleString("en")} N, but you still have all ${DEFAULT_PARAMS.massKg} kg of mass to start, stop and turn — and only 38 % of the grip.</p>
         <ul class="rm-keys">
@@ -874,6 +972,8 @@ export class Roam {
     for (const e of events) this.onEvent(e);
     if (this.plan) this.mission(dt);
     if (this.started && !this.finished) this.hab.frame(dt, this.frameNow());
+    if (this.started) this.hab.pose(dt, this.selfPose());
+    this.updateBuddy(dt);
 
     const feet = this.view.toWorld(s.x, s.y, s.z);
     const groundY = this.view.groundAt(feet.x, feet.z);
@@ -1045,7 +1145,9 @@ export class Roam {
       if (want.y < floor) want.y = floor;
       // never inside the rover: over its hull, lift the camera above the roof
       const rv = this.view.toWorld(this.rover.x, this.rover.y, this.ground.height(this.rover.x, this.rover.y));
-      if (Math.abs(want.x - rv.x) < ROVER_HALF.x + 0.8 && Math.abs(want.z - rv.z) < ROVER_HALF.z + 0.8) want.y = Math.max(want.y, rv.y + 5);
+      const nearX = ROVER_HALF.x + 2.2 - Math.abs(want.x - rv.x);
+      const nearZ = ROVER_HALF.z + 2.2 - Math.abs(want.z - rv.z);
+      if (nearX > 0 && nearZ > 0) want.y = Math.max(want.y, rv.y + 3.6 + Math.min(1.5, Math.min(nearX, nearZ)) * 1.2); // rise over the roof as it comes close
       if (!this.camInit) this.smoothCam.copy(want);
       this.smoothCam.lerp(want, Math.min(1, dt * 8));
       this.view.setRoamCamera(this.smoothCam, focus, 55);
@@ -1088,6 +1190,7 @@ export class Roam {
     });
     const s = this.walker;
     this.contact = inContact(this.radio, this.site.grid, s.x, s.y);
+    this.renderLink(); // once a second: the other astronaut's distance
     this.checkStops();
   }
 

@@ -165,6 +165,22 @@ describe("hab server", () => {
     ev2.ws.close();
   });
 
+  it("relays EV2's free-roam pose to EV1 at once, and ignores a malformed one", async () => {
+    const ev1 = new Client("crew", "jezero");
+    await ev1.ready();
+    const ev2 = new Client("crew", "jezero", "ev2");
+    await ev2.ready();
+    await ev1.waitFor((m) => m.type === "members" && m.ev2 === 1);
+    ev2.send({ type: "pose", pose: { x: Number.NaN, y: 1, z: 1, headingDeg: 0, gait: "walk", vx: 0, vy: 0, vz: 0 } } as never);
+    ev2.send({ type: "pose", pose: { x: 812.5, y: 1460, z: -2400, headingDeg: 90, gait: "walk", vx: 0.8, vy: 0, vz: 0 } });
+    const got = (await ev1.waitFor((m) => m.type === "buddy")) as { pose: { x: number; gait: string } };
+    expect(got.pose.x).toBe(812.5);
+    expect(got.pose.gait).toBe("walk");
+    expect(ev1.got.filter((m) => m.type === "buddy")).toHaveLength(1); // the NaN pose never arrived
+    ev1.ws.close();
+    ev2.ws.close();
+  });
+
   it("lists the EVAs under way on every site, for the main menu's live card", async () => {
     type Live = { live: { site: string; siteName: string; evaId: string; crewOnline: boolean; ev2: number; stops: number }[] };
     const live = async () => ((await (await fetch(`${base}/api/live`)).json()) as Live).live;
