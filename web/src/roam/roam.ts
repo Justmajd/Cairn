@@ -125,6 +125,9 @@ export class Roam {
   private stormAlarm = false;
   private stormEarthT: number | null = null;
   private lastT = 0;
+  // ---- suit emergencies (practice): a leak doubles oxygen use, a twisted ankle halves the pace
+  private emergency: { kind: "leak" | "ankle"; atS: number; o2LeftL: number } | null = null;
+  private scheduled: { kind: "leak" | "ankle"; atS: number } | null = null;
   // ---- two astronauts on two devices
   private readonly member: Member;
   private readonly buddy: Astronaut;
@@ -147,6 +150,8 @@ export class Roam {
     // a plan in the address: the planner handed it over ("Walk it yourself"), or it is routed here
     const link = parsePlanLink(location.hash);
     this.stormOn = link?.storm ?? false;
+    const em = /^(leak|ankle)(?:@(\d+))?$/.exec(new URLSearchParams(location.search).get("emergency") ?? "");
+    if (em) this.scheduled = { kind: em[1] as "leak" | "ankle", atS: Number(em[2] ?? 600) };
     this.plan = link ? loadRoamPlan(site.id, location.hash) : null;
     const parked = this.plan?.rover ?? link?.rover ?? null;
     const rover = parked ? { ...shelter, x: parked.x, y: parked.y } : shelter;
@@ -294,7 +299,7 @@ export class Roam {
       doseUGy: this.storm?.doseUGy ?? 0,
       doseRate: this.storm ? this.storm.rate(this.t) : 0,
       baseline: this.storm?.baseline ?? 0,
-      status: `On foot · ${s.gait === "down" ? "down" : s.gait === "slide" ? "sliding" : s.gait === "air" ? "in the air" : s.gait === "lope" ? "loping" : s.gait === "walk" ? "walking" : "standing"}${this.finished ? " · back in the rover" : ""}`,
+      status: `On foot${this.emergency ? (this.emergency.kind === "leak" ? " · suit leak" : " · twisted ankle") : ""} · ${s.gait === "down" ? "down" : s.gait === "slide" ? "sliding" : s.gait === "air" ? "in the air" : s.gait === "lope" ? "loping" : s.gait === "walk" ? "walking" : "standing"}${this.finished ? " · back in the rover" : ""}`,
       next: tg ? tg.name : this.plan ? "the rover" : "exploring",
       nextDistM: tg ? Math.hypot(tg.x - s.x, tg.y - s.y) : 0,
       homeS: dr / 0.8,
@@ -591,6 +596,40 @@ export class Roam {
     this.weather();
   }
 
+  /** A practice emergency: what it does, and CAIRN's rule — stop the science and go home now. */
+  startEmergency(kind: "leak" | "ankle"): void {
+    if (this.emergency || this.finished) return;
+    const p = DEFAULT_PARAMS;
+    this.emergency = { kind, atS: this.t, o2LeftL: p.o2SupplyL - this.walker.o2L };
+    this.avatar.setLimp(kind === "ankle");
+    this.audio.setLeak(kind === "leak");
+    if (this.plan) {
+      this.next = this.stops.length;
+      this.markStops();
+      this.renderMission();
+    }
+    const d = this.roverGap();
+    this.toast(
+      kind === "leak"
+        ? `<b>Suit leak (practice).</b> Pressure is holding but oxygen is going twice as fast. Stop the science and walk back to the rover now: ${fmtDist(d)}.`
+        : `<b>Twisted ankle (practice).</b> Keep the weight off it: half your pace, no bounding or jumping. Head back to the rover: ${fmtDist(d)}.`,
+      true,
+    );
+    this.audio.beep(true);
+    this.decided(kind === "leak" ? "Suit leak: stopped the science and turned back" : "Twisted ankle: turned back at half pace");
+    this.renderEmergency();
+  }
+
+  private renderEmergency(): void {
+    const el = this.host.querySelector<HTMLElement>(".rm-emergency")!;
+    const e = this.emergency;
+    el.hidden = !e;
+    if (!e) return;
+    const p = DEFAULT_PARAMS;
+    const left = p.o2SupplyL - this.walker.o2L;
+    el.innerHTML = `<b>${e.kind === "leak" ? "Suit leak" : "Twisted ankle"}</b><span>${e.kind === "leak" ? `O₂ ×2 · ${Math.round(left)} L left` : "half pace · no jumps"} · rover ${fmtDist(this.roverGap())}</span>`;
+  }
+
   /** The storm: dose as it builds, the alarm on Mars, Earth's answer two light times later. */
   private weather(): void {
     const st = this.storm;
@@ -708,6 +747,7 @@ export class Roam {
           ${row("Samples", String(this.stops.length), String(this.samples.length))}
           ${row("Falls · hard landings", "0", `${this.falls} · ${this.hardLandings}`)}
           ${row("Highest jump", "—", s.maxJumpM > 0 ? `${Math.round(s.maxJumpM * 100)} cm` : "—")}
+          ${this.emergency ? row(this.emergency.kind === "leak" ? "Suit leak" : "Twisted ankle", "—", `at ${fmtClock(this.emergency.atS)}, ${Math.round(this.emergency.o2LeftL)} L of O₂ left then; home with ${Math.round(DEFAULT_PARAMS.o2SupplyL - s.o2L)} L (reserve ${Math.round(DEFAULT_PARAMS.o2SupplyL * DEFAULT_PARAMS.reserveFraction)} L)`) : ""}
           ${st && this.stormAlarm ? row("Radiation dose", "—", `${fmtDose(st.doseUGy)} (sheltering avoided ${fmtDose(st.avoided(st.deadlineS + 3600))} in the next hour)`) : ""}
         </table>
         <p class="fine">Planned figures come from the planner's model for this exact route; yours come from the walking physics as you walked it. Suit numbers are demo assumptions.</p>
@@ -749,6 +789,7 @@ export class Roam {
       </section>
       <section class="rm-mission panel" aria-label="Mission"></section>
       <section class="rm-storm" role="status" hidden></section>
+      <div class="rm-emergency" role="status" hidden></div>
       <div class="rm-act" role="status" hidden><i class="rm-ring" aria-hidden="true"></i><span></span></div>
       <div class="rm-gait" aria-hidden="true"><b data-k="gaitbig"></b><span data-k="gaitsub"></span></div>
       <div class="rm-toast" role="status" aria-live="polite" hidden></div>
@@ -994,9 +1035,17 @@ export class Roam {
         <li><b>Sound:</b> in the visor you hear your suit — fan, breathing in the bubble, footsteps through the boots, your heart. Outside (3D, map) you hear what a microphone on the ground would: wind and faint, dull footsteps. Mars' thin CO₂ air carries sound poorly and high pitches least (Perseverance's microphones).</li>
         <li><b>In a suit the helmet turns with the body:</b> in the visor view your body turns to face where you look, and you see your own arms and boots.</li>
       </ul>
+      <h3>Practise an emergency</h3>
+      <p class="rm-practice">${this.emergency ? `Under way: ${this.emergency.kind === "leak" ? "suit leak" : "twisted ankle"}.` : `<button data-practice="leak">Suit leak</button><button data-practice="ankle">Twisted ankle</button>`} The rule is the same as in the planner: stop the science and go home now.</p>
       <h3>Numbers used</h3>
       <table class="keys">${WALKER_NOTES.map((n) => `<tr><td>${esc(n.label)}</td><td><b>${esc(n.value)}</b> — ${esc(n.basis)}</td></tr>`).join("")}</table>`,
       false,
+    );
+    $("#modal").querySelectorAll<HTMLButtonElement>("[data-practice]").forEach((b) =>
+      b.addEventListener("click", () => {
+        $("#modal").hidden = true;
+        this.startEmergency(b.dataset.practice as "leak" | "ankle");
+      }),
     );
   }
 
@@ -1021,7 +1070,21 @@ export class Roam {
   tick(dt: number): void {
     const s = this.walker;
     const input = this.input();
+    if (this.emergency?.kind === "ankle") {
+      // weight off the bad foot: half the pace, no bounding, no jumping
+      input.x *= 0.5;
+      input.y *= 0.5;
+      input.lope = false;
+      input.jump = false;
+    }
+    const o2Before = s.o2L;
     const events = stepWalker(s, input, this.ground, dt, DEFAULT_PARAMS, MARS_WALKER);
+    if (this.emergency?.kind === "leak") s.o2L += s.o2L - o2Before; // oxygen leaves twice as fast
+    if (this.scheduled && this.started && this.t >= this.scheduled.atS) {
+      const k = this.scheduled.kind;
+      this.scheduled = null;
+      this.startEmergency(k);
+    }
     this.jumpQueued = false;
     this.collideRover();
     if (this.look === "walk" && s.gait !== "down") {
@@ -1321,6 +1384,7 @@ export class Roam {
     const heading = this.look === "plan" ? (s.heading * 180) / Math.PI : (this.yaw * 180) / Math.PI;
     const goal = this.target();
     this.compassStrip(heading, brg, goal && this.next < this.stops.length ? (Math.atan2(goal.x - s.x, goal.y - s.y) * 180) / Math.PI : null);
+    if (this.emergency) this.renderEmergency();
     const tg = this.target();
     if (tg && this.plan) {
       const d = Math.hypot(tg.x - s.x, tg.y - s.y);

@@ -409,6 +409,12 @@ export class Astronaut {
     this.smoothJoints(at, dt);
   }
 
+  /** Favouring an injured right ankle: a short, stiff step on that side and a dip onto the good leg. */
+  setLimp(on: boolean): void {
+    this.limp = on;
+  }
+  private limp = false;
+
   /** What the hands are doing at a stop or the rover (null: nothing); `progress` 0 … 1 of the hold. */
   setAction(kind: "sample" | "board" | null, progress = 0): void {
     this.action = kind ? { kind, progress } : null;
@@ -553,6 +559,11 @@ export class Astronaut {
       kneeB = tuck * 1.2;
       arm = jump ? (falling ? -0.15 : -0.5) : 0.25;
       if (s.gait === "lope") crouch += 0.06;
+    }
+    if (this.limp && s.gait === "walk") {
+      hipB *= 0.55;
+      kneeB *= 0.25;
+      crouch += Math.max(0, Math.sin(ph)) * 0.05; // the body drops onto the good leg
     }
     const legs: [number, number][] = [[hipA, kneeA], [hipB, kneeB]];
     this.legs.forEach((l, i) => {
