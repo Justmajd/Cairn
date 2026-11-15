@@ -4,6 +4,7 @@
  * holds each item back until it would have arrived (server/room.ts), so this page simply shows what it
  * receives.  Messages typed here reach the crew one light time later.
  */
+import { sessionInUrl, sessionParam } from "../hab/session";
 import { HabLink, habApi, type LinkState } from "../hab/link";
 import { liveEvas, liveSiteName, liveState } from "../hab/live";
 import type { EarthMessage, EvaRecord, Frame, LiveEva, LogEntry, McSnapshot, NoteRecord, PlanChange, PlanInfo, ServerMsg } from "../hab/protocol";
@@ -283,12 +284,12 @@ export function startMissionControl(site: string): void {
     draw();
   }, 100);
 
-  /** EVAs under way on other sites: offered from here while this site has none running. */
+  /** EVAs under way in other crew sessions (this site or others): offered from here while this one has none. */
   let elsewhere: LiveEva[] = [];
   const pollElsewhere = async () => {
     if (document.hidden || replay) return;
-    const next = ((await liveEvas()) ?? []).filter((e) => e.site !== site);
-    const changed = next.map((e) => e.evaId).join() !== elsewhere.map((e) => e.evaId).join();
+    const next = ((await liveEvas()) ?? []).filter((e) => e.running && e.session !== link?.session);
+    const changed = next.map((e) => e.session + e.evaId).join() !== elsewhere.map((e) => e.session + e.evaId).join();
     elsewhere = next;
     if (changed) render();
   };
@@ -329,7 +330,7 @@ export function startMissionControl(site: string): void {
     // nothing under way here, but an EVA is live at another site: offer its Mission Control
     if (w && !running && elsewhere.length && S.link === "online")
       w += elsewhere
-        .map((e) => `<span class="mc-elsewhere"><i aria-hidden="true"></i>An EVA is under way at <b>${esc(liveSiteName(e))}</b> (T+${fmtClock(e.now)}, ${esc(liveState(e))}). <a href="?view=mission&site=${encodeURIComponent(e.site)}">Open its Mission Control →</a></span>`)
+        .map((e) => `<span class="mc-elsewhere"><i aria-hidden="true"></i>An EVA is under way at <b>${esc(liveSiteName(e))}</b> (T+${fmtClock(e.now)}, ${esc(liveState(e))}). <a href="?view=mission&site=${encodeURIComponent(e.site)}${sessionParam(e.session)}">Open its Mission Control →</a></span>`)
         .join("");
     wait.innerHTML = w;
     wait.hidden = !w;
@@ -823,7 +824,8 @@ export function startMissionControl(site: string): void {
     }
   });
   new ResizeObserver(() => draw()).observe(canvas.parentElement!);
-  link = new HabLink("mc", site);
+  // the crew session in the address, or (none named) the hab gives this site's newest
+  link = new HabLink("mc", site, "ev1", sessionInUrl());
   link.onMessage((m) => {
     apply(m);
     if (!replay) render();

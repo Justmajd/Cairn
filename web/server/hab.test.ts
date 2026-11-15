@@ -29,10 +29,10 @@ function freePort(): Promise<number> {
 class Client {
   ws: WebSocket;
   got: ServerMsg[] = [];
-  constructor(role: "crew" | "mc", site = "jezero", member?: "ev1" | "ev2") {
+  constructor(role: "crew" | "mc", site = "jezero", member?: "ev1" | "ev2", session?: string) {
     this.ws = new WebSocket(base.replace("http", "ws") + "/hab");
     this.ws.on("message", (d) => this.got.push(JSON.parse(d.toString()) as ServerMsg));
-    this.ws.on("open", () => this.send({ type: "hello", role, site, ...(member ? { member } : {}) }));
+    this.ws.on("open", () => this.send({ type: "hello", role, site, ...(member ? { member } : {}), ...(session ? { session } : {}) }));
   }
   ready(): Promise<void> {
     return new Promise((ok) => (this.ws.readyState === WebSocket.OPEN ? ok() : this.ws.once("open", () => ok())));
@@ -199,9 +199,9 @@ describe("hab server", () => {
     ev2.ws.close();
   });
 
-  it("lists the EVAs under way on every site, for the main menu's live card", async () => {
-    type Live = { live: { site: string; siteName: string; evaId: string; crewOnline: boolean; ev2: number; stops: number }[] };
-    const live = async () => ((await (await fetch(`${base}/api/live`)).json()) as Live).live;
+  it("lists the open sessions on every site, for the main menu", async () => {
+    type Live = { live: { session: string; running: boolean; site: string; siteName: string; evaId: string; crewOnline: boolean; ev2: number; stops: number }[] };
+    const live = async () => ((await (await fetch(`${base}/api/live`)).json()) as Live).live.filter((e) => e.site === "gale");
     expect(await live()).toEqual([]);
 
     const ev1 = new Client("crew", "gale", "ev1");
@@ -214,16 +214,54 @@ describe("hab server", () => {
       { id: "box", name: "Boxwork", short: "Box", x: 10, y: 10, kind: "objective", order: 1 },
     ];
     ev1.send({ type: "plan", plan: { site: "gale", siteName: "Gale Crater — Mount Sharp boxwork", stops, lightTimeS: 600 } as never });
-    expect(await live()).toEqual([]); // planning is not live
+    expect(await live()).toMatchObject([{ session: "gale", running: false, ev2: 1 }]); // EV1 planning: a session to join
     ev1.send({ type: "eva", state: "start", evaId: "e3", lightTimeS: 600 });
     await ev2.waitFor((m) => m.type === "crew-eva" && !!m.eva?.running);
-    expect(await live()).toMatchObject([{ site: "gale", siteName: "Gale Crater — Mount Sharp boxwork", evaId: "e3", crewOnline: true, ev2: 1, stops: 1 }]);
+    expect(await live()).toMatchObject([{ session: "gale", running: true, site: "gale", siteName: "Gale Crater — Mount Sharp boxwork", evaId: "e3", crewOnline: true, ev2: 1, stops: 1 }]);
 
     ev1.send({ type: "eva", state: "end", evaId: "e3", aborted: false, summary: "" });
     await ev2.waitFor((m) => m.type === "crew-eva" && !!m.eva?.ended);
-    expect(await live()).toEqual([]);
+    expect(await live()).toMatchObject([{ session: "gale", running: false }]); // EV1 is still there
     ev1.ws.close();
     ev2.ws.close();
+    await new Promise((r) => setTimeout(r, 150));
+    expect(await live()).toEqual([]); // EV1 left: nothing to join
+  });
+
+  it("keeps several crews apart: one session per EV1, on one site or many", async () => {
+    type Live = { live: { session: string; site: string; ev2: number }[] };
+    const live = async () => ((await (await fetch(`${base}/api/live`)).json()) as Live).live;
+    const a1 = new Client("crew", "deuteronilus", "ev1", "deut-aaaa");
+    const b1 = new Client("crew", "deuteronilus", "ev1", "deut-bbbb");
+    await a1.ready();
+    await b1.ready();
+    await a1.waitFor((m) => m.type === "joined");
+    await b1.waitFor((m) => m.type === "joined");
+    const sessions = (await live()).filter((e) => e.site === "deuteronilus").map((e) => e.session);
+    expect(sessions).toEqual(["deut-bbbb", "deut-aaaa"]); // newest first
+    // EV2 joins B by name, and only B's EV1 hears about it
+    const b2 = new Client("crew", "deuteronilus", "ev2", "deut-bbbb");
+    await b2.ready();
+    await b1.waitFor((m) => m.type === "members" && m.ev2 === 1);
+    expect(a1.got.some((m) => m.type === "members" && m.ev2 === 1)).toBe(false);
+    // A's plan goes to nobody in B
+    a1.send({ type: "plan", plan: { site: "deuteronilus", siteName: "Deuteronilus Mensae", stops: [], lightTimeS: 600, hash: "stops=toe" } as never });
+    b1.send({ type: "plan", plan: { site: "deuteronilus", siteName: "Deuteronilus Mensae", stops: [], lightTimeS: 600, hash: "stops=brain" } as never });
+    const plan = (await b2.waitFor((m) => m.type === "crewplan")) as { plan: { hash: string } };
+    expect(plan.plan.hash).toBe("stops=brain");
+    await new Promise((r) => setTimeout(r, 100));
+    expect(b2.got.filter((m) => m.type === "crewplan").map((m) => (m as { plan: { hash: string } }).plan.hash)).toEqual(["stops=brain"]);
+    // Mission Control without a session joins the site's newest; with one, that one
+    const mcNew = new Client("mc", "deuteronilus");
+    const mcA = new Client("mc", "deuteronilus", undefined, "deut-aaaa");
+    expect(((await mcNew.waitFor((m) => m.type === "joined")) as { session: string }).session).toBe("deut-bbbb");
+    expect(((await mcA.waitFor((m) => m.type === "joined")) as { session: string }).session).toBe("deut-aaaa");
+    const snap = (await mcA.waitFor((m) => m.type === "snapshot")) as { snap: { plan: { hash: string } | null } };
+    expect(snap.snap.plan?.hash).toBe("stops=toe");
+    // a session id from another site is not joined: EV1 gets this site's own default session instead
+    const odd = new Client("crew", "jezero", "ev1", "deut-aaaa");
+    expect(((await odd.waitFor((m) => m.type === "joined")) as { session: string }).session).toBe("jezero");
+    for (const c of [a1, b1, b2, mcNew, mcA, odd]) c.ws.close();
   });
 
   it("serves only files inside the app", async () => {

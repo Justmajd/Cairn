@@ -138,7 +138,11 @@ export interface EarthMessage {
 }
 
 export type ClientMsg =
-  | { type: "hello"; role: Role; site: string; member?: Member }
+  /**
+   * `session`: which crew's session (one per EV1, see hab/session.ts).  EV1 without one gets the site's
+   * default session; EV2 and Mission Control without one join the site's newest session.
+   */
+  | { type: "hello"; role: Role; site: string; member?: Member; session?: string }
   | { type: "plan"; plan: PlanInfo }
   | { type: "eva"; state: "start"; evaId: string; lightTimeS: number }
   | { type: "eva"; state: "end"; evaId: string; aborted: boolean; summary: string }
@@ -188,6 +192,8 @@ export type ServerMsg =
   | { type: "crew-eva"; eva: McSnapshot["eva"] }
   | { type: "live"; frame: Frame }
   | { type: "buddy"; pose: CrewPose }
+  /** The hab's answer to hello: the session this device is in (EV2 and Mission Control may not have known it). */
+  | { type: "joined"; session: string }
   /** The other astronaut went out on foot in free roam (relayed from EV1 to EV2, or EV2 to EV1). */
   | { type: "outside"; from: Member; hash: string; tau: number };
 
@@ -212,6 +218,10 @@ export const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 /** An EVA under way on one site, as the hab lists it for the main menu (GET /api/live). */
 export interface LiveEva {
+  /** the session (one per EV1): EV2 and Mission Control join it with ?s=<session> */
+  session: string;
+  /** EV1 is connected and planning (no EVA yet), or an EVA is under way */
+  running: boolean;
   site: string;
   siteName: string;
   evaId: string;
@@ -226,6 +236,8 @@ export interface LiveEva {
   ev2: number;
   mc: number;
   stops: number;
+  /** the stops in order ("Cheyava Falls → Serpentine Rapids"), to tell sessions apart */
+  route: string;
   /** EV1 is walking it in free roam (so EV2 joins there, not in the planner). */
   roam: boolean;
 }
