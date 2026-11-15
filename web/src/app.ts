@@ -10,7 +10,7 @@ import { FieldNote, Notebook } from "./ui/notebook";
 import { sessionFor, sessionParam } from "./hab/session";
 import { HabLink, type LinkState } from "./hab/link";
 import type { EarthMessage, Frame, Member, PlanChange, PlanInfo, ServerMsg } from "./hab/protocol";
-import { bestRelay, inContact, lineOfSight, RadioCoverage, radioCoverage, radioShadow, relayFromShadow, RelaySuggestion, RELAY_MAST_M, SUIT_ANTENNA_M } from "./eva/radio";
+import { bestRelay, relayAtPoint, RELAY_MAX_OFF_ROUTE_M, inContact, lineOfSight, RadioCoverage, radioCoverage, radioShadow, relayFromShadow, RelaySuggestion, RELAY_MAST_M, SUIT_ANTENNA_M } from "./eva/radio";
 import { inTerrainShadow } from "./eva/shade";
 import { geometricMedian } from "./routing/median";
 import { formatPlanLink, parsePlanLink } from "./state/planLink";
@@ -198,6 +198,8 @@ export class App {
   private radioLost = false;
   /** Plan with the suggested relay (the crew stands it up on the way). */
   private useRelay = false;
+  /** where the crew put the relay on the map, or null: CAIRN's suggested spot */
+  private relayManual: XY | null = null;
   /** The relay is up during the current EVA. */
   private relayUp = false;
   /** What happened during the current EVA, for the summary (mission seconds, kind, text). */
@@ -479,6 +481,10 @@ export class App {
       else if (act === "resume") this.resumeRemaining();
       else if (act === "show-radio") this.selectLayer("radio");
       else if (act === "relay-on" || act === "relay-off") this.setRelay(act === "relay-on");
+      else if (act === "relay-auto") {
+        this.relayManual = null;
+        void this.replan();
+      }
       else if (act === "spot") this.showSpot(t.dataset.spot === "steep" ? "steep" : "home");
       else if (act === "check") this.openCheck(t.dataset.check ?? "");
       else if (act === "show-track") {
@@ -993,8 +999,17 @@ export class App {
       segments.push({ kind: "walk", path, to, label: to.short });
       if (to.kind !== "shelter") segments.push({ kind: "dwell", poi: to, durationS: to.dwellMin * 60, sheltered: false });
     });
-    const relay = bestRelay(this.radio, grid, legs, RELAY_MAST_M,
+    let relay = bestRelay(this.radio, grid, legs, RELAY_MAST_M,
       order.slice(1, -1).map((p, k) => ({ x: p.x, y: p.y, seconds: p.dwellMin * 60, afterLeg: k })));
+    if (this.relayManual) {
+      // the crew's own spot instead of CAIRN's (still checked: near the route, rover in sight)
+      const mine = relayAtPoint(this.radio, grid, legs, this.relayManual, RELAY_MAST_M);
+      if ("relay" in mine) relay = mine.relay;
+      else {
+        this.relayManual = null;
+        this.toast(`${mine.reason} The relay is back where CAIRN suggests.`, 7000);
+      }
+    }
     let relayAtS = 0;
     if (relay) {
       // walk and dwell times up to the relay spot
@@ -1068,7 +1083,7 @@ export class App {
       ? `<p class="t bad">${ic.warn}Too steep to walk</p><p>Slope ${grid.slope[node]}°, beyond the ${this.site.meta.model.slopeLimitDeg}° limit or cut off from the rover.</p><div class="row"><button data-x="close">OK</button></div>`
       : `${PIN_CLOSE}<p class="t">${ic.walk}${fmtDur(this.field.time[node])} from the rover</p><p>Slope ${grid.slope[node]}°${this.site.geologyGrid ? ` · ${esc(this.unitAt(p.x, p.y) ?? "unmapped unit")}` : ""}</p><div class="row">${
           grid.slope[node] <= ROVER_PARK_MAX_SLOPE ? `<button data-x="rover" title="Move the rover (start, end and shelter) here">${ic.home}<span>Park rover</span></button>` : ""
-        }<button data-x="note" title="Geotagged field note or sample here">${ic.note}<span>Note</span></button><button class="primary" data-x="add">${ic.plus}<span>Add stop</span></button></div>`;
+        }${this.plan ? `<button data-x="relay" title="Put the radio relay mast here (within ${RELAY_MAX_OFF_ROUTE_M} m of the route, with the rover in sight from its ${RELAY_MAST_M} m top)">${ic.radio}<span>Relay here</span></button>` : ""}<button data-x="note" title="Geotagged field note or sample here">${ic.note}<span>Note</span></button><button class="primary" data-x="add">${ic.plus}<span>Add stop</span></button></div>`;
     this.placePinMenu(menu, clientX, clientY);
     menu.onclick = (ev) => {
       const act = (ev.target as HTMLElement).closest<HTMLElement>("[data-x]")?.dataset.x;
@@ -1076,6 +1091,7 @@ export class App {
       menu.hidden = true;
       if (act === "add") this.addCustom(p);
       else if (act === "rover") void this.moveRover(p);
+      else if (act === "relay") this.placeRelay(p);
       else if (act === "note") this.addNote(p);
     };
   }
@@ -2049,6 +2065,7 @@ export class App {
       storm: this.storm,
       buddy: this.buddy,
       relay: this.useRelay,
+      relayAt: this.useRelay ? this.relayManual : null,
       rover: this.roverMoved() ? this.rover : null,
       dwell: Object.fromEntries(Object.entries(this.dwellOverrides).filter(([id]) => this.selected.includes(id))),
     });
@@ -2108,6 +2125,7 @@ export class App {
     this.storm = link.storm;
     this.buddy = link.buddy;
     this.useRelay = link.relay;
+    this.relayManual = link.relayAt;
     for (const [id, m] of Object.entries(link.dwell)) if (this.poi(id)) this.setDwell(id, m, false);
     const r = link.rover;
     if (r && grid.inside(r.x, r.y) && !grid.isBlocked(grid.nodeAt(r.x, r.y))) {
@@ -3182,7 +3200,9 @@ export class App {
       ? ` <b class="warnc">No contact at ${silent.map((p) => esc(p.short)).join(" or ")}</b> (${silent.map((p) => `${p.dwellMin} min`).join(", ")} of science).`
       : "";
     if (relay && this.useRelay) {
-      return `<div class="radio-line${silent.length ? " warn" : ""}">${ic.radio}<span>In radio contact for <b>${Math.floor(rc.coveredFraction * 100)}%</b> of the walk, with a relay stood up ${where}.${silentText}</span><button class="link" data-act="relay-off">Remove</button></div>`;
+      const whose = relay.manual ? ` at the spot you chose${relay.offRouteM ? `, ${relay.offRouteM} m off the route` : ""}` : " where CAIRN suggests";
+      const auto = relay.manual ? `<button class="link" data-act="relay-auto" title="Put the relay back where CAIRN suggests">Let CAIRN choose</button>` : "";
+      return `<div class="radio-line${silent.length ? " warn" : ""}">${ic.radio}<span>In radio contact for <b>${Math.floor(rc.coveredFraction * 100)}%</b> of the walk, with a relay stood up ${where}${whose}.${silentText} <small class="relay-how">To move it, click the map → <b>Relay here</b>.</small></span>${auto}<button class="link" data-act="relay-off">Remove</button></div>`;
     }
     const whole = rc.lostS < 20 && !silent.length;
     const text = whole
@@ -3190,8 +3210,8 @@ export class App {
       : `In radio contact for <b>${Math.floor(rc.coveredFraction * 100)}%</b> of the walk${rc.gaps ? ` · ${rc.gaps} blackout${rc.gaps > 1 ? "s" : ""}, longest ${fmtDur(Math.max(60, rc.longestGapS))}` : ""}.${silentText}`;
     const freed = relay ? silent.filter((p) => plan.order.indexOf(p) >= relay.leg + 1 && lineOfSight(this.site.grid, relay.at, RELAY_MAST_M, p, SUIT_ANTENNA_M)) : [];
     const tip = relay
-      ? `<div class="relay-tip"><span>A ${RELAY_MAST_M} m relay mast stood up ${where} gives contact for <b>${Math.floor(relay.after.coveredFraction * 100)}%</b> of the walk${freed.length ? ` and at ${freed.map((p) => esc(p.short)).join(" and ")}` : ""}.</span><button class="secondary" data-act="relay-on">${ic.radio}<span>Plan with relay</span></button></div>`
-      : "";
+      ? `<div class="relay-tip"><span>A ${RELAY_MAST_M} m relay mast stood up ${where} gives contact for <b>${Math.floor(relay.after.coveredFraction * 100)}%</b> of the walk${freed.length ? ` and at ${freed.map((p) => esc(p.short)).join(" and ")}` : ""}. Or put it where you want: click the map → <b>Relay here</b>.</span><button class="secondary" data-act="relay-on">${ic.radio}<span>Plan with relay</span></button></div>`
+      : whole ? "" : `<div class="relay-tip"><span>CAIRN found no spot where a relay helps much. You can still put one where you want: click the map → <b>Relay here</b>.</span></div>`;
     return `<div class="radio-line${whole ? "" : " warn"}${tip ? " has-tip" : ""}">${ic.radio}<span>${text}</span><button class="link" data-act="show-radio">Show</button></div>${tip}`;
   }
 
@@ -3301,7 +3321,19 @@ export class App {
 
   private setRelay(on: boolean): void {
     this.useRelay = on;
+    if (!on) this.relayManual = null;
     void this.replan();
+  }
+
+  /** The crew puts the relay mast where they want it (map menu); checked on the next plan. */
+  private placeRelay(p: XY): void {
+    if (!this.plan) return this.toast("Plan a route first: the crew stands the relay up on the way.");
+    const check = relayAtPoint(this.radio, this.site.grid, this.plan.legs, p, RELAY_MAST_M);
+    if ("reason" in check) return this.toast(check.reason, 7000);
+    this.relayManual = { x: Math.round(p.x), y: Math.round(p.y) };
+    this.useRelay = true;
+    void this.replan();
+    this.toast(`Relay mast placed${check.relay.offRouteM ? `, ${check.relay.offRouteM} m off the route` : " on the route"}. The crew stands it up as they pass.`, 5000);
   }
 
   /** Radio shadow of a relay mast at a point, made once per position (~0.1 s) and only when the relay is used. */

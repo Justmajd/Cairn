@@ -43,7 +43,7 @@ Pick a site, pick the stops, and CAIRN plans the walk from the pressurised rover
 4. **Shows what you will see**: rover photos taken at each stop, and **360° panoramas**: NASA's own colour panoramas at Bright Angel (Perseverance Mastcam-Z) and Nevado Sajama (Curiosity Mastcam), and at Gale's other stops panoramas CAIRN stitched from Curiosity's Navcam frames. Stops without photos (your own, placed on the map) get a HiRISE close-up from orbit.
 5. **Walks the route** in a first-person visor view with compass, oxygen, dose, weather and a minimap, warning when radio drops or the Sun gets low. Afterwards an **EVA log** (also saved as Markdown) lists every arrival, radio loss and alert with mission and local time.
 6. **Replays a real solar storm** (20 May 2024, measured by Curiosity's RAD). CAIRN finds the way back to the rover in milliseconds, names the nearest natural cover, and reports the dose avoided.
-7. **Checks radio contact.** A line-of-sight model of the rover's antenna over the real terrain shows where hills cut the link, how much of the walk stays in contact, which stops have no contact at all (on Jezero's default walk: 30 min of science at Serpentine Rapids), and the best spot on the route for the crew to stand up a portable relay (85% → 100%, Serpentine Rapids included).
+7. **Checks radio contact.** A line-of-sight model of the rover's antenna over the real terrain shows where hills cut the link, how much of the walk stays in contact, which stops have no contact at all (on Jezero's default walk: 30 min of science at Serpentine Rapids), and the best spot on the route for the crew to stand up a portable relay (85% → 100%, Serpentine Rapids included). Or put the relay where you want: click the map → **Relay here** (within 60 m of the route, with the rover in sight from the 2.5 m mast top); **Let CAIRN choose** goes back to the suggested spot. A hand-placed relay travels in the plan link as `relay=x_y`.
 8. **Practises emergencies.** During a walk, *Suit leak* doubles oxygen use and *Twisted ankle* halves the walking speed; CAIRN finds the quickest safe way home from where the astronaut stands and checks the oxygen.
 9. **Talks the crew through it.** Spoken directions in the visor, only when something changes: a real turn, steep ground or sand ahead, 100 m to the stop, arrivals, alerts, radio loss. The voice is Kokoro, a free neural voice (Apache-2.0), rendered ahead of time into short clips, so every device hears the same natural voice, offline, with nothing big to download.
 10. **Checks itself against the real rovers.** 68% of Perseverance's drive at Jezero (70% of Curiosity's at Gale) is on ground CAIRN rates easy or moderate, against 45% (41%) of the area: the rover drivers avoided what CAIRN avoids.
@@ -101,7 +101,7 @@ Open the address Vite prints (normally http://localhost:5173).
 |---|---|
 | `npm run dev:all` | Development: frontend and hab server together, one terminal (Ctrl+C stops both) |
 | `npm run dev` | Development server (frontend only) |
-| `npm test` | 132 unit and integration tests (including the hab server end to end) |
+| `npm test` | 134 unit and integration tests (including the hab server end to end) |
 | `npm run build` | Type-check and build to `web/dist/` |
 | `npm run preview` | Serve the built app |
 | `npm start` | Build, then serve the app with the hab server (Mission Control, shared notebook) |
