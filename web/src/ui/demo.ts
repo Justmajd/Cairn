@@ -32,7 +32,7 @@ export class DemoRunner {
   onPause: (paused: boolean) => void = () => {};
   onEnd: () => void = () => {};
 
-  constructor(private readonly steps: DemoStep[], private readonly finale: { title: string; body: () => string }) {}
+  constructor(private readonly steps: DemoStep[], private readonly finale: { title: string; body: () => string; extra?: { label: string; act: () => void } }) {}
 
   get running(): boolean {
     return !this.stopped;
@@ -121,7 +121,8 @@ export class DemoRunner {
         <h3>${esc(this.finale.title)}</h3>
         <p class="demo-body">${this.finale.body()}</p>
         <footer>
-          <button class="primary" data-d="exit">${ic.route}<span>Explore it yourself</span></button>
+          ${this.finale.extra ? `<button class="primary" data-d="extra">${ic.walk}<span>${esc(this.finale.extra.label)}</span></button>` : ""}
+          <button class="${this.finale.extra ? "ghost" : "primary"}" data-d="exit">${ic.route}<span>Explore it yourself</span></button>
           <button class="ghost" data-d="replay">${ic.rotL}<span>Replay</span></button>
         </footer>
       </div>`;
@@ -139,6 +140,9 @@ export class DemoRunner {
         this.skip = true;
       } else if (act === "exit") {
         this.stop();
+      } else if (act === "extra") {
+        this.stop();
+        this.finale.extra?.act();
       } else if (act === "replay") {
         this.stop();
         window.dispatchEvent(new CustomEvent("cairn:demo"));
