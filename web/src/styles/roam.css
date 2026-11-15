@@ -214,3 +214,18 @@ body.roam-on .poi-label { pointer-events: none; }
 #roam[data-look="walk"] .rm-emergency { top: 16%; }
 .rm-practice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
 .rm-practice button { height: 30px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255, 98, 87, 0.5); background: rgba(255, 98, 87, 0.08); color: var(--text); font: 500 12.5px var(--sans); cursor: pointer; }
+
+/* choosing a sample target from the rover's photos, and what it is about */
+.rm-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin: 10px 0; }
+.rm-pick button { height: auto; min-height: 0; white-space: normal; align-content: start; display: grid; gap: 6px; padding: 6px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--raise); color: var(--text-2); font: 500 11.5px var(--sans); text-align: left; cursor: pointer; }
+.rm-pick button:hover, .rm-pick button:focus-visible { border-color: var(--accent); color: var(--text); }
+.rm-pick img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; background: #000; }
+.rm-pick-note { margin: 0; font-size: 13.5px; color: var(--text-2); }
+.rm-science { position: absolute; right: var(--gap); top: 30%; width: min(420px, calc(100vw - 32px)); display: grid; grid-template-columns: 110px 1fr; gap: 12px; padding: 12px; border-radius: var(--r-md); pointer-events: auto; animation: rm-in 0.35s var(--ease-glide) backwards; }
+.rm-science img { width: 110px; height: 110px; object-fit: cover; border-radius: 6px; }
+.rm-science .eyebrow { margin: 0 0 4px; font: 500 10px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+.rm-science p { margin: 0 0 6px; font-size: 12.5px; line-height: 1.45; color: var(--text-2); }
+.rm-science .why b { color: var(--text); }
+.rm-science-x { position: absolute; right: 6px; top: 6px; width: 26px; height: 26px; border: 0; border-radius: 8px; background: transparent; color: var(--text-3); cursor: pointer; }
+#roam[data-look="walk"] .rm-science { right: 15%; top: 36%; }
+@media (max-width: 720px) { .rm-science { grid-template-columns: 1fr; top: auto; bottom: 200px; } .rm-science img { width: 100%; height: 120px; } }

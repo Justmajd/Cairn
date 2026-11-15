@@ -114,7 +114,7 @@ export class Roam {
   private walkS = 0;
   private falls = 0;
   private hardLandings = 0;
-  private samples: { name: string; atS: number }[] = [];
+  private samples: { name: string; atS: number; file?: string; image?: string }[] = [];
   private routeT = 0;
   // ---- the hab link: Mission Control watches the walk, one light time late
   private readonly hab: RoamHab;
@@ -597,7 +597,7 @@ export class Roam {
     this.avatar.setAction(act && (this.keys.has("e") || this.touchHold) ? act : null, this.holdT / HOLD_S);
     if (act && this.holdT >= HOLD_S) {
       this.holdT = 0;
-      if (act === "sample") this.sample();
+      if (act === "sample") this.chooseSample();
       else this.finish(false);
     }
     // off route: distance to the planned legs, a few times a second
@@ -700,8 +700,63 @@ export class Roam {
     return best;
   }
 
+  /**
+   * Choose what to sample: the stop's own rover photos (real Navcam frames from the site data).  The
+   * clock waits while the crew decides.  Stops with no photos go straight to the work.
+   */
+  private chooseSample(): void {
+    const st = this.stops[this.next];
+    const poi = this.site.pois.find((x) => x.id === st.id);
+    const imgs = poi?.images ?? [];
+    if (!imgs.length || !poi) return this.sample(null);
+    this.choosing = true;
+    if (document.pointerLockElement) document.exitPointerLock();
+    openModal(
+      `Sample at ${st.name}`,
+      `<p class="rm-pick-note">These are ${esc(this.site.meta.rover?.name ?? "the rover")}'s own photos of this stop. Pick the one that shows what you will sample; the work takes ${st.dwellMin} min.</p>
+      <div class="rm-pick">${imgs
+        .map((im, i) => `<button data-pick="${i}"><img src="${this.site.base}${im.file}" alt="${esc(im.cameraName)}, sol ${im.sol}" loading="lazy"/><span>${esc(im.cameraName)} · sol ${im.sol}</span></button>`)
+        .join("")}</div>
+      <p class="fine">${esc(imgs[0].credit)}. Raw images from the mission archive; the science notes below come from the stop's record.</p>`,
+      true,
+    );
+    const box = $("#modal");
+    box.querySelectorAll<HTMLButtonElement>("[data-pick]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const im = imgs[Number(b.dataset.pick)];
+        box.hidden = true;
+        this.choosing = false;
+        this.sample(im);
+      }),
+    );
+    // closing the dialog without a pick: no sample yet, the crew can try again
+    const done = new MutationObserver(() => {
+      if (box.hidden) {
+        this.choosing = false;
+        done.disconnect();
+      }
+    });
+    done.observe(box, { attributes: true, attributeFilter: ["hidden"] });
+  }
+  private choosing = false;
+
+  /** What the sample is about: the stop's science notes, with the chosen photo. */
+  private science(id: string, pick: { file: string; cameraName: string; sol: number } | null): void {
+    const poi = this.site.pois.find((x) => x.id === id);
+    const box = this.host.querySelector<HTMLElement>(".rm-science")!;
+    if (!poi || (!poi.science && !poi.whyHumans)) return;
+    box.innerHTML = `${pick ? `<img src="${this.site.base}${pick.file}" alt="${esc(pick.cameraName)}, sol ${pick.sol}"/>` : ""}
+      <div><p class="eyebrow">// Sample bagged · ${esc(poi.short)}</p>
+      ${poi.science ? `<p>${esc(poi.science)}</p>` : ""}
+      ${poi.whyHumans ? `<p class="why"><b>Why a person:</b> ${esc(poi.whyHumans)}</p>` : ""}</div>
+      <button class="rm-science-x" aria-label="Close">${ic.close}</button>`;
+    box.hidden = false;
+    box.querySelector("button")!.onclick = () => (box.hidden = true);
+    window.setTimeout(() => (box.hidden = true), 22000);
+  }
+
   /** Work at the stop: the clock moves on by the planned time there, at working metabolic rate. */
-  private sample(): void {
+  private sample(pick: { id: string; file: string; sol: number; cameraName: string } | null): void {
     const st = this.stops[this.next];
     const p = DEFAULT_PARAMS;
     let dwellS = st.dwellMin * 60;
@@ -713,14 +768,16 @@ export class Roam {
     this.walker.o2L += o2;
     this.walker.energyJ += p.workingW * dwellS;
     this.t += dwellS;
-    this.samples.push({ name: cut ? `${st.name} (cut short)` : st.name, atS: this.t });
-    this.hab.note(this.t, "stop", cut ? `Sample at ${st.name} cut short by the radiation alarm after ${Math.round(dwellS / 60)} min` : `Sample collected at ${st.name} (${st.dwellMin} min on site)`);
+    this.samples.push({ name: cut ? `${st.name} (cut short)` : st.name, atS: this.t, file: pick?.file, image: pick?.id });
+    const target = pick ? `, target in ${pick.cameraName} image ${pick.id} (sol ${pick.sol})` : "";
+    this.hab.note(this.t, "stop", cut ? `Sample at ${st.name} cut short by the radiation alarm after ${Math.round(dwellS / 60)} min${target}` : `Sample collected at ${st.name} (${st.dwellMin} min on site)${target}`);
     this.next++;
     this.markStops();
     this.renderMission();
     this.updateSky(true);
     const nextName = this.next < this.stops.length ? this.stops[this.next].short : "the rover";
     if (cut) return; // the alarm takes over (see weather)
+    this.science(st.id, pick);
     this.toast(`<b>Sample collected</b> at ${esc(st.name)}. ${st.dwellMin} min of work used ${o2.toFixed(1)} L of oxygen; the Sun has moved on. Next: ${esc(nextName)}.`);
   }
 
@@ -762,7 +819,7 @@ export class Roam {
           ${row("EVA time", fmtDur(pl.timeS), fmtDur(this.t))}
           ${row("Oxygen", `${Math.round(pl.o2L)} L`, `${Math.round(o2)} L`)}
           ${row("Distance walked", fmtDist(pl.distM), fmtDist(s.distM))}
-          ${row("Samples", String(this.stops.length), String(this.samples.length))}
+          ${row("Samples", String(this.stops.length), `${this.samples.length}${this.samples.length ? ` — ${this.samples.map((x) => esc(x.name)).join(", ")}` : ""}`)}
           ${row("Falls · hard landings", "0", `${this.falls} · ${this.hardLandings}`)}
           ${row("Highest jump", "—", s.maxJumpM > 0 ? `${Math.round(s.maxJumpM * 100)} cm` : "—")}
           ${this.emergency ? row(this.emergency.kind === "leak" ? "Suit leak" : "Twisted ankle", "—", `at ${fmtClock(this.emergency.atS)}, ${Math.round(this.emergency.o2LeftL)} L of O₂ left then; home with ${Math.round(DEFAULT_PARAMS.o2SupplyL - s.o2L)} L (reserve ${Math.round(DEFAULT_PARAMS.o2SupplyL * DEFAULT_PARAMS.reserveFraction)} L)`) : ""}
@@ -808,6 +865,7 @@ export class Roam {
       <section class="rm-mission panel" aria-label="Mission"></section>
       <section class="rm-storm" role="status" hidden></section>
       <div class="rm-emergency" role="status" hidden></div>
+      <section class="rm-science panel" role="status" hidden></section>
       <div class="rm-act" role="status" hidden><i class="rm-ring" aria-hidden="true"></i><span></span></div>
       <div class="rm-gait" aria-hidden="true"><b data-k="gaitbig"></b><span data-k="gaitsub"></span></div>
       <div class="rm-toast" role="status" aria-live="polite" hidden></div>
@@ -1090,6 +1148,13 @@ export class Roam {
   // ================================================================ frame
   tick(dt: number): void {
     const s = this.walker;
+    if (this.choosing) {
+      // the clock waits while the crew picks a target; only the view moves
+      const feet = this.view.toWorld(s.x, s.y, s.z);
+      this.camera(dt, feet);
+      this.view.invalidate();
+      return;
+    }
     const input = this.input();
     if (this.emergency?.kind === "ankle") {
       // weight off the bad foot: half the pace, no bounding, no jumping
