@@ -28,7 +28,10 @@ CAIRN plans safe walks (EVAs) for the first astronauts on Mars, on real NASA ter
 6. **Guides the walk** in a first-person visor with compass, oxygen, dose, weather, spoken directions, radio and low-sun warnings, and an EVA log at the end.
 7. **Rehearses emergencies**: the real May 2024 solar particle event (CAIRN re-routes to the rover and reports the dose avoided), a suit leak (double oxygen use) and a twisted ankle (half speed).
 8. **Checks itself against the rovers**: 68% of Perseverance's drive at Jezero (70% of Curiosity's at Gale) is on ground CAIRN rates easy or moderate, against 45% (41%) of the area.
-9. **Goes where the crew goes**: installable, works offline (a whole site is about 19–27 MB), phone and tablet layouts, a printable cue card, KML/GeoJSON export in Mars coordinates, and a shareable link that encodes the whole plan.
+9. **Lets you walk it yourself.** Free roam puts you in the suit on the same terrain with real Mars-gravity walking physics (traction, the walk-to-lope switch, ballistic jumps, slides and falls), in 3D or inside the helmet. A planned EVA becomes a mission: stops in order, samples chosen from the rover's own photos, the storm, suit emergencies or a measured dust storm, and a debrief against the plan with the decisions the crew made alone. Two astronauts can walk together on two devices while Mission Control watches one light time late and its messages reach the helmet only after the delay. Scenario presets set up each story in one tap.
+10. **Goes where the crew goes**: installable, works offline (a whole site is about 19–27 MB), phone and tablet layouts, a printable cue card, KML/GeoJSON export in Mars coordinates, and a shareable link that encodes the whole plan.
+
+![Free roam: a tour of the walk in 3D, the visor, a mission, a dust storm, two astronauts and Mission Control](img/free-roam.gif)
 
 ## How it addresses the challenge
 
