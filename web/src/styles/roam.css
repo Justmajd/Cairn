@@ -182,3 +182,7 @@ body.roam-on .poi-label { pointer-events: none; }
   .rm-act { bottom: 270px; }
 }
 @media (max-width: 720px) and (pointer: fine) { .rm-mission { top: auto; bottom: 150px; } }
+.rm-link { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; font-size: 11px; color: var(--text-3); }
+.rm-link i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); flex: none; }
+.rm-link i.on { background: var(--accent); box-shadow: 0 0 0 3px rgb(var(--fern-rgb) / 0.18); }
+.rm-debrief .autonomy { margin: 16px 0 0; }
