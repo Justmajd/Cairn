@@ -202,7 +202,15 @@ describe("hab server", () => {
   it("lists the open sessions on every site, for the main menu", async () => {
     type Live = { live: { session: string; running: boolean; site: string; siteName: string; evaId: string; crewOnline: boolean; ev2: number; stops: number }[] };
     const live = async () => ((await (await fetch(`${base}/api/live`)).json()) as Live).live.filter((e) => e.site === "gale");
-    expect(await live()).toEqual([]);
+    // the hab notices a closed connection a moment later: wait for it rather than for a fixed time
+    const emptied = async () => {
+      for (let t = 0; t < 3000; t += 50) {
+        if ((await live()).length === 0) return [];
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return live();
+    };
+    expect(await emptied()).toEqual([]); // the previous test's crew at Gale has gone
 
     const ev1 = new Client("crew", "gale", "ev1");
     await ev1.ready();
@@ -224,8 +232,7 @@ describe("hab server", () => {
     expect(await live()).toMatchObject([{ session: "gale", running: false }]); // EV1 is still there
     ev1.ws.close();
     ev2.ws.close();
-    await new Promise((r) => setTimeout(r, 150));
-    expect(await live()).toEqual([]); // EV1 left: nothing to join
+    expect(await emptied()).toEqual([]); // EV1 left: nothing to join
   });
 
   it("keeps several crews apart: one session per EV1, on one site or many", async () => {
