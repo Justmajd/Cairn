@@ -186,3 +186,15 @@ body.roam-on .poi-label { pointer-events: none; }
 .rm-link i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); flex: none; }
 .rm-link i.on { background: var(--accent); box-shadow: 0 0 0 3px rgb(var(--fern-rgb) / 0.18); }
 .rm-debrief .autonomy { margin: 16px 0 0; }
+
+/* a message from Earth, in the helmet */
+.rm-earth { position: absolute; right: var(--gap); top: calc(var(--gap) + 52px); width: min(340px, calc(100vw - 32px)); padding: 12px 14px; display: grid; gap: 5px; border-radius: var(--r-md); background: rgba(14, 18, 24, 0.86); border: 1px solid rgba(159, 180, 198, 0.45); box-shadow: var(--shadow); pointer-events: auto; animation: rm-in 0.35s var(--ease-glide) backwards; }
+.rm-earth .eyebrow { margin: 0; font: 500 10px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--steel); }
+.rm-earth b { font: 500 14px var(--sans); color: #e8f1f8; }
+.rm-earth span, .rm-change { margin: 0; font-size: 12px; color: var(--text-2); }
+.rm-earth-acts { display: flex; gap: 8px; margin-top: 4px; }
+.rm-earth-acts button { height: 30px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--raise); color: var(--text); font: 500 12.5px var(--sans); cursor: pointer; }
+.rm-earth-acts button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.rm-earth-x { position: absolute; right: 6px; top: 6px; width: 26px; height: 26px; border: 0; border-radius: 8px; background: transparent; color: var(--text-3); cursor: pointer; }
+#roam[data-look="walk"] .rm-earth { right: 15%; top: 28%; background: rgba(10, 14, 18, 0.55); }
+@media (pointer: coarse) { .rm-earth { top: auto; bottom: 230px; right: var(--gap); left: var(--gap); width: auto; } }

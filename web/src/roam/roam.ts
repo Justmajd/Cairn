@@ -11,7 +11,7 @@ import { inContact, radioShadow } from "../eva/radio";
 import { Astronaut, BlobShadow, Dust, Footprints, Trail } from "./avatar";
 import { ROVER_HALF } from "../scene/models";
 import { SuitAudio } from "./audio";
-import { $, esc, fmtDist, fmtDur } from "../ui/dom";
+import { $, esc, fmtClock, fmtDist, fmtDur } from "../ui/dom";
 import { ic } from "../ui/icons";
 import { dissolveTo } from "../ui/dissolve";
 import { openModal } from "../ui/modals";
@@ -19,7 +19,7 @@ import { measurePath } from "../data/grid";
 import { parsePlanLink } from "../state/planLink";
 import { loadRoamPlan, RoamPlan } from "./plan";
 import { RoamHab } from "./hab";
-import type { Frame, PlanInfo } from "../hab/protocol";
+import type { EarthMessage, Frame, PlanInfo } from "../hab/protocol";
 import { autonomyHtml, type Decision } from "../ui/autonomy";
 import type { XY } from "../types";
 
@@ -162,6 +162,7 @@ export class Roam {
     this.markStops();
     this.hab = new RoamHab(site.id, "ev1");
     this.hab.onChange = () => this.renderLink();
+    this.hab.onEarth = (m) => this.fromEarth(m);
 
     this.host = document.createElement("div");
     this.host.id = "roam";
@@ -280,6 +281,59 @@ export class Roam {
   private decided(text: string): void {
     this.decisions.push({ t: this.t, text });
     this.hab.note(this.t, "alert", text);
+  }
+
+  /**
+   * A message from Mission Control, shown in the helmet the moment it reaches Mars — one light time
+   * after Earth sent it, answering what Earth had seen of the crew one light time before that.
+   */
+  private fromEarth(m: EarthMessage): void {
+    const box = this.host.querySelector<HTMLElement>(".rm-earth")!;
+    const lt = this.lightTimeS;
+    const sentOnMarsClock = m.sentT;
+    const ago = `Sent ${fmtLightTime(Math.max(0, this.t - sentOnMarsClock))} ago`;
+    const late = m.immediate
+      ? ""
+      : sentOnMarsClock < lt
+        ? `${ago}, before anything from this walk had reached Earth.`
+        : `${ago}, answering what Earth had seen of you at T+${fmtClock(sentOnMarsClock - lt)}.`;
+    const change = m.change;
+    const dropped = change ? change.drop.map((id) => this.stops.find((x) => x.id === id)?.short ?? id) : [];
+    box.innerHTML = `<p class="eyebrow">// Mission Control · Earth</p>
+      <b>“${esc(m.text)}”</b>
+      ${late ? `<span>${late}</span>` : ""}
+      ${change ? `<p class="rm-change">Revised plan: ${dropped.length ? `skip ${esc(dropped.join(", "))}` : "no stops dropped"}${change.add.length ? `; ${change.add.length} new point${change.add.length > 1 ? "s" : ""} (add them in the planner)` : ""}.</p>
+        <div class="rm-earth-acts"><button class="primary" data-earth="yes">Accept</button><button data-earth="no">Decline</button></div>` : `<button class="rm-earth-x" data-earth="ok" aria-label="Dismiss">${ic.close}</button>`}`;
+    box.hidden = false;
+    box.dataset.id = m.id;
+    this.audio.beep();
+    window.setTimeout(() => this.audio.beep(), 380);
+    this.hab.note(this.t, "radio", `Mission Control: “${m.text}”`);
+    window.clearTimeout(this.earthTimer);
+    if (!change) this.earthTimer = window.setTimeout(() => (box.hidden = true), 14000);
+    box.onclick = (ev) => {
+      const what = (ev.target as HTMLElement).closest<HTMLElement>("[data-earth]")?.dataset.earth;
+      if (!what) return;
+      if (change && (what === "yes" || what === "no")) {
+        const accepted = what === "yes";
+        this.hab.reply(m.id, accepted);
+        if (accepted) this.skipStops(change.drop);
+        this.decided(`${accepted ? "Accepted" : "Declined"} Mission Control's revised plan`);
+      }
+      box.hidden = true;
+    };
+  }
+  private earthTimer = 0;
+
+  /** Earth's revised plan drops stops: they are skipped (the route stays, the samples are not taken). */
+  private skipStops(ids: string[]): void {
+    const keep = this.stops.filter((st, i) => i < this.next || !ids.includes(st.id));
+    if (keep.length === this.stops.length) return;
+    // the walk goes on to the next stop that is left; legs to skipped stops are kept as the way there
+    this.stops = keep;
+    this.markStops();
+    this.renderMission();
+    this.toast(`Plan changed: ${ids.length} stop${ids.length > 1 ? "s" : ""} dropped. Next: ${esc(this.target()?.name ?? "the rover")}.`);
   }
 
   /** The hab link's state, in the mission panel. */
@@ -539,6 +593,7 @@ export class Roam {
       <div class="rm-act" role="status" hidden><i class="rm-ring" aria-hidden="true"></i><span></span></div>
       <div class="rm-gait" aria-hidden="true"><b data-k="gaitbig"></b><span data-k="gaitsub"></span></div>
       <div class="rm-toast" role="status" aria-live="polite" hidden></div>
+      <section class="rm-earth" role="alert" hidden></section>
       <div class="rm-hint" data-k="hint"></div>
       <div class="rm-touch" aria-hidden="true">
         <div class="rm-stick"><i></i></div>
