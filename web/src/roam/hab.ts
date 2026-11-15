@@ -73,6 +73,11 @@ export class RoamHab {
     if (this.member === "ev1" && this.evaId) this.link?.send({ type: "log", entries: this.log.slice(-200) }, true);
   }
 
+  /** The crew's answer to a revised plan from Earth: it travels back to Earth like everything else. */
+  reply(id: string, accepted: boolean): void {
+    if (this.member === "ev1") this.link?.send({ type: "reply", id, accepted });
+  }
+
   /** Telemetry, at most twice a second of real time. */
   frame(dt: number, f: Frame): void {
     this.frameT -= dt;
