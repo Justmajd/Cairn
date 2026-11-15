@@ -225,7 +225,7 @@ async function api(req: IncomingMessage, res: ServerResponse, parts: string[]): 
   if (what === "live") {
     // EVAs under way right now, on any site: the main menu offers each one's own Mission Control
     const live: LiveEva[] = [...rooms.values()]
-      .filter((r) => r.running && r.evaId)
+      .filter((r) => r.listedLive())
       .map((r) => ({
         site: r.site,
         siteName: typeof r.plan?.siteName === "string" ? r.plan.siteName : r.site,

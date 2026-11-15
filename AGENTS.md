@@ -17,7 +17,7 @@ cd web
 npm ci                 # install
 npm run dev:all        # Vite dev server (5173) + hab server (8787) in one terminal; Ctrl+C stops both
 npm run dev:https      # same over https:// (phones need it for the microphone); local cert in web/.cert
-npm test               # vitest (122 tests: model, routing, data, hab server end to end)
+npm test               # vitest (123 tests: model, routing, data, hab server end to end)
 npm run typecheck      # app tsconfig + server tsconfig
 npm run build          # tsc + vite build → web/dist (and dist/sw.js)
 npm start              # build, then serve dist + hab on http://localhost:8787 (production-like)

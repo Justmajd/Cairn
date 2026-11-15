@@ -157,7 +157,9 @@ export class Roam {
   // ---- field work between the stops (field.ts): readings, finds, the relay mast
   private readonly field: FieldWork;
   private fieldT = 0;
+  /** the field panel: folded to a chip on phones; on larger screens the next few tasks, or all of them */
   private fieldOpen = !matchMedia("(pointer: coarse)").matches;
+  private fieldAll = false;
   private mast: { x: number; y: number; shadow: Uint8Array; obj: THREE.Object3D } | null = null;
   constructor(private readonly site: SiteData, private readonly view: SceneView, private readonly quality: "high" | "low" = "high") {
     const grid = site.grid;
@@ -526,6 +528,8 @@ export class Roam {
     this.view.setRoutes({ safe: legs.map((l) => measurePath(grid, l, DEFAULT_PARAMS)), straight: [], showStraight: false, shelter: null, dimSafe: false });
     this.markStops();
     this.renderMission();
+    const goal = this.host.querySelector<HTMLElement>(".rm-intro-goal");
+    if (goal) goal.innerHTML = this.introGoal();
   }
 
   /** A shared plan link with no handed-over plan: route it here, in the plan's own stop order. */
@@ -573,8 +577,8 @@ export class Roam {
       <span data-k="mdist"></span>
       <ol class="rm-mstops">${this.stops.map((st, i) => `<li class="${i < this.next ? "done" : i === this.next ? "now" : ""}">${esc(st.short)}</li>`).join("")}<li class="${this.next === n ? "now" : ""}">Rover</li></ol>
       <dl>
-        <dt>EVA clock</dt><dd data-k="mclock"></dd>
-        <dt>O₂ used</dt><dd data-k="mo2"></dd>
+        <dt>EVA clock <small>/ plan</small></dt><dd data-k="mclock"></dd>
+        <dt>O₂ used <small>/ plan</small></dt><dd data-k="mo2"></dd>
         <dt>Off route</dt><dd data-k="moff"></dd>
       </dl>
       <p class="rm-link"></p>`;
@@ -690,8 +694,12 @@ export class Roam {
     const done = tasks.filter((t) => t.done).length;
     const sig = this.fieldOpen ? this.field.signal(s.x, s.y) : null;
     const bar = (rank: number) => `<i class="rm-sig"><i style="width:${Math.round(rank * 100)}%"></i></i>`;
+    const open = tasks.filter((t) => !t.done);
+    const shown = this.fieldAll ? tasks : open.slice(0, 3);
+    const more = this.fieldAll ? "Show fewer" : tasks.length > shown.length ? `All ${tasks.length} tasks` : "";
     const html = `<button class="rm-field-head" data-act="field" aria-expanded="${this.fieldOpen}"><span class="eyebrow">// Field work</span><b>${done} of ${tasks.length}</b></button>
-      ${this.fieldOpen ? `<ul>${tasks.map((t) => `<li class="${t.done ? "done" : ""}"><b>${t.done ? "✓" : "○"} ${esc(t.title)}</b><span>${esc(t.detail)}</span></li>`).join("")}</ul>
+      ${this.fieldOpen ? `<ul>${shown.map((t) => `<li class="${t.done ? "done" : ""}"><b>${t.done ? "✓" : "○"} ${esc(t.title)}</b><span>${esc(t.detail)}</span></li>`).join("")}</ul>
+      ${more ? `<button class="rm-field-more" data-act="field-all">${more}</button>` : ""}
       ${sig ? `<div class="rm-spectra"><small>CRISM signal within 40 m</small>${sig.map((b) => `<label>${esc(b.name)}${bar(b.rank)}<em>${b.rank > 0 ? `${Math.floor(b.rank * 100)} %${b.bearing ? ` ${b.bearing}` : ""}` : "—"}</em></label>`).join("")}</div>` : this.field.hasMinerals ? `<p class="rm-spectra-off">Outside CRISM's footprint: no mineral signal here.</p>` : ""}
       <button class="rm-mast" data-act="mast">${this.mast ? "Pack up the mast" : "Stand up the relay mast"} <kbd>${esc(keyName(this.settings.keys.mast))}</kbd></button>` : ""}`;
     if (box.innerHTML !== html) box.innerHTML = html;
@@ -1024,9 +1032,7 @@ export class Roam {
       </div>
       <div class="rm-intro panel" role="dialog" aria-label="Free roam">
         <p class="eyebrow">// Free roam · ${esc(name)}</p>
-        <h2>${this.member === "ev2" ? "You are EV2" : this.plan ? "Walk your plan" : "Walk on Mars"}</h2>
-        ${this.member === "ev2" ? `<p class="rm-goal">EV1 runs this EVA on another device. You climb out of the other suitport, see EV1's suit, and walk EV1's mission with them; EV1 sees you. Stay within ${DEFAULT_PARAMS.buddyMaxSeparationM} m of each other.</p>` : ""}
-        ${this.plan ? `<p class="rm-goal">Mission: reach ${this.plan.stops.length} ${this.plan.stops.length === 1 ? "stop" : "stops"} in order (${this.plan.stops.map((s) => esc(s.short)).join(" → ")}), hold <kbd>E</kbd> at each to collect a sample, then climb back into the rover. The planner says ${fmtDur(this.plan.planned.timeS)} and ${Math.round(this.plan.planned.o2L)} L of oxygen — can you match it?</p>` : ""}
+        <div class="rm-intro-goal">${this.introGoal()}</div>
         <p>You have just climbed out of the rover through its rear suitport, onto the real 1 m HiRISE terrain. Gravity is 0.38 of Earth's: you weigh ${Math.round(DEFAULT_PARAMS.massKg * MARS_WALKER.g)} N with suit and tools instead of ${Math.round(DEFAULT_PARAMS.massKg * EARTH_G).toLocaleString("en")} N, but you still have all ${DEFAULT_PARAMS.massKg} kg of mass to start, stop and turn — and only 38 % of the grip.</p>
         <ul class="rm-keys">
           <li class="touch">Left thumb stick: walk · drag the view: look · <b>Lope</b> and <b>Jump</b> buttons on the right</li>
@@ -1040,6 +1046,15 @@ export class Roam {
         <p class="fine">Terrain, Sun, Earth and moons are real for this site and date. The suit and body numbers are demo assumptions (Help lists them).</p>
         <button class="primary big" data-act="go">Step outside →</button>
       </div>`;
+  }
+
+  /** The intro's heading and goal: EV2, a mission (handed over, or routed once the route is ready), or a free walk. */
+  private introGoal(): string {
+    const p = this.plan;
+    return `<h2>${this.member === "ev2" ? "You are EV2" : p ? "Walk your plan" : "Walk on Mars"}</h2>
+      ${this.member === "ev2" ? `<p class="rm-goal">EV1 runs this EVA on another device. You climb out of the other suitport, see EV1's suit, and walk EV1's mission with them; EV1 sees you. Stay within ${DEFAULT_PARAMS.buddyMaxSeparationM} m of each other.</p>` : ""}
+      ${p ? `<p class="rm-goal">Mission: reach ${p.stops.length} ${p.stops.length === 1 ? "stop" : "stops"} in order (${p.stops.map((s) => esc(s.short)).join(" → ")}), hold <kbd>E</kbd> at each to collect a sample, then climb back into the rover. The planner says ${fmtDur(p.planned.timeS)} and ${Math.round(p.planned.o2L)} L of oxygen — can you match it?</p>`
+        : `<p class="rm-goal">No plan: walk where you like. The <b>Field work</b> list gives you jobs on the way — readings, minerals, the rover's route, the relay mast.</p>`}`;
   }
 
   private bind(): void {
@@ -1057,7 +1072,10 @@ export class Roam {
       else if (act === "help") this.help();
       else if (act === "settings") this.openSettings();
       else if (act === "mast") this.toggleMast();
-      else if (act === "field") {
+      else if (act === "field-all") {
+        this.fieldAll = !this.fieldAll;
+        this.renderField();
+      } else if (act === "field") {
         this.fieldOpen = !this.fieldOpen;
         this.renderField();
       }
@@ -1720,8 +1738,8 @@ export class Roam {
       const d = Math.hypot(tg.x - s.x, tg.y - s.y);
       const b = (Math.atan2(tg.x - s.x, tg.y - s.y) * 180) / Math.PI;
       set("mdist", `${fmtDist(d)} · ${compass(b)}`);
-      set("mclock", `${fmtDur(this.t)} <small>/ ${fmtDur(this.plan.planned.timeS)} planned</small>`);
-      set("mo2", `${Math.round(s.o2L)} L <small>/ ${Math.round(this.plan.planned.o2L)} L planned</small>`);
+      set("mclock", `${fmtDur(this.t)} <small>/ ${fmtDur(this.plan.planned.timeS)}</small>`);
+      set("mo2", `${Math.round(s.o2L)} L <small>/ ${Math.round(this.plan.planned.o2L)} L</small>`);
       set("moff", this.offM > OFF_ROUTE_M ? `<em class="bad">${Math.round(this.offM)} m</em>` : `${Math.round(this.offM)} m`);
     }
     if (left <= p.o2SupplyL * p.reserveFraction && !this.told.has("reserve")) {

@@ -100,7 +100,7 @@ Open the address Vite prints (normally http://localhost:5173).
 |---|---|
 | `npm run dev:all` | Development: frontend and hab server together, one terminal (Ctrl+C stops both) |
 | `npm run dev` | Development server (frontend only) |
-| `npm test` | 122 unit and integration tests (including the hab server end to end) |
+| `npm test` | 123 unit and integration tests (including the hab server end to end) |
 | `npm run build` | Type-check and build to `web/dist/` |
 | `npm run preview` | Serve the built app |
 | `npm start` | Build, then serve the app with the hab server (Mission Control, shared notebook) |

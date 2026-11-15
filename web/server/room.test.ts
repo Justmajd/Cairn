@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Frame, PlanInfo, ServerMsg } from "../src/hab/protocol.ts";
-import { Room } from "./room.ts";
+import { Room, STALE_CREW_MS } from "./room.ts";
 
 const LT = 600; // 10 minutes of light time
 
@@ -149,5 +149,18 @@ describe("hab room: Earth sees Mars one light time late", () => {
     r.frame(frame(700));
     expect(r.frame(frame(650)).mc).toHaveLength(0);
     expect(r.now).toBe(700);
+  });
+
+  it("stops listing an EVA as live once its crew has been gone a while", () => {
+    const r = new Room("x");
+    expect(r.listedLive(0)).toBe(false);
+    r.setCrewOnline(true, 0);
+    r.startEva("e1", 600);
+    expect(r.listedLive(0)).toBe(true);
+    r.setCrewOnline(false, 1000);
+    expect(r.listedLive(1000 + STALE_CREW_MS - 1)).toBe(true);
+    expect(r.listedLive(1000 + STALE_CREW_MS)).toBe(false);
+    r.setCrewOnline(true, 2000 + STALE_CREW_MS); // the crew came back: live again
+    expect(r.listedLive(3000 + STALE_CREW_MS)).toBe(true);
   });
 });
