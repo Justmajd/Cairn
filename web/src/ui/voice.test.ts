@@ -14,23 +14,25 @@ describe("spoken guidance", () => {
 
   it("stays quiet walking straight on, and speaks only when something changes", () => {
     const c = new RouteCallouts();
-    const at = (distM: number, o: Partial<RouteView> = {}): string | null => c.next({ legId: "a", name: "Cheyava Falls", distM, turnDeg: 0, steepDeg: 5, sand: false, ...o });
+    const dest = { rover: false, id: "cheyava", short: "Cheyava Falls", k: 1 };
+    const at = (distM: number, o: Partial<RouteView> = {}): string | null => c.next({ legId: "a", dest, distM, turnDeg: 0, steepDeg: 5, sand: false, ...o })?.text ?? null;
     expect(at(600)).toBeNull(); // the new leg was announced on departure
     const lines: string[] = [];
     for (let d = 590; d >= 0; d -= 5) {
       const l = at(d, d === 400 ? { turnDeg: 70 } : d === 395 ? { turnDeg: 70 } : d === 300 ? { steepDeg: 18 } : d === 290 ? { steepDeg: 19 } : {});
       if (l) lines.push(l);
     }
-    expect(lines).toEqual(["Turn right.", "Steep ground ahead, 18 degrees.", "Cheyava Falls, 100 metres.", "Cheyava Falls ahead."]);
+    expect(lines).toEqual(["Turn right.", "Steep ground ahead, 18 degrees.", "Cheyava Falls. 100 metres.", "Cheyava Falls is ahead."]);
   });
 
   it("does not repeat a turn or a hazard every few metres", () => {
     const c = new RouteCallouts();
-    c.next({ legId: "b", name: "Rover", distM: 800, turnDeg: 0, steepDeg: 0, sand: false });
+    const rover = { rover: true, id: "rover", short: "Rover", k: 0 };
+    c.next({ legId: "b", dest: rover, distM: 800, turnDeg: 0, steepDeg: 0, sand: false });
     const said: string[] = [];
     for (let d = 795; d > 450; d -= 5) {
-      const l = c.next({ legId: "b", name: "Rover", distM: d, turnDeg: 40, steepDeg: 0, sand: true });
-      if (l) said.push(l);
+      const l = c.next({ legId: "b", dest: rover, distM: d, turnDeg: 40, steepDeg: 0, sand: true });
+      if (l) said.push(l.text);
     }
     // a long gentle bend: called again only every 60 m; sand only every 150 m
     expect(said.filter((s) => s === "Bear right.").length).toBeLessThanOrEqual(6);
