@@ -1023,6 +1023,10 @@ svg.timeline .sunt { fill: #f0e442; font: 500 9px var(--mono); }
 /* the scenarios run across the whole menu, under the story and the map */
 .brief-scenarios { grid-column: 1 / -1; margin: 0; }
 /* two columns: the map starts beside the headline, not centred against the whole story */
-@media (min-width: 1101px) { .brief { align-items: start; } }
+@media (min-width: 1101px) {
+  .brief { align-items: start; }
+  /* the photo's top edge lines up just under the CAIRN logo, level with where the content starts */
+  .brief-map { margin-top: 68px; }
+}
 .brief-scenarios .eyebrow { margin: 0 0 8px; font: 500 11px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--steel); }
 .demo-glow { box-shadow: 0 0 0 2px var(--accent), 0 0 24px rgb(var(--fern-rgb) / 0.45) !important; }
