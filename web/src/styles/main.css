@@ -552,7 +552,7 @@ table.sources .note { margin-top: 6px; color: #f7cf86; font-size: 12px; }
 .brief-sites a.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
 .brief-sites b { display: block; font-weight: 600; color: var(--text); }
 .brief-sites span { font-size: 11.5px; line-height: 1.35; display: block; margin-top: 2px; }
-.brief-cta { display: flex; gap: 10px; flex-wrap: wrap; }
+.brief-cta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 24px; }
 .brief-cta button.big { width: auto; }
 
 /* ---------- guided demo ---------- */
@@ -743,6 +743,8 @@ details.more h3 .sub { font-weight: 400; font-size: 11.5px; }
 .foot-row.two, .foot-row.three { grid-template-columns: 1fr 1fr; margin: 0 0 4px; }
 .foot-row.three { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
 :is(.foot-row.two, .foot-row.three) button { height: 36px; font-size: 12.5px; padding: 0 8px; }
+.foot-row.three button { gap: 5px; padding: 0 6px; font-size: 12px; white-space: nowrap; }
+.foot-row.three button svg { width: 15px; height: 15px; flex: none; }
 .panel-foot :is(.foot-row.two, .foot-row.three) + button.big { margin-top: 4px; }
 
 details.more-layers { margin-top: 10px; }

@@ -66,12 +66,12 @@ export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "pa
         ${eyebrow}
         <h2>${headline}</h2>
         ${story.paragraphs.map((p) => `<p>${p}</p>`).join("")}
-        <ul class="brief-facts">${c.facts.map((f) => `<li><b>${esc(f.value)}</b><span>${esc(f.label)}</span></li>`).join("")}</ul>
         <div class="brief-cta">
           <button id="brief-enter" class="primary big">Open the EVA planner →</button>
           <button id="brief-demo" class="big">▶ Watch the 2-minute demo</button>
           <button id="brief-roam" class="big roam" title="Walk anywhere in the suit, in Mars gravity: lope, jump, slide, and watch your oxygen">Free roam on foot</button>
         </div>
+        <ul class="brief-facts">${c.facts.map((f) => `<li><b>${esc(f.value)}</b><span>${esc(f.label)}</span></li>`).join("")}</ul>
         <div class="brief-links">
           <button id="brief-mc" class="brief-mc"><b>Mission Control</b><span>Watch the EVA from Earth, ${lightText} behind Mars, and message the crew</span></button>
           <button id="brief-ev2" class="brief-mc ev2"><b>Join as EV2</b><span>The second astronaut, on another device: walk the EVA with EV1</span></button>

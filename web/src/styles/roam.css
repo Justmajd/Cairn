@@ -286,3 +286,8 @@ body.roam-on .area-tag { display: none; }
   .rm-field:has(ul), #roam[data-look="walk"] .rm-field:has(ul) { width: min(320px, calc(100vw - 32px)); z-index: 2; background: var(--panel-solid, rgba(18, 17, 16, 0.94)); }
   .rm-field-head { flex-direction: column; gap: 0; }
 }
+#roam .rm-field-more { justify-self: start; height: auto; padding: 0; border: 0; background: none; color: var(--accent); font: 500 11.5px var(--sans); cursor: pointer; }
+.rm-intro-goal h2 { margin-top: 0; }
+.rm-mission dt small { color: var(--text-3); font-size: 10px; }
+.rm-mission dd, .rm-mission dt { white-space: nowrap; }
+.rm-mission { width: 276px; }

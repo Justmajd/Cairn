@@ -20,6 +20,9 @@ export interface Out {
 const out = (): Out => ({ mc: [], crew: [] });
 const key = (e: LogEntry) => `${e.t.toFixed(3)}|${e.kind}|${e.text}`;
 
+/** A running EVA whose crew has been gone this long stops being listed as live (ms). */
+export const STALE_CREW_MS = 10 * 60 * 1000;
+
 export class Room {
   plan: PlanInfo | null = null;
   evaId: string | null = null;
@@ -29,6 +32,8 @@ export class Room {
   lightTimeS = 0;
   speed = 0;
   crewOnline = false;
+  /** when the crew's link dropped (ms since 1970), or null while it is up / before anyone connected */
+  crewLostMs: number | null = null;
   live: { x: number; y: number } | null = null;
   crewHidden = false;
 
@@ -66,8 +71,9 @@ export class Room {
     return o;
   }
 
-  setCrewOnline(online: boolean): Out {
+  setCrewOnline(online: boolean, nowMs = Date.now()): Out {
     this.crewOnline = online;
+    this.crewLostMs = online ? null : nowMs;
     const o = out();
     o.mc.push({ type: "crew", online });
     return o;
@@ -87,6 +93,17 @@ export class Room {
     this.lightTimeS = s.lightTimeS;
     this.speed = s.speed;
     this.plan = s.plan;
+    this.crewLostMs = Date.now(); // nobody is connected after a restart: the crew has a while to come back
+  }
+
+  /**
+   * Is this EVA worth listing as live (main menu, Mission Control elsewhere)?  Running, and the crew
+   * either connected or lost for less than STALE_CREW_MS: a walk abandoned in a closed tab drops off the
+   * list, while a crew that comes back resumes it.
+   */
+  listedLive(nowMs = Date.now()): boolean {
+    if (!this.running || !this.evaId) return false;
+    return this.crewOnline || this.crewLostMs === null || nowMs - this.crewLostMs < STALE_CREW_MS;
   }
 
   startEva(evaId: string, lightTimeS: number): Out {
