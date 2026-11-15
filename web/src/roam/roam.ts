@@ -23,6 +23,7 @@ import type { CrewPose, EarthMessage, Frame, Member, PlanInfo } from "../hab/pro
 import { autonomyHtml, type Decision } from "../ui/autonomy";
 import { RadiationModel } from "../eva/radiation";
 import { RoamStorm } from "./storm";
+import { distanceToLegs, gapToBox, scoreWalk, workO2 } from "./score";
 import { CLEAR_TAU, DUST_PRESETS, dustEffect, fmtVisibility } from "../eva/dust";
 import type { XY } from "../types";
 
@@ -558,10 +559,7 @@ export class Roam {
 
   /** Distance from the walker to the rover's hull (0 inside it). */
   private roverGap(): number {
-    const s = this.walker;
-    const dx = Math.max(0, Math.abs(s.x - this.rover.x) - ROVER_HALF.x);
-    const dy = Math.max(0, Math.abs(s.y - this.rover.y) - ROVER_HALF.z);
-    return Math.hypot(dx, dy);
+    return gapToBox(this.walker.x, this.walker.y, this.rover.x, this.rover.y, ROVER_HALF.x, ROVER_HALF.z);
   }
 
   /** What E does here, if anything: sample at the next stop, climb in at the rover. */
@@ -685,20 +683,9 @@ export class Roam {
   }
 
   private distanceToRoute(x: number, y: number): number {
-    let best = Infinity;
-    for (const leg of this.legs) {
-      for (let i = 1; i < leg.length; i++) {
-        const a = leg[i - 1];
-        const b = leg[i];
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const l2 = dx * dx + dy * dy || 1;
-        const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l2));
-        best = Math.min(best, Math.hypot(x - a.x - dx * t, y - a.y - dy * t));
-      }
-    }
-    return best;
+    return distanceToLegs(x, y, this.legs);
   }
+
 
   /**
    * Choose what to sample: the stop's own rover photos (real Navcam frames from the site data).  The
@@ -764,7 +751,7 @@ export class Roam {
     const alarmAt = this.storm && !this.stormAlarm ? this.storm.alertS : Infinity;
     const cut = this.t + dwellS > alarmAt;
     if (cut) dwellS = Math.max(0, alarmAt - this.t);
-    const o2 = (p.workingW * dwellS) / (p.kJPerLitreO2 * 1000);
+    const o2 = workO2(dwellS, p.workingW, p.kJPerLitreO2);
     this.walker.o2L += o2;
     this.walker.energyJ += p.workingW * dwellS;
     this.t += dwellS;
@@ -794,17 +781,14 @@ export class Roam {
     const off = this.walkS > 0 ? this.offRouteS / this.walkS : 0;
     this.storm?.board(this.t);
     this.weather();
-    const checks = [
-      { ok: !outOfO2 && o2 <= pl.o2L * 1.1, text: `Oxygen within 10 % of the plan (${Math.round(o2)} L used, ${Math.round(pl.o2L)} L planned)` },
-      { ok: !outOfO2 && this.t <= pl.timeS * 1.15, text: `EVA time within 15 % of the plan (${fmtDur(this.t)}, ${fmtDur(pl.timeS)} planned)` },
-      { ok: this.falls === 0 && off <= 0.1, text: `Safe walking: no falls, under 10 % of the walk off the planned route (${this.falls} ${this.falls === 1 ? "fall" : "falls"}, ${Math.round(off * 100)} % off route)` },
-    ];
     const st = this.storm;
-    if (st && this.stormAlarm) {
-      const took = (st.shelteredS ?? this.t) - st.alertS;
-      checks.push({ ok: !outOfO2 && st.shelteredS !== null && took <= st.shelterMin * 60, text: `Inside within ${st.shelterMin} min of the radiation alarm (${fmtDur(took)}; dose ${fmtDose(st.doseUGy)})` });
-    }
-    const stars = outOfO2 ? 0 : checks.filter((c) => c.ok).length;
+    const { checks, stars } = scoreWalk(
+      {
+        outOfO2, o2UsedL: o2, timeS: this.t, falls: this.falls, offRoute: off,
+        storm: st && this.stormAlarm ? { alertS: st.alertS, shelteredS: st.shelteredS, shelterMin: st.shelterMin, doseUGy: st.doseUGy } : null,
+      },
+      pl,
+    );
     if (outOfO2) this.decided("Out of oxygen before reaching the rover");
     this.hab.note(this.t, outOfO2 ? "alert" : "home", outOfO2 ? "Suit out of oxygen" : "Back in the rover through the suitport");
     this.hab.end(outOfO2, outOfO2 ? "Free roam: out of oxygen before the rover." : `Free roam: ${this.samples.length} of ${this.stops.length} samples, ${stars} of ${checks.length} stars.`);
