@@ -334,6 +334,7 @@ function tick(s: WalkerState, input: WalkInput, jump: boolean, ground: Ground, d
     if (jump && s.downT <= 0 && s.gait !== "slide" && s.grounded) {
       s.vz = cfg.jumpMs;
       takeOff(s, true);
+      s.bounding = false; // a real jump, even mid-lope: the readout shows it
       extraJ += (0.5 * p.massKg * cfg.jumpMs * cfg.jumpMs) / 0.25;
       events.push({ kind: "takeoff", jump: true, vz: s.vz });
     }
