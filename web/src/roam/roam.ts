@@ -350,7 +350,7 @@ export class Roam {
       doseUGy: this.storm?.doseUGy ?? 0,
       doseRate: this.storm ? this.storm.rate(this.t) : 0,
       baseline: this.storm?.baseline ?? 0,
-      status: `On foot${this.emergency ? (this.emergency.kind === "leak" ? " · suit leak" : " · twisted ankle") : ""} · ${s.gait === "down" ? "down" : s.gait === "slide" ? "sliding" : s.gait === "air" ? "in the air" : s.gait === "lope" ? "loping" : s.gait === "walk" ? "walking" : "standing"}${this.finished ? " · back in the rover" : ""}`,
+      status: `On foot${this.emergency ? (this.emergency.kind === "leak" ? " · suit leak" : " · twisted ankle") : ""} · ${s.gait === "down" ? "down" : s.gait === "slide" ? "sliding" : s.gait === "air" ? (s.bounding ? "loping" : "in the air") : s.gait === "lope" ? "loping" : s.gait === "walk" ? "walking" : "standing"}${this.finished ? " · back in the rover" : ""}`,
       next: tg ? tg.name : this.plan ? "the rover" : "exploring",
       nextDistM: tg ? Math.hypot(tg.x - s.x, tg.y - s.y) : 0,
       homeS: dr / 0.8,
@@ -1715,8 +1715,9 @@ export class Roam {
     set("steps", `${s.steps.toLocaleString("en")} steps · ${Math.round(s.climbM)} m up`);
     const air = s.air;
     const [big, sub] =
-      s.gait === "air" ? ["In the air", air ? `${air.t.toFixed(2)} s · ${Math.round(Math.max(0, s.z - air.z0) * 100)} cm up` : ""]
-      : s.gait === "lope" ? ["Loping", "bounding gait"]
+      // a lope is a series of short bounds: no flashing "In the air" / "Loping" while bounding, only for a real jump
+      s.gait === "air" && !s.bounding ? ["In the air", air ? `${air.t.toFixed(2)} s · ${Math.round(Math.max(0, s.z - air.z0) * 100)} cm up` : ""]
+      : s.gait === "air" || s.gait === "lope" ? ["", ""]
       : s.gait === "walk" ? ["", ""]
       : s.gait === "slide" ? ["Sliding", `${Math.round(s.slopeDeg)}° — too steep to hold`]
       : s.gait === "down" ? (s.sliding ? ["Down", "sliding to steadier ground"] : ["Down", `getting up · ${s.downT.toFixed(1)} s`])
