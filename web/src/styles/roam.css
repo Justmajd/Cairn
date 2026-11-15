@@ -229,3 +229,13 @@ body.roam-on .poi-label { pointer-events: none; }
 .rm-science-x { position: absolute; right: 6px; top: 6px; width: 26px; height: 26px; border: 0; border-radius: 8px; background: transparent; color: var(--text-3); cursor: pointer; }
 #roam[data-look="walk"] .rm-science { right: 15%; top: 36%; }
 @media (max-width: 720px) { .rm-science { grid-template-columns: 1fr; top: auto; bottom: 200px; } .rm-science img { width: 100%; height: 120px; } }
+
+/* settings and captions */
+.rm-binds button { min-width: 96px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--raise); color: var(--text); font: 500 12px var(--mono); cursor: pointer; }
+.rm-binds button:focus-visible, .rm-binds button:hover { border-color: var(--accent); }
+.rm-set-row button { height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font: 500 12px var(--sans); cursor: pointer; }
+.rm-check { display: flex; gap: 8px; align-items: baseline; margin: 10px 0; font-size: 13.5px; color: var(--text); }
+.rm-check small { color: var(--text-3); font-size: 12px; }
+.rm-captions { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); display: grid; justify-items: center; gap: 3px; pointer-events: none; }
+.rm-captions span { padding: 3px 10px; border-radius: 6px; background: rgba(0, 0, 0, 0.75); color: #fff; font: 500 13px var(--mono); }
+#roam[data-look="walk"] .rm-captions { bottom: 30%; }

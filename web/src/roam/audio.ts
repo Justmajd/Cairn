@@ -27,6 +27,16 @@ export class SuitAudio {
   private breathPhase = 0;
   private beatPhase = 0;
   muted = false;
+  /** A caption for each sound cue (for captions on screen). */
+  onCue: (text: string) => void = () => {};
+  private cueT: Record<string, number> = {};
+  private leakOn = false;
+  private cue(text: string, everyS: number): void {
+    const now = performance.now() / 1000;
+    if ((this.cueT[text] ?? -1e9) + everyS > now) return;
+    this.cueT[text] = now;
+    this.onCue(text);
+  }
 
   /** Browsers only allow sound after a click or key press: call this from one. */
   start(): void {
@@ -113,6 +123,7 @@ export class SuitAudio {
       src.connect(hp).connect(this.hiss).connect(this.inside);
     }
     this.hiss.gain.setTargetAtTime(on ? 0.05 : 0, ctx.currentTime, 0.4);
+    this.leakOn = on;
   }
 
   /** 1 on a normal day; more in a dust storm (gusts are louder and more frequent). */
@@ -151,6 +162,9 @@ export class SuitAudio {
       this.wind.gain.setTargetAtTime((0.025 + Math.random() * 0.07) * this.windiness, ctx.currentTime, 1.2);
       this.windLp.frequency.setTargetAtTime(200 + Math.random() * 260, ctx.currentTime, 1.5);
     }
+    if (effort01 > 0.55) this.cue("[breathing hard]", 8);
+    if (this.leakOn) this.cue("[hissing: air escaping]", 10);
+    if (this.windiness > 1.5) this.cue("[wind gusting]", 12);
     this.breathPhase += (dt * breaths) / 60;
     const f = this.breathPhase % 1;
     // inhale (0–0.4), exhale (0.4–0.8, a little louder and lower), pause
@@ -164,6 +178,7 @@ export class SuitAudio {
       this.beatPhase += (dt * bpm) / 60;
       if (Math.floor(this.beatPhase) !== Math.floor(before)) {
         const v = Math.min(0.35, (bpm - 105) / 160);
+        this.cue("[heartbeat]", 8);
         this.thump(48, 0.09, v);
         window.setTimeout(() => this.thump(42, 0.08, v * 0.7), 140);
       }
@@ -177,6 +192,7 @@ export class SuitAudio {
   step(power: number, sand: number): void {
     const ctx = this.ctx;
     if (!ctx || !this.noise || !this.inside || !this.outside) return;
+    this.cue(power > 2.5 ? "[thud: hard landing]" : "[footsteps]", power > 2.5 ? 0 : 6);
     this.thump(70 + Math.random() * 15, 0.12, Math.min(0.6, 0.16 * power), this.inside);
     this.crunch(power, sand, this.inside, 1);
     this.crunch(power, sand, this.outside, 0.35);
@@ -221,6 +237,7 @@ export class SuitAudio {
   beep(warn = false): void {
     const ctx = this.ctx;
     if (!ctx) return;
+    this.cue(warn ? "[warning tones]" : "[radio tones]", 0);
     const tone = (f: number, at: number) => {
       const o = ctx.createOscillator();
       o.frequency.value = f;
