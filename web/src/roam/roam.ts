@@ -32,6 +32,16 @@ import { CLEAR_TAU, DUST_PRESETS, dustEffect, fmtVisibility } from "../eva/dust"
 import type { XY } from "../types";
 
 /** Close enough to a stop to work there, and to the rover's hull to climb in (m). */
+/** Free roam's radio link to Earth, shortened so Mission Control's messages arrive during a walk (a demo
+ *  setting, labelled as such in the HUD and in Mission Control; the true light time is 3–22 min). */
+const ROAM_LINK_DELAY_S = 10;
+/** The link delay for a true light time: `?delay=real` keeps it, `?delay=<s>` sets it, otherwise 10 s. */
+function linkDelay(realS: number): number {
+  const q = new URLSearchParams(location.search).get("delay");
+  if (q === "real") return realS;
+  const n = Number(q);
+  return q && Number.isFinite(n) && n >= 0 ? n : ROAM_LINK_DELAY_S;
+}
 const AT_STOP_M = 6;
 const AT_ROVER_M = 1.6;
 /** Holding E (or the Sample button) this long completes the action (s). */
@@ -131,9 +141,13 @@ export class Roam {
   private hardLandings = 0;
   private samples: { name: string; atS: number; file?: string; image?: string }[] = [];
   private routeT = 0;
-  // ---- the hab link: Mission Control watches the walk, one light time late
+  // ---- the hab link: Mission Control watches the walk and answers after the link delay
   private readonly hab: RoamHab;
-  private lightTimeS = 0;
+  /** The radio link to Earth as free roam runs it: shortened to `ROAM_LINK_DELAY_S` so Earth's messages
+   *  arrive during a walk in real time (`?delay=real` uses the true light time).  The real light time is
+   *  kept in `realLightTimeS` (Earth in the sky, the debrief). */
+  private lightTimeS = linkDelay(0);
+  private realLightTimeS = 0;
   private decisions: Decision[] = [];
   // ---- a solar particle event during the mission (the 20 May 2024 replay)
   private stormOn = true;
@@ -327,6 +341,7 @@ export class Roam {
       o2SupplyL: p.o2SupplyL,
       o2ReserveL: p.o2SupplyL * p.reserveFraction,
       lightTimeS: this.lightTimeS,
+      ...(this.shortened() ? { realLightTimeS: this.realLightTimeS } : {}),
       storm: this.stormOn,
       buddy: this.hab.ev2Online > 0,
       dust: { tau: this.tau, name: this.dustName },
@@ -497,6 +512,11 @@ export class Roam {
   }
 
   /** The hab link's state, in the mission panel. */
+  /** Whether the link runs on the shortened demo delay rather than the true light time. */
+  private shortened(): boolean {
+    return this.realLightTimeS > 0 && Math.abs(this.lightTimeS - this.realLightTimeS) > 1;
+  }
+
   private renderLink(): void {
     const el = this.host?.querySelector<HTMLElement>(".rm-link");
     if (!el) return;
@@ -506,7 +526,7 @@ export class Roam {
     const pair = this.buddyTarget && this.buddyFresh() && b ? ` · ${other} ${fmtDist(Math.hypot(b.x - this.walker.x, b.y - this.walker.y))} away` : this.member === "ev1" && h.ev2Online ? ` · ${other} online` : "";
     const invite = this.member === "ev1" && h.online && !h.ev2Online ? ` · <a href="${esc(this.ev2Link())}" target="_blank" rel="noopener">EV2 link</a>` : "";
     el.innerHTML = h.online
-      ? `<i class="on"></i>${this.member === "ev2" ? "You are EV2" : "Hab linked"}${pair}${h.mcOnline ? ` · Mission Control watching, ${fmtLightTime(this.lightTimeS)} behind` : ""}${invite}`
+      ? `<i class="on"></i>${this.member === "ev2" ? "You are EV2" : "Hab linked"}${pair}${h.mcOnline ? ` · Mission Control watching, ${fmtLightTime(this.lightTimeS)} behind${this.shortened() ? ` (shortened from ${fmtLightTime(this.realLightTimeS)})` : ""}` : ""}${invite}`
       : `<i></i>No hab link: walking on your own`;
   }
 
@@ -970,7 +990,7 @@ export class Roam {
         </table>
         <p class="fine">Planned figures come from the planner's model for this exact route; yours come from the walking physics as you walked it. Suit numbers are demo assumptions.</p>
         ${this.fieldDebrief()}
-        ${autonomyHtml(this.decisions, this.lightTimeS)}
+        ${autonomyHtml(this.decisions, this.realLightTimeS)}
         <div class="rm-debrief-acts"><button class="primary big" data-again>Walk it again</button><button class="big" data-planner>Back to the planner</button></div>
       </div>`,
       false,
@@ -1657,7 +1677,8 @@ export class Roam {
     this.sunDir.set(Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
     const utc = utcAtLmst(this.solUtc, lmstAtUtc(this.solUtc, this.lon), this.startLmst) + this.t * 1000;
     const sky = marsSky(utc, this.lat, this.lon);
-    this.lightTimeS = sky.lightTimeS;
+    this.realLightTimeS = sky.lightTimeS;
+    this.lightTimeS = linkDelay(sky.lightTimeS);
     const km = (b: { distanceKm: number }) => `${Math.round(b.distanceKm).toLocaleString("en")} km`;
     this.view.setSkyBodies({
       earth: { dir: sky.earth.dir, sizeDeg: sky.earth.sizeDeg, caption: `${fmtLightTime(sky.lightTimeS)} by radio` },

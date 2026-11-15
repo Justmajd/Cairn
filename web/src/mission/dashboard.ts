@@ -11,7 +11,7 @@ import type { EarthMessage, EvaRecord, Frame, LiveEva, LogEntry, McSnapshot, Not
 import { $, esc, fmtClock, LOGO_SVG } from "../ui/dom";
 import "../styles/mission.css";
 
-const fmtLight = (s: number) => `${Math.floor(s / 60)} min ${String(Math.round(s % 60)).padStart(2, "0")} s`;
+const fmtLight = (s: number) => s < 60 ? `${Math.round(s)} s` : `${Math.floor(s / 60)} min ${String(Math.round(s % 60)).padStart(2, "0")} s`;
 const fmtDistM = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${Math.round(m)} m`);
 /** Real (wall-clock) seconds, for "how long until": "7 s", "1 min 22 s". */
 const fmtReal = (s: number) => (s < 60 ? `${Math.max(1, Math.round(s))} s` : `${Math.floor(s / 60)} min ${String(Math.round(s % 60)).padStart(2, "0")} s`);
@@ -311,6 +311,11 @@ export function startMissionControl(site: string): void {
     const ended = !!S.eva?.ended;
     $("#mc-now").textContent = S.eva ? `T+${fmtClock(earthNow())}` : "no EVA";
     $("#mc-delay").textContent = S.lightTimeS ? fmtLight(S.lightTimeS) : "—";
+    // free roam runs the link on a shortened demo delay: say so, with the real light time
+    const real = S.plan?.mode === "roam" ? S.plan.realLightTimeS : undefined;
+    const delayBox = $("#mc-delay").parentElement!;
+    delayBox.title = real ? `Free roam: the radio delay is shortened so messages arrive while the crew walks. The real one-way delay on this date is ${fmtLight(real)}.` : "One-way radio delay between Mars and Earth";
+    delayBox.querySelector("span")!.textContent = real ? "Signal delay · free roam" : "Signal delay";
     const f = viewFrame();
     $("#mc-shown").textContent = f ? `T+${fmtClock(f.t)}` : S.eva ? "waiting" : "—";
     $("#mc-shown-lmst").textContent = f ? `${f.lmst} LMST on Mars` : "";
