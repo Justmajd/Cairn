@@ -26,6 +26,7 @@ import { ic } from "./ui/icons";
 import { hideAnimated, showAnimated } from "./ui/motion";
 import { playOnce } from "./ui/fx";
 import { dissolveTo } from "./ui/dissolve";
+import { saveRoamPlan } from "./roam/plan";
 import { openModal, stopCardHtml } from "./ui/modals";
 import type { DemoRunner, DemoStep } from "./ui/demo";
 import type { CueRow } from "./ui/cuecard";
@@ -290,6 +291,7 @@ export class App {
     $(".top-actions").innerHTML = `
       <button id="btn-panels" class="compact-only" title="Route and map layers">${ic.layers}<span>Route & layers</span></button>
       <button id="btn-hab" class="hab-chip" title="Mission Control">${ic.radio}<span>Mission Control</span><i></i></button>
+      <button id="btn-roam" title="Free roam: walk anywhere on foot, in Mars gravity">${ic.walk}<span>Free roam</span></button>
       <button id="btn-demo" class="demo-btn" title="Play the guided demo">${ic.play}<span>Demo</span></button>
       <button id="btn-about" aria-haspopup="menu" title="Briefing, data sources and assumptions">${ic.info}<span>About</span>${ic.chev}</button>`;
     $("#about-menu").innerHTML = `
@@ -355,6 +357,7 @@ export class App {
     $("#scene").addEventListener("pointerdown", used);
     $("#scene").addEventListener("wheel", used, { passive: true });
     $("#btn-demo").addEventListener("click", () => void this.startDemo());
+    $("#btn-roam").addEventListener("click", () => this.walkItYourself());
     $("#btn-hab").addEventListener("click", () => this.openMissionControl());
     this.renderHabChip();
     $("#btn-panels").addEventListener("click", (ev) => {
@@ -440,6 +443,7 @@ export class App {
       if (!t) return;
       const act = t.dataset.act;
       if (act === "start") this.startEva();
+      else if (act === "walk-it") this.walkItYourself();
       else if (act === "fly") this.setView("fly");
       else if (act === "cue") this.openCueCard();
       else if (act === "export") {
@@ -869,6 +873,24 @@ export class App {
     // A round trip is equally long in both directions: start with the stop listed first (primary objectives lead).
     const rank = (p: Poi) => this.pois.indexOf(p);
     return rank(best[0]) <= rank(best[best.length - 1]) ? best : best.slice().reverse();
+  }
+
+  /** Free roam with this plan as a mission: the planned route, its stops in order, the totals to beat. */
+  private walkItYourself(): void {
+    const site = encodeURIComponent(this.site.id);
+    const p = this.plan;
+    if (!p || this.phase !== "planning") return dissolveTo(`?site=${site}&roam=1`);
+    const b = p.budget;
+    saveRoamPlan({
+      site: this.site.id,
+      hash: location.hash,
+      rover: { x: this.rover.x, y: this.rover.y },
+      startLmst: this.startLmst,
+      stops: p.order.slice(1, -1).map((s) => ({ id: s.id, name: s.name, short: s.short, x: s.x, y: s.y, dwellMin: s.dwellMin })),
+      legs: p.legs.map((l) => l.points.map((q) => ({ x: q.x, y: q.y }))),
+      planned: { o2L: b.o2UsedL, timeS: b.totalTimeS, walkTimeS: b.walkTimeS, distM: b.distanceM },
+    });
+    dissolveTo(`?site=${site}&roam=1${location.hash}`);
   }
 
   private async replan(): Promise<void> {
@@ -1441,7 +1463,8 @@ export class App {
           this.member === "ev2"
             ? `<button class="primary big" disabled>${ic.play}<span>${this.habState === "online" ? "EV1 starts the EVA" : "No link to the hab"}</span></button>
                <p class="crew-note">You are <b>EV2</b>. EV1 plans this EVA on their device; when they start it, you walk it with them here.</p>`
-            : `<button class="primary big" data-act="start" ${b.feasible ? "" : "disabled"}>${ic.play}<span>Start EVA</span></button>`
+            : `<button class="primary big" data-act="start" ${b.feasible ? "" : "disabled"}>${ic.play}<span>Start EVA</span></button>
+               <button class="big walk-it" data-act="walk-it" title="Walk this plan on foot in free roam: reach each stop, take the samples, get back to the rover">${ic.walk}<span>Walk it yourself</span></button>`
         }
       </footer>`;
   }
