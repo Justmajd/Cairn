@@ -17,10 +17,11 @@ cd web
 npm ci                 # install
 npm run dev:all        # Vite dev server (5173) + hab server (8787) in one terminal; Ctrl+C stops both
 npm run dev:https      # same over https:// (phones need it for the microphone); local cert in web/.cert
-npm test               # vitest (126 tests: model, routing, data, hab server end to end)
+npm test               # vitest (129 tests: model, routing, data, hab server end to end)
 npm run typecheck      # app tsconfig + server tsconfig
 npm run build          # tsc + vite build → web/dist (and dist/sw.js)
 npm start              # build, then serve dist + hab on http://localhost:8787 (production-like)
+npm run render-voice   # re-render the EVA voice clips (public/voice, committed) after changing phrases or stops
 npm run fetch-speech   # download the Whisper model + ONNX runtime into public/models, public/ort
 ```
 
@@ -55,7 +56,7 @@ web/                 the app (Vite + TypeScript + Three.js) and the hab server (
   public/data/       per-site data the app loads (~87 MB, in git) — see §4
   public/models, public/ort   speech model + runtime (gitignored; npm run fetch-speech)
   hab-data/          hab server's stored notebooks/voice notes/EVA records (gitignored)
-  scripts/           dev-all.mjs (one-shot dev), cert.mjs (local HTTPS cert), fetch-speech.mjs
+  scripts/           dev-all.mjs (one-shot dev), cert.mjs (local HTTPS cert), fetch-speech.mjs, render-voice.mjs (Kokoro → public/voice/*.mp3)
   server/            hab server: index.ts (HTTP + WebSocket), room.ts (light-time relay), store.ts (disk)
   src/               the app (see §5)
 ```
@@ -230,7 +231,7 @@ twisted ankle halves speed), buddy (EV2) pose, dose accumulation.
 (field notebook: localStorage + IndexedDB audio, synced to the hab), `noteEditor.ts` (note dialog,
 voice recording, "Turn into text", MP3), `voiceExport.ts` (MP3 via lamejs, ZIP via fflate),
 `transcribe.ts` + `transcribeWorker.ts` (Whisper tiny.en via transformers.js, on device; model from the
-hab if `npm run fetch-speech` was run, else Hugging Face), `voice.ts` (spoken directions), `about.ts`
+hab if `npm run fetch-speech` was run, else Hugging Face), `voice.ts` (spoken directions: `Voice` plays pre-rendered Kokoro clips through Web Audio, falling back to the browser's speechSynthesis; `RouteCallouts` speaks only on change — turns, hazards, 100 m / 25 m; tested), `voiceLines.ts` (every spoken line as clip ids + text, and the full `vocabulary`; imported by `scripts/render-voice.mjs`, so add new phrases there and re-render; tested), `about.ts`
 (data sources / assumptions), `offline.ts` (service worker + "Use offline" download), `motion.ts`
 (show/hide animations), `dissolve.ts` (page transition), `fx.ts` (text scramble, count-up, pointer
 glow, `playOnce`), `dom.ts` (helpers, formatters), `icons.ts` (Lucide).
