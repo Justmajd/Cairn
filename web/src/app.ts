@@ -27,6 +27,7 @@ import { hideAnimated, showAnimated } from "./ui/motion";
 import { playOnce } from "./ui/fx";
 import { dissolveTo } from "./ui/dissolve";
 import { saveRoamPlan } from "./roam/plan";
+import { autonomyHtml } from "./ui/autonomy";
 import { openModal, stopCardHtml } from "./ui/modals";
 import type { DemoRunner, DemoStep } from "./ui/demo";
 import type { CueRow } from "./ui/cuecard";
@@ -1576,6 +1577,7 @@ export class App {
               : `<p class="note">All objectives reached; the crew is back at the rover with ${Math.round(this.P.o2SupplyL - m.o2UsedL)} L of oxygen.</p>`
           }
         </section>
+        ${autonomyHtml(this.log.filter((e) => e.kind === "alert").map((e) => ({ t: e.t, text: e.text })), this.skyAt(0).lightTimeS)}
         ${this.logHtml()}
       </div>
       <footer class="panel-foot">
