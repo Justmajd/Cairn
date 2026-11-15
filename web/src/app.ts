@@ -2194,7 +2194,35 @@ export class App {
       buddy: this.buddy,
       dust: { tau: dust.tau, name: dust.name },
       hash: this.planHash(),
+      timeline: this.planTimeline(),
+      mode: "plan",
     };
+  }
+
+  /** Where the plan puts the crew over the EVA, every ~20 s: Mission Control's "Earth's best guess". */
+  private planTimeline(): [number, number, number][] {
+    const out: [number, number, number][] = [];
+    if (!this.plan) return out;
+    let t = 0;
+    let at: XY = this.rover;
+    for (const seg of this.plan.budget.segments) {
+      if (seg.kind === "walk") {
+        let next = 0;
+        for (const smp of seg.path.samples) {
+          if (smp.time < next) continue;
+          out.push([Math.round(t + smp.time), Math.round(smp.x), Math.round(smp.y)]);
+          next = smp.time + 20;
+        }
+        t += seg.path.time;
+        const end = seg.path.samples[seg.path.samples.length - 1];
+        if (end) at = end;
+        out.push([Math.round(t), Math.round(at.x), Math.round(at.y)]);
+      } else {
+        t += seg.durationS;
+        out.push([Math.round(t), Math.round(at.x), Math.round(at.y)]);
+      }
+    }
+    return out;
   }
 
   private sendPlan(): void {

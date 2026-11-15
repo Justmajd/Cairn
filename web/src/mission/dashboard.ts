@@ -65,9 +65,9 @@ export function startMissionControl(site: string): void {
       <div class="mc-banner" id="mc-banner" hidden></div>
       <main class="mc-grid">
         <section class="mc-card mc-map">
-          <header><h2>Crew position</h2><label class="mc-toggle"><input type="checkbox" id="mc-truth"/><span>Show where the crew really is now <em>(Earth can't know this yet)</em></span></label></header>
+          <header><h2>Crew position</h2><label class="mc-toggle"><input type="checkbox" id="mc-truth" checked/><span>Earth's best guess <em>(where the plan says the crew is now)</em></span></label></header>
           <div class="mc-canvas"><canvas id="mc-canvas" role="img" aria-label="Map of the walk area"></canvas><div class="mc-wait" id="mc-wait"></div></div>
-          <footer class="mc-legend"><span><i class="l-route"></i>Planned route</span><span><i class="l-trail"></i>Received track</span><span><i class="l-crew"></i>Last received position</span><span><i class="l-now"></i>Now (not yet known)</span></footer>
+          <footer class="mc-legend"><span><i class="l-route"></i>Planned route</span><span><i class="l-trail"></i>Received track</span><span><i class="l-crew"></i>Last received position</span><span><i class="l-now"></i>Earth's best guess now</span></footer>
         </section>
         <section class="mc-card mc-telemetry">
           <header><h2>Telemetry</h2><small id="mc-age"></small></header>
@@ -446,6 +446,23 @@ export function startMissionControl(site: string): void {
 
   // ---------------------------------------------------------------- map
   const canvas = $<HTMLCanvasElement>("#mc-canvas");
+  /** Where the plan puts the crew at EVA time `t` (null when the plan has no timeline). */
+  function planGuess(P: PlanInfo, t: number): { x: number; y: number } | null {
+    const tl = P.timeline;
+    if (!tl || !tl.length) return null;
+    if (t <= tl[0][0]) return { x: tl[0][1], y: tl[0][2] };
+    for (let i = 1; i < tl.length; i++) {
+      if (t <= tl[i][0]) {
+        const [t0, x0, y0] = tl[i - 1];
+        const [t1, x1, y1] = tl[i];
+        const k = t1 > t0 ? (t - t0) / (t1 - t0) : 1;
+        return { x: x0 + (x1 - x0) * k, y: y0 + (y1 - y0) * k };
+      }
+    }
+    const last = tl[tl.length - 1];
+    return { x: last[1], y: last[2] };
+  }
+
   function draw(): void {
     const box = canvas.parentElement!.getBoundingClientRect();
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -577,15 +594,24 @@ export function startMissionControl(site: string): void {
         ? `Map of the walk area. Planned route with ${P.stops.length} stops. Crew last received at EVA ${fmtClock(lf.t)}: ${lf.status} ${lf.next}${lf.nextDistM > 0 ? `, ${fmtDistM(lf.nextDistM)} to go` : ""}.`
         : `Map of the walk area. Planned route with ${P.stops.length} stops; no crew position received yet.`,
     );
-    if ($<HTMLInputElement>("#mc-truth").checked && S.live && S.eva) {
+    // Earth's best guess: Earth cannot see the crew now, only where they were one light time ago; the
+    // plan says where they should be at this moment on the EVA clock
+    const guess = $<HTMLInputElement>("#mc-truth").checked && S.eva ? planGuess(P, S.now) : null;
+    if (guess) {
       g.beginPath();
-      g.arc(X(S.live.x), Y(S.live.y), 9, 0, Math.PI * 2);
+      g.arc(X(guess.x), Y(guess.y), 10, 0, Math.PI * 2);
       g.setLineDash([3, 3]);
-      g.strokeStyle = "#ff8a8a";
+      g.strokeStyle = "rgba(255, 196, 92, 0.9)";
       g.lineWidth = 2;
       g.stroke();
       g.setLineDash([]);
-      if (f) line([[f.x, f.y], [S.live.x, S.live.y]], "rgba(255, 138, 138, 0.6)", 1, [2, 4]);
+      g.font = "500 10px 'Geist Mono', monospace";
+      g.fillStyle = "rgba(255, 220, 160, 0.95)";
+      g.shadowColor = "#000";
+      g.shadowBlur = 3;
+      g.fillText("best guess", X(guess.x) + 13, Y(guess.y) + 4);
+      g.shadowBlur = 0;
+      if (f) line([[f.x, f.y], [guess.x, guess.y]], "rgba(255, 196, 92, 0.45)", 1, [2, 4]);
     }
   }
 

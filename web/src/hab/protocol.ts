@@ -33,6 +33,10 @@ export interface PlanInfo {
   dust: { tau: number; name: string };
   /** The plan as a link (state/planLink.ts): EV2's device rebuilds exactly the same plan from it. */
   hash?: string;
+  /** Where the plan puts the crew over time: [EVA seconds, x, y].  Mission Control's "Earth's best guess". */
+  timeline?: [number, number, number][];
+  /** "roam": the crew is walking it on foot in free roam (physics, not the planner's simulation). */
+  mode?: "plan" | "roam";
 }
 
 /** A change to the plan proposed by Mission Control: stops to drop (ids) and points to add. */
