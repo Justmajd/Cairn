@@ -4,8 +4,7 @@ import { sessionParam } from "../hab/session";
 import { liveEvas, liveNow, liveSiteName, liveState } from "../hab/live";
 import type { LiveEva } from "../hab/protocol";
 import { dissolve, dissolveTo } from "./dissolve";
-import { marsSky } from "../eva/sky";
-import { countUp, playOnce, pointerGlow, scramble } from "./fx";
+import { countUp, playOnce, scramble } from "./fx";
 import { bindScenarios, scenariosHtml } from "./scenarios";
 
 /**
@@ -31,9 +30,6 @@ export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "pa
     .map(([a, b]) => `<line class="drive" x1="${(a.uv[0] * W).toFixed(1)}" y1="${(a.uv[1] * H).toFixed(1)}" x2="${(b.uv[0] * W).toFixed(1)}" y2="${(b.uv[1] * H).toFixed(1)}"/>`)
     .join("");
   const story = site.meta.story ?? { headline: site.meta.name, paragraphs: [] };
-  const centre = site.meta.centerLonLat ?? { lon: (site.meta.boundsLonLat.west + site.meta.boundsLonLat.east) / 2, lat: (site.meta.boundsLonLat.south + site.meta.boundsLonLat.north) / 2 };
-  const lightS = marsSky(Date.parse(site.meta.eva?.utc ?? "2024-07-21T02:10:26Z"), centre.lat, centre.lon).lightTimeS;
-  const lightText = `${Math.round(lightS / 60)} minutes`;
   const rover = site.meta.rover?.name ?? "the rover";
   const lat = c.global.lat;
   const latText = `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? "N" : "S"} ${c.global.lon.toFixed(2)}°E`;
@@ -62,7 +58,6 @@ export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "pa
     <div class="brief">
       <section class="brief-text">
         <div class="brief-brand">${LOGO_SVG}<div><h1>CAIRN</h1><p>Crew Assisted Integrated Route Navigator</p></div></div>
-        <div id="brief-live" class="brief-live" aria-live="polite" hidden></div>
         ${switcher}
         ${eyebrow}
         <h2>${headline}</h2>
@@ -73,10 +68,7 @@ export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "pa
           <button id="brief-roam" class="big roam" title="Walk anywhere in the suit, in Mars gravity: lope, jump, slide, and watch your oxygen">Free roam on foot</button>
         </div>
         <ul class="brief-facts">${c.facts.map((f) => `<li><b>${esc(f.value)}</b><span>${esc(f.label)}</span></li>`).join("")}</ul>
-        <div class="brief-links">
-          <button id="brief-mc" class="brief-mc"><b>Mission Control</b><span>Watch the EVA from Earth, ${lightText} behind Mars, and message the crew</span></button>
-          <button id="brief-ev2" class="brief-mc ev2"><b>Join as EV2</b><span>The second astronaut, on another device: walk the EVA with EV1</span></button>
-        </div>
+        <div id="brief-live" class="brief-live" aria-live="polite" hidden></div>
         <p class="fine">Every map layer, photo and reading comes from NASA, USGS or JPL archives — see About → Data sources in the planner. Suit and physiology numbers are labelled demo assumptions.</p>
       </section>
       <section class="brief-map">
@@ -110,7 +102,6 @@ export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "pa
   // listeners on the host go on once: the briefing is drawn again into the same element
   if (!host.dataset.glow) {
     host.dataset.glow = "1";
-    pointerGlow(host, ".brief-mc");
     bindScenarios(host);
   }
   // into the planner: the headline becomes the site name in the top bar, the logo flies there too
@@ -121,21 +112,13 @@ export function showBriefing(site: BriefSite, sites: SiteEntry[] = [], mode: "pa
   const id = encodeURIComponent(site.id);
   // the plan in the address (#stops=…) goes along to the planner
   $("#brief-enter", host).addEventListener("click", () => (mode === "page" ? dissolveTo(`?site=${id}&skip=1${location.hash}`) : close()));
-  // Join as EV2 (under the planner buttons): this site's newest session; the list above has them all
-  $("#brief-ev2", host).addEventListener("click", (ev) => {
-    const b = ev.currentTarget as HTMLButtonElement;
-    if (b.dataset.session) joinAsEv2(site.id, b.dataset.session, !!b.dataset.roam);
-  });
   $("#brief-roam", host).addEventListener("click", () => dissolveTo(`?site=${id}&roam=1`));
-  $("#brief-mc", host).addEventListener("click", () => {
-    window.open(`?view=mission&site=${id}`, `cairn-mc-${site.id}`, "noopener");
-  });
   $("#brief-demo", host).addEventListener("click", () => {
     if (mode === "page") return dissolveTo(`?site=${id}&demo=1`);
     close();
     window.dispatchEvent(new CustomEvent("cairn:demo"));
   });
-  if (mode === "page") watchLive($("#brief-live", host), site.id, $<HTMLButtonElement>("#brief-ev2", host));
+  if (mode === "page") watchLive($("#brief-live", host), site.id);
 }
 
 /** EV2 joins a session: in free roam beside EV1 if EV1 is walking there, otherwise in the planner. */
@@ -148,9 +131,9 @@ const LIVE_POLL_MS = 10_000;
 /**
  * The main menu's crew sessions: every EV1 on the hab, on any site, planning or out on an EVA, with
  * Join as EV2 and its own Mission Control.  Hidden when there are none or there is no hab (a static
- * host).  `ev2Button`: the menu's own Join as EV2, pointed at this site's newest session (or waiting).
+ * host).  It sits under the planner buttons, where joining a crew belongs.
  */
-function watchLive(box: HTMLElement, here: string, ev2Button: HTMLButtonElement): void {
+function watchLive(box: HTMLElement, here: string): void {
   let live: LiveEva[] = [];
   let at = 0; // when the hab answered (performance.now)
   let shownKey = "";
@@ -186,13 +169,6 @@ function watchLive(box: HTMLElement, here: string, ev2Button: HTMLButtonElement)
       const clock = box.querySelector(`[data-session="${CSS.escape(e.session)}"] .clock`);
       if (clock) clock.textContent = statusText(e);
     }
-    // the menu's own Join as EV2: this site's newest session, or wait for an EV1
-    const mine = live.find((e) => e.site === here);
-    ev2Button.disabled = !mine;
-    ev2Button.dataset.session = mine?.session ?? "";
-    ev2Button.dataset.roam = mine?.roam ? "1" : "";
-    const sub = ev2Button.querySelector("span");
-    if (sub) sub.textContent = mine ? "The second astronaut, on another device: walk this site's newest session with its EV1" : "No EV1 at this site yet. When someone opens the planner or free roam here, their session appears above";
   };
 
   const poll = async () => {
