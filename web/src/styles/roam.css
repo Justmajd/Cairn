@@ -254,3 +254,35 @@ body.roam-on .area-tag { display: none; }
   .rm-captions, #roam[data-look="walk"] .rm-captions { bottom: 470px; }
   .rm-toast { top: 286px; }
 }
+
+/* field work between the stops: tasks with live hints, the CRISM signal, the relay mast */
+.rm-field { position: absolute; right: var(--gap); bottom: var(--gap); width: 288px; max-height: calc(100vh - 200px); overflow: auto; padding: 10px 13px 12px; border-radius: var(--r-md); pointer-events: auto; display: grid; gap: 6px; font-size: 12px; }
+.rm-field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; width: 100%; height: auto; padding: 0; border: 0; background: none; color: var(--text); cursor: pointer; text-align: left; }
+.rm-field-head .eyebrow { margin: 0; font: 500 10px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--steel); }
+.rm-field-head b { font: 500 13px var(--mono); }
+.rm-field ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.rm-field li { display: grid; gap: 1px; }
+.rm-field li b { font: 500 12.5px var(--sans); color: var(--text); }
+.rm-field li span { color: var(--text-3); font-size: 11.5px; }
+.rm-field li.done b { color: var(--accent); }
+.rm-field li.done span { display: none; }
+.rm-spectra { display: grid; gap: 3px; padding-top: 6px; border-top: 1px solid var(--line); }
+.rm-spectra small { font: 500 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--steel); }
+.rm-spectra label { display: grid; grid-template-columns: 74px 1fr 64px; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-2); }
+.rm-spectra em { font: 500 11px var(--mono); font-style: normal; text-align: right; color: var(--text); }
+.rm-sig { display: block; height: 4px; border-radius: 2px; background: var(--raise-2); overflow: hidden; }
+.rm-sig i { display: block; height: 100%; background: var(--accent); transition: width 0.3s; }
+.rm-spectra-off { margin: 0; font-size: 11.5px; color: var(--text-3); }
+#roam .rm-mast { justify-self: start; height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--raise); color: var(--text); font: 500 12px var(--sans); cursor: pointer; }
+.rm-mast kbd { margin-left: 4px; padding: 0 5px; border-radius: 4px; border: 1px solid var(--line-2); font: 500 10.5px var(--mono); }
+.rm-act.quiet { border-color: var(--line-2); font-size: 12.5px; }
+.rm-act.quiet b { color: var(--text); }
+.rm-fieldlog { margin-top: 16px; }
+.rm-fieldlog h3 { margin: 0 0 8px; }
+#roam[data-look="walk"] .rm-field { right: 14%; bottom: 24%; background: rgba(10, 12, 11, 0.32); border-color: rgba(223, 252, 247, 0.12); box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; color: #dffcf7; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); max-height: 46vh; }
+@media (max-width: 1100px) and (pointer: fine) { .rm-field { bottom: auto; top: calc(var(--gap) + 52px); } #roam[data-look="walk"] .rm-field { top: 22%; bottom: auto; } }
+@media (pointer: coarse) {
+  .rm-field, #roam[data-look="walk"] .rm-field { top: auto; bottom: 186px; right: var(--gap); width: 104px; padding: 8px 10px; max-height: 52vh; }
+  .rm-field:has(ul), #roam[data-look="walk"] .rm-field:has(ul) { width: min(320px, calc(100vw - 32px)); z-index: 2; background: var(--panel-solid, rgba(18, 17, 16, 0.94)); }
+  .rm-field-head { flex-direction: column; gap: 0; }
+}

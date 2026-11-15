@@ -106,6 +106,44 @@ export function makeCairn(active: boolean, seed: number): THREE.Group {
 }
 
 /**
+ * The crew's portable radio relay: a 2.5 m telescopic mast on a tripod with a small UHF antenna and a
+ * beacon light on top (the planner's RELAY_MAST_M; a demo assumption, not a specific product).
+ */
+export function makeRelayMast(): THREE.Group {
+  const g = new THREE.Group();
+  const metal = new THREE.MeshStandardMaterial({ color: 0xd4d7db, metalness: 0.7, roughness: 0.35 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x2b2d30, metalness: 0.3, roughness: 0.6 });
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.95, 6), metal);
+    leg.position.set(Math.cos(a) * 0.3, 0.42, Math.sin(a) * 0.3);
+    leg.rotation.set(Math.sin(a) * 0.38, 0, -Math.cos(a) * 0.38);
+    g.add(leg);
+  }
+  const box = new THREE.Mesh(roundedBox(0.22, 0.16, 0.14, 0.02), dark);
+  box.position.y = 0.82;
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.03, 1.75, 8), metal);
+  pole.position.y = 1.62;
+  const whip = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.42, 5), dark);
+  whip.position.y = 2.7;
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), new THREE.MeshStandardMaterial({ color: 0xc6f432, emissive: 0xc6f432, emissiveIntensity: 1.4 }));
+  beacon.position.y = 2.5;
+  g.add(box, pole, whip, beacon);
+  return g;
+}
+
+/** A survey flag on a thin wire, planted where the crew logged a find. */
+export function makeSurveyFlag(color = 0x9fb4c6): THREE.Group {
+  const g = new THREE.Group();
+  const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.75, 5), new THREE.MeshStandardMaterial({ color: 0xc9ccd0, metalness: 0.6, roughness: 0.4 }));
+  wire.position.y = 0.37;
+  const cloth = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.11), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.25, roughness: 0.8, side: THREE.DoubleSide }));
+  cloth.position.set(0.085, 0.68, 0);
+  g.add(wire, cloth);
+  return g;
+}
+
+/**
  * The crew's pressurised rover, about 6 m long: a rounded cabin on a six-wheeled chassis, a raked
  * windscreen at the front (+X), two suitports on the rear wall (the crew climb into their suits from
  * inside, so no airlock), a radiator and a high-gain antenna on the roof, lights.  Not a specific
