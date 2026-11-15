@@ -115,6 +115,14 @@ async function onMessage(c: Client, raw: string): Promise<void> {
   if (!c.site || !c.role) return;
   const r = await room(c.site);
   if (c.role === "crew") {
+    if (msg.type === "outside") {
+      // going out on foot in free roam: the other astronaut's devices follow (Mars to Mars, no delay)
+      const hash = typeof msg.hash === "string" && msg.hash.length <= 4000 ? msg.hash : "";
+      const tau = Number.isFinite(msg.tau) ? Math.max(0, Math.min(12, +msg.tau)) : 0;
+      const other = c.member === "ev1" ? "ev2" : "ev1";
+      for (const e of inRoom(c.site, "crew")) if (e.member === other) send(e, { type: "outside", from: c.member, hash, tau });
+      return;
+    }
     if (c.member === "ev2") {
       // EV2 follows EV1's EVA (the plan, the clock and the log are EV1's); in free roam it walks on its
       // own feet, and its pose goes straight to EV1's device
@@ -238,6 +246,7 @@ async function api(req: IncomingMessage, res: ServerResponse, parts: string[]): 
         ev2: ev2s(r.site).length,
         mc: inRoom(r.site, "mc").length,
         stops: Array.isArray(r.plan?.stops) ? r.plan.stops.filter((s) => s.kind !== "shelter").length : 0,
+        roam: r.plan?.mode === "roam",
       }));
     return json(res, 200, { live });
   }

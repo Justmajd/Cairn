@@ -150,7 +150,9 @@ export type ClientMsg =
   /** The crew's answer to a revised plan: travels back to Earth like everything else. */
   | { type: "reply"; id: string; accepted: boolean }
   /** Free roam, EV2: where this astronaut is (relayed to EV1 at once — both are on Mars). */
-  | { type: "pose"; pose: CrewPose };
+  | { type: "pose"; pose: CrewPose }
+  /** This astronaut is going out on foot in free roam with this plan (#hash) and dust (τ): the other follows. */
+  | { type: "outside"; hash: string; tau: number };
 
 export interface McSnapshot {
   plan: PlanInfo | null;
@@ -185,7 +187,9 @@ export type ServerMsg =
   | { type: "crewplan"; plan: PlanInfo }
   | { type: "crew-eva"; eva: McSnapshot["eva"] }
   | { type: "live"; frame: Frame }
-  | { type: "buddy"; pose: CrewPose };
+  | { type: "buddy"; pose: CrewPose }
+  /** The other astronaut went out on foot in free roam (relayed from EV1 to EV2, or EV2 to EV1). */
+  | { type: "outside"; from: Member; hash: string; tau: number };
 
 /** A finished EVA as the hab keeps it (for Mission Control's replay). */
 export interface EvaRecord {
@@ -222,4 +226,6 @@ export interface LiveEva {
   ev2: number;
   mc: number;
   stops: number;
+  /** EV1 is walking it in free roam (so EV2 joins there, not in the planner). */
+  roam: boolean;
 }

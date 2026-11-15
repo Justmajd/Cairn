@@ -181,6 +181,24 @@ describe("hab server", () => {
     ev2.ws.close();
   });
 
+  it("tells the other astronaut when one goes out on foot, both ways, and never echoes it back", async () => {
+    const ev1 = new Client("crew", "gale");
+    await ev1.ready();
+    const ev2 = new Client("crew", "gale", "ev2");
+    await ev2.ready();
+    await ev1.waitFor((m) => m.type === "members" && m.ev2 === 1);
+    ev1.send({ type: "outside", hash: "#stops=ridge,sajama", tau: 0.6 });
+    const a = (await ev2.waitFor((m) => m.type === "outside")) as { from: string; hash: string; tau: number };
+    expect(a).toMatchObject({ from: "ev1", hash: "#stops=ridge,sajama", tau: 0.6 });
+    ev2.send({ type: "outside", hash: "", tau: 99 });
+    const b = (await ev1.waitFor((m) => m.type === "outside")) as { from: string; tau: number };
+    expect(b).toMatchObject({ from: "ev2", tau: 12 }); // τ clamped
+    expect(ev1.got.filter((m) => m.type === "outside")).toHaveLength(1);
+    expect(ev2.got.filter((m) => m.type === "outside")).toHaveLength(1);
+    ev1.ws.close();
+    ev2.ws.close();
+  });
+
   it("lists the EVAs under way on every site, for the main menu's live card", async () => {
     type Live = { live: { site: string; siteName: string; evaId: string; crewOnline: boolean; ev2: number; stops: number }[] };
     const live = async () => ((await (await fetch(`${base}/api/live`)).json()) as Live).live;
