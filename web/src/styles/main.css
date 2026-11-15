@@ -1030,3 +1030,15 @@ svg.timeline .sunt { fill: #f0e442; font: 500 9px var(--mono); }
 }
 .brief-scenarios .eyebrow { margin: 0 0 8px; font: 500 11px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--steel); }
 .demo-glow { box-shadow: 0 0 0 2px var(--accent), 0 0 24px rgb(var(--fern-rgb) / 0.45) !important; }
+
+/* the other astronaut went out on foot: follow them into free roam */
+.roam-join { position: fixed; left: 50%; top: calc(var(--gap) * 2 + var(--top-h, 48px)); transform: translateX(-50%); z-index: 60; width: min(420px, calc(100vw - 32px)); display: grid; gap: 6px; padding: 14px 16px; border-radius: var(--r-md); background: var(--panel-solid, rgba(18, 17, 16, 0.96)); border: 1px solid rgb(var(--fern-rgb) / 0.5); box-shadow: var(--shadow); animation: roam-join-in 0.35s var(--ease-glide) backwards; }
+@keyframes roam-join-in { from { opacity: 0; transform: translate(-50%, -8px); } }
+.roam-join .eyebrow { margin: 0; font: 500 10px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+.roam-join b { font: 500 14px var(--sans); color: var(--text); }
+.roam-join b span { font-family: var(--mono); color: var(--accent); }
+.roam-join > span { font-size: 12.5px; color: var(--text-2); }
+.roam-join-acts { display: flex; gap: 8px; margin-top: 4px; }
+.roam-join-acts button { height: 32px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--raise); color: var(--text); font: 500 13px var(--sans); cursor: pointer; }
+.roam-join-acts button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .roam-join { animation: none; } }
