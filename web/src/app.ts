@@ -891,10 +891,17 @@ export class App {
   }
 
   /** Free roam with this plan as a mission: the planned route, its stops in order, the totals to beat. */
-  private walkItYourself(): void {
+  /**
+   * Go out on foot in free roam: with the plan as a mission (planning), or freely.  The other astronaut,
+   * linked through the hab, is told and follows (`follow`: this is that following, so do not echo it).
+   */
+  private walkItYourself(follow = false): void {
     const site = encodeURIComponent(this.site.id);
+    const crew = this.member === "ev2" ? "&crew=ev2" : "";
     const p = this.plan;
-    if (!p || this.phase !== "planning") return dissolveTo(`?site=${site}&roam=1`);
+    const tau = +this.dustTau.toFixed(2);
+    if (!follow) this.habLink?.send({ type: "outside", hash: p && this.phase === "planning" ? location.hash : "", tau });
+    if (!p || this.phase !== "planning") return dissolveTo(`?site=${site}&roam=1${crew}`);
     const b = p.budget;
     saveRoamPlan({
       site: this.site.id,
@@ -905,7 +912,44 @@ export class App {
       legs: p.legs.map((l) => l.points.map((q) => ({ x: q.x, y: q.y }))),
       planned: { o2L: b.o2UsedL, timeS: b.totalTimeS, walkTimeS: b.walkTimeS, distM: b.distanceM },
     });
-    dissolveTo(`?site=${site}&roam=1&tau=${+this.dustTau.toFixed(2)}${location.hash}`); // the planner's dust goes too
+    dissolveTo(`?site=${site}&roam=1${crew}&tau=${tau}${location.hash}`); // the planner's dust goes too
+  }
+
+  /** The other astronaut went out on foot: follow them in a few seconds, unless this one stays. */
+  private offerFollow(from: "ev1" | "ev2", hash: string, tau: number): void {
+    if (this.phase === "eva") return; // mid-EVA in the planner: not now
+    document.querySelector(".roam-join")?.remove();
+    const card = document.createElement("div");
+    card.className = "roam-join";
+    card.setAttribute("role", "alertdialog");
+    const who = from.toUpperCase();
+    let left = 4;
+    card.innerHTML = `<p class="eyebrow">// ${who} is going out on foot</p>
+      <b>${who} stepped out in free roam. You follow in <span data-left>${left}</span> s.</b>
+      <span>Same ${hash ? "plan" : "site"}; you see each other's suits.</span>
+      <div class="roam-join-acts"><button class="primary" data-join>Join now</button><button data-stay>Stay here</button></div>`;
+    document.body.append(card);
+    const go = () => {
+      window.clearInterval(timer);
+      card.remove();
+      const site = encodeURIComponent(this.site.id);
+      const crew = this.member === "ev2" ? "&crew=ev2" : "";
+      // the same plan as this planner: hand it over as a mission (EV1 keeps the routed legs); otherwise go with theirs
+      if (hash && hash === location.hash && this.plan) this.walkItYourself(true);
+      else dissolveTo(`?site=${site}&roam=1${crew}${tau ? `&tau=${tau}` : ""}${hash}`);
+    };
+    const timer = window.setInterval(() => {
+      left -= 1;
+      const el = card.querySelector("[data-left]");
+      if (el) el.textContent = String(left);
+      if (left <= 0) go();
+    }, 1000);
+    card.querySelector("[data-join]")!.addEventListener("click", go);
+    card.querySelector("[data-stay]")!.addEventListener("click", () => {
+      window.clearInterval(timer);
+      card.remove();
+      this.toast(`${who} is walking in free roam. Free roam (top bar) joins them later.`, 5000);
+    });
   }
 
   private async replan(): Promise<void> {
@@ -2335,6 +2379,10 @@ export class App {
           this.toast("EV2 joined on another device. Buddy mode is on: you plan, and you walk the EVA together.", 6000);
         } else this.toast("EV2 joined on another device.", 4000);
       }
+      return;
+    }
+    if (m.type === "outside") {
+      this.offerFollow(m.from, m.hash, m.tau);
       return;
     }
     if (m.type === "crewplan") {

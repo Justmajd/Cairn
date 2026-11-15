@@ -159,13 +159,13 @@ function watchLive(box: HTMLElement, here: string): void {
         .map((e) => {
           const name = esc(liveSiteName(e));
           const where = e.site === here ? "at this site" : `at ${name}`;
-          const who = [e.ev2 ? `EV1 + ${e.ev2 > 1 ? `${e.ev2} × ` : ""}EV2` : "EV1", `${e.stops} stop${e.stops === 1 ? "" : "s"}`, e.mc ? `${e.mc} watching from Earth` : ""].filter(Boolean).join(" · ");
+          const who = [e.ev2 ? `EV1 + ${e.ev2 > 1 ? `${e.ev2} × ` : ""}EV2` : "EV1", e.roam ? "on foot in free roam" : "", `${e.stops} stop${e.stops === 1 ? "" : "s"}`, e.mc ? `${e.mc} watching from Earth` : ""].filter(Boolean).join(" · ");
           return `<div class="brief-live-row" data-site="${esc(e.site)}">
             <span class="pulse" aria-hidden="true"></span>
             <div class="t"><small>// Live EVA ${where}</small><b>${name}</b><span class="clock"></span><span class="who">${esc(who)}</span></div>
             <div class="acts">
               <button class="primary" data-mc="${esc(e.site)}">Mission Control →</button>
-              <button data-ev2="${esc(e.site)}">Join as EV2</button>
+              <button data-ev2="${esc(e.site)}" data-roam="${e.roam ? 1 : ""}" title="${e.roam ? "Walk beside EV1 in free roam" : "Walk the EVA with EV1 in the planner"}">Join as EV2</button>
             </div>
           </div>`;
         })
@@ -194,7 +194,8 @@ function watchLive(box: HTMLElement, here: string): void {
     const mc = btn.dataset.mc;
     const ev2 = btn.dataset.ev2;
     if (mc) window.open(`?view=mission&site=${encodeURIComponent(mc)}`, `cairn-mc-${mc}`, "noopener");
-    if (ev2) location.href = `?site=${encodeURIComponent(ev2)}&skip=1&crew=ev2`;
+    // EV1 walking in free roam: join on foot beside them; otherwise in the planner
+    if (ev2) location.href = btn.dataset.roam ? `?site=${encodeURIComponent(ev2)}&roam=1&crew=ev2` : `?site=${encodeURIComponent(ev2)}&skip=1&crew=ev2`;
   });
 
   void poll();
