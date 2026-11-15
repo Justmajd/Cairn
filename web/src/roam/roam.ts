@@ -20,6 +20,7 @@ import { measurePath } from "../data/grid";
 import { parsePlanLink } from "../state/planLink";
 import { loadRoamPlan, RoamPlan } from "./plan";
 import { RoamHab } from "./hab";
+import { Ev1Watch } from "../ui/ev1Left";
 import { sessionParam } from "../hab/session";
 import type { CrewPose, EarthMessage, Frame, Member, PlanInfo } from "../hab/protocol";
 import { autonomyHtml, type Decision } from "../ui/autonomy";
@@ -240,6 +241,8 @@ export class Roam {
       this.buddySeen = performance.now();
     };
     this.hab.onPlan = (p) => this.planFromEv1(p);
+    const ev1Watch = new Ev1Watch(site.id, () => this.toast("<b>EV1 is back</b> in the session."));
+    this.hab.onEv1 = (online) => this.member === "ev2" && ev1Watch.update(online);
     this.hab.onChange = () => this.renderLink();
     this.hab.onEarth = (m) => this.fromEarth(m);
 

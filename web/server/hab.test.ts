@@ -235,6 +235,28 @@ describe("hab server", () => {
     expect(await emptied()).toEqual([]); // EV1 left: nothing to join
   });
 
+  it("tells EV2 when EV1 leaves the session and when EV1 comes back", async () => {
+    const ev1 = new Client("crew", "jezero", "ev1", "jez-left1");
+    await ev1.ready();
+    await ev1.waitFor((m) => m.type === "joined");
+    const ev2 = new Client("crew", "jezero", "ev2", "jez-left1");
+    expect(await ev2.waitFor((m) => m.type === "ev1")).toEqual({ type: "ev1", online: true }); // on joining
+    ev1.ws.close();
+    await ev2.waitFor((m) => m.type === "ev1" && !m.online);
+    const back = new Client("crew", "jezero", "ev1", "jez-left1");
+    await back.ready();
+    const ev1Msgs = () => ev2.got.filter((m) => m.type === "ev1").length;
+    await ev2.waitFor(() => ev1Msgs() === 3);
+    expect(ev2.got.filter((m) => m.type === "ev1").map((m) => (m as { online: boolean }).online)).toEqual([true, false, true]);
+    // EV2 joining a session whose EV1 has gone hears it at once
+    back.ws.close();
+    await ev2.waitFor((m) => m.type === "ev1" && !m.online && ev2.got.filter((x) => x.type === "ev1").length === 4);
+    const late = new Client("crew", "jezero", "ev2", "jez-left1");
+    expect(await late.waitFor((m) => m.type === "ev1")).toEqual({ type: "ev1", online: false });
+    ev2.ws.close();
+    late.ws.close();
+  });
+
   it("keeps several crews apart: one session per EV1, on one site or many", async () => {
     type Live = { live: { session: string; site: string; ev2: number }[] };
     const live = async () => ((await (await fetch(`${base}/api/live`)).json()) as Live).live;
