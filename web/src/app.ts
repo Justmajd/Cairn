@@ -35,7 +35,7 @@ import type { CueRow } from "./ui/cuecard";
 import type { ExportPlan } from "./ui/export";
 import { toLonLat } from "./data/geo";
 import { promptInstall, saveForOffline } from "./ui/offline";
-import { spokenDist, spokenTime, turnWords, Voice } from "./ui/voice";
+import { RouteCallouts, spokenDist, spokenTime, Voice } from "./ui/voice";
 
 interface Plan {
   order: Poi[]; // rover, stops…, rover
@@ -211,6 +211,7 @@ export class App {
     this.log.push({ t: this.mission?.t ?? 0, kind, text });
   }
   private readonly voice = new Voice();
+  private callouts = new RouteCallouts();
   private roverCheckCache: RoverCheck | null = null;
 
   constructor(
@@ -1668,7 +1669,7 @@ export class App {
                  <div class="seg small">${SPEEDS.map((v) => `<button data-act="speed" data-v="${v}" class="${v === this.speed ? "on" : ""}">${v}×</button>`).join("")}</div>
                  <button class="ghost" data-act="skip" title="Jump to the end of the current step">${ic.skip}<span>Skip</span></button>
                  <button class="ghost" data-act="note-here" title="Geotagged note or sample where you stand">${ic.note}<span>Note</span></button>
-                 ${this.voice.supported ? `<button class="ghost voice${this.voice.enabled ? " on" : ""}" data-act="voice" title="Spoken directions" aria-pressed="${this.voice.enabled}">${this.voice.enabled ? ic.voiceOn : ic.voiceOff}<span>Voice</span></button>` : ""}
+                 ${this.voice.supported ? `<button class="ghost voice${this.voice.enabled ? " on" : ""}" data-act="voice" title="Spoken directions in the visor: turns, steep ground, sand and arrivals, only when something changes${this.voice.voiceName ? ` (voice: ${esc(this.voice.voiceName)})` : ""}" aria-pressed="${this.voice.enabled}">${this.voice.enabled ? ic.voiceOn : ic.voiceOff}<span>Voice</span></button>` : ""}
                  <button class="ghost" data-act="end" aria-label="End EVA">${ic.stop}<span>End<span class="wide-only"> EVA</span></span></button>
                </div>`
             : `<h2>Elevation along the route</h2>`
@@ -2762,6 +2763,7 @@ export class App {
 
   // ================================================================ EVA
   private startEva(): void {
+    this.callouts = new RouteCallouts();
     if (!this.plan || !this.plan.budget.feasible) return;
     const segs = this.plan.budget.segments;
     let onset: number | null = null;
@@ -3237,10 +3239,10 @@ export class App {
     if (lost) {
       this.buzz([120]);
       this.toast("Radio contact with the rover lost: the terrain blocks the line of sight.", 4000);
-      this.voice.say("Radio contact with the rover lost. Terrain is blocking the line of sight.");
+      this.voice.say("Radio contact lost.", "event", "radio-lost");
     } else {
       this.toast("Radio contact with the rover restored.", 2500);
-      this.voice.say("Radio contact restored.");
+      this.voice.say("Radio contact back.", "event", "radio-back");
     }
   }
 
@@ -3251,7 +3253,7 @@ export class App {
     return k > 0 ? `waypoint ${k}, ${poi.short}` : poi.short;
   }
 
-  /** Routine spoken directions in the visor: distance, turn, steep ground or sand ahead. */
+  /** Routine spoken directions in the visor, only when something changes: a turn, steep ground or sand ahead, 100 m and 25 m to go. */
   private guide(m: Mission): void {
     if (!this.voice.enabled) return;
     const seg = m.segment;
@@ -3269,11 +3271,8 @@ export class App {
       steep = Math.max(steep, q.slopeDeg);
       sand ||= q.sand > 0.5;
     }
-    const name = n.poi.kind === "shelter" ? "Rover" : this.waypointName(n.poi).replace(/^w/, "W");
-    this.voice.say(
-      `${name}, ${spokenDist(n.distM)}, ${turnWords(turn)}.${steep >= 15 ? ` Slope ahead ${Math.round(steep)} degrees.` : ""}${sand ? " Loose sand ahead." : ""}`,
-      "routine",
-    );
+    const line = this.callouts.next({ legId: n.poi.id, name: n.poi.kind === "shelter" ? "The rover" : n.poi.short, distM: n.distM, turnDeg: turn, steepDeg: steep, sand });
+    if (line) this.voice.say(line, "routine");
   }
 
   /**
