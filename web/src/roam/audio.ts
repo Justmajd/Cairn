@@ -115,6 +115,9 @@ export class SuitAudio {
     this.hiss.gain.setTargetAtTime(on ? 0.05 : 0, ctx.currentTime, 0.4);
   }
 
+  /** 1 on a normal day; more in a dust storm (gusts are louder and more frequent). */
+  windiness = 1;
+
   /** Inside the helmet (visor), just outside (3D), or from above (map: the same, quieter). */
   setPerspective(p: "inside" | "outside" | "far"): void {
     this.perspective = p;
@@ -145,7 +148,7 @@ export class SuitAudio {
     this.gustT -= dt;
     if (this.gustT <= 0 && this.wind && this.windLp) {
       this.gustT = 2 + Math.random() * 4;
-      this.wind.gain.setTargetAtTime(0.025 + Math.random() * 0.07, ctx.currentTime, 1.2);
+      this.wind.gain.setTargetAtTime((0.025 + Math.random() * 0.07) * this.windiness, ctx.currentTime, 1.2);
       this.windLp.frequency.setTargetAtTime(200 + Math.random() * 260, ctx.currentTime, 1.5);
     }
     this.breathPhase += (dt * breaths) / 60;

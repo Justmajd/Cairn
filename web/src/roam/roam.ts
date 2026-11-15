@@ -23,6 +23,7 @@ import type { CrewPose, EarthMessage, Frame, Member, PlanInfo } from "../hab/pro
 import { autonomyHtml, type Decision } from "../ui/autonomy";
 import { RadiationModel } from "../eva/radiation";
 import { RoamStorm } from "./storm";
+import { CLEAR_TAU, DUST_PRESETS, dustEffect, fmtVisibility } from "../eva/dust";
 import type { XY } from "../types";
 
 /** Close enough to a stop to work there, and to the rover's hull to climb in (m). */
@@ -125,6 +126,10 @@ export class Roam {
   private stormAlarm = false;
   private stormEarthT: number | null = null;
   private lastT = 0;
+  // ---- dust in the air: optical depth τ, measured (the site's own record or the planner's presets)
+  private readonly tau: number;
+  private readonly dustName: string;
+  private readonly wind = new THREE.Vector3();
   // ---- suit emergencies (practice): a leak doubles oxygen use, a twisted ankle halves the pace
   private emergency: { kind: "leak" | "ankle"; atS: number; o2LeftL: number } | null = null;
   private scheduled: { kind: "leak" | "ankle"; atS: number } | null = null;
@@ -150,6 +155,14 @@ export class Roam {
     // a plan in the address: the planner handed it over ("Walk it yourself"), or it is routed here
     const link = parsePlanLink(location.hash);
     this.stormOn = link?.storm ?? false;
+    // dust: ?dust=<preset> (clear, regional, global, extreme), ?tau=<number> (the planner's choice), or
+    // the site's measured value for the EVA sol
+    const q = new URLSearchParams(location.search);
+    const preset = DUST_PRESETS.find((d) => d.id === q.get("dust"));
+    const tauQ = Number(q.get("tau"));
+    const own = site.dust?.eva;
+    this.tau = preset?.tau ?? (Number.isFinite(tauQ) && tauQ > 0 && tauQ <= 12 ? tauQ : own?.tau ?? CLEAR_TAU);
+    this.dustName = preset ? `${preset.name} · ${preset.where}` : Number.isFinite(tauQ) && tauQ > 0 ? `τ ${tauQ} (from the planner)` : own ? `EVA sol, measured by ${site.dust!.rover}` : "Typical season";
     const em = /^(leak|ankle)(?:@(\d+))?$/.exec(new URLSearchParams(location.search).get("emergency") ?? "");
     if (em) this.scheduled = { kind: em[1] as "leak" | "ankle", atS: Number(em[2] ?? 600) };
     this.plan = link ? loadRoamPlan(site.id, location.hash) : null;
@@ -163,7 +176,7 @@ export class Roam {
     const sx = rover.x - ROVER_HALF.x - 1.1;
     const sy = rover.y + (this.member === "ev2" ? 1.8 : 0); // EV2 climbs out of the other suitport
     this.walker = newWalker(sx, sy, grid.heightAt(sx, sy), -Math.PI / 2);
-    this.yaw = -0.6;
+    this.yaw = -0.15; // camera off the rover's side, looking north past the astronaut
     this.pitch = -0.3;
     this.chaseDist = 7;
 
@@ -207,6 +220,11 @@ export class Roam {
     const startLook = new URLSearchParams(location.search).get("look");
     this.setLook(startLook === "visor" ? "walk" : startLook === "map" ? "plan" : "orbit");
     this.updateSky(true);
+    view.setDust(this.tau);
+    this.audio.windiness = 1 + Math.max(0, this.tau - CLEAR_TAU) * 0.35;
+    // the wind that carries it: from the west-south-west, stronger in a storm (a few m/s; an assumption)
+    const ws = Math.min(9, 2 + this.tau * 0.8);
+    this.wind.set(ws * 0.93, 0, -ws * 0.37);
     if (this.plan) {
       this.useMission(this.plan.stops, this.plan.legs);
       this.faceRoute();
@@ -274,7 +292,7 @@ export class Roam {
       lightTimeS: this.lightTimeS,
       storm: this.stormOn,
       buddy: this.hab.ev2Online > 0,
-      dust: { tau: 0.5, name: "Typical season" },
+      dust: { tau: this.tau, name: this.dustName },
       legs: this.legs.map((leg) => leg.filter((_, k) => k % 3 === 0 || k === leg.length - 1).map((q) => [Math.round(q.x * 10) / 10, Math.round(q.y * 10) / 10] as [number, number])),
       o2PlannedL: this.plan?.planned.o2L,
       walkTimeS: this.plan?.planned.walkTimeS,
@@ -834,7 +852,10 @@ export class Roam {
         this.started = true;
         this.hab.start(this.lightTimeS);
         this.hab.note(this.t, "go", this.plan ? `Left the rover on foot to walk the plan: ${this.stops.map((x) => x.short).join(", ")}` : "Left the rover on foot (free roam)");
-        this.toast("Outside. The rover is behind you; its suitports are on the rear wall. <b>WASD</b> to walk, <b>Shift</b> to lope, <b>Space</b> to jump.");
+        if (this.tau > 1) {
+          const de = dustEffect(this.tau, 30);
+          this.toast(`<b>Dust storm:</b> τ ${this.tau.toFixed(1)} (${esc(this.dustName)}). Sunlight about ${Math.round(de.sunlight * 100)} % of a clear day, dark landmarks fade at ${fmtVisibility(de.visibilityM)}. Navigate by the compass and the beacons over the stops (visor).`, true);
+        } else this.toast("Outside. The rover is behind you; its suitports are on the rear wall. <b>WASD</b> to walk, <b>Shift</b> to lope, <b>Space</b> to jump.");
       } else if (act === "menu") dissolveTo(`?site=${encodeURIComponent(this.site.id)}&menu=1`);
       else if (act === "planner") dissolveTo(`?site=${encodeURIComponent(this.site.id)}&skip=1`);
       else if (act === "sound") this.toggleSound();
@@ -1106,6 +1127,7 @@ export class Roam {
     this.landKick = 0;
     this.shadow.mesh.visible = true;
     this.shadow.place(feet, groundY, this.sunDir);
+    if (this.tau > 1) this.dust.drift(feet, this.wind, Math.min(260, (this.tau - 0.8) * 30), dt);
     this.dust.update(dt);
     if (this.look === "plan" || s.grounded) this.trail.push(feet);
     this.trail.line.visible = this.look === "plan";
@@ -1193,7 +1215,7 @@ export class Roam {
       this.print(e.x, e.y, e.heading, e.foot === 0 ? -1 : 1, e.sand);
       this.dust.kick(this.view.toWorld(e.x, e.y, this.ground.height(e.x, e.y)), vel, 0.8 + e.speed * 0.4, e.sand);
       this.audio.step(0.8 + e.speed * 0.5, e.sand);
-      this.avatar.addDust(0.0004 * (1 + e.sand));
+      this.avatar.addDust(0.0004 * (1 + e.sand) * (1 + Math.max(0, this.tau - CLEAR_TAU) / 3));
       this.camDip = Math.max(this.camDip, 0.012);
     } else if (e.kind === "land") {
       this.print(e.x, e.y, s.heading, -1, e.sand);
@@ -1362,7 +1384,8 @@ export class Roam {
     set("radio", `${compass(brg)} · ${this.contact ? "radio contact" : '<em class="bad">no radio</em>'}`);
     const sun = sunAt(this.lat, this.lmst(), this.solar);
     set("time", fmtLmst(this.lmst()));
-    set("sun", `Sun ${Math.round(sun.elevation)}° ${compass(sun.azimuth)}`);
+    const de = dustEffect(this.tau, Math.max(5, sun.elevation));
+    set("sun", this.tau > 1 ? `τ ${this.tau.toFixed(1)} · light ${Math.round(de.sunlight * 100)} % · ${fmtVisibility(de.visibilityM)}` : `Sun ${Math.round(sun.elevation)}° ${compass(sun.azimuth)}`);
     set("dist", fmtDist(s.distM));
     set("steps", `${s.steps.toLocaleString("en")} steps · ${Math.round(s.climbM)} m up`);
     const air = s.air;
