@@ -98,6 +98,23 @@ export class SuitAudio {
     breath.connect(this.breathFilter).connect(this.breathGain).connect(this.inside);
   }
 
+  private hiss: GainNode | null = null;
+  /** A suit leak: a thin, steady hiss inside the helmet. */
+  setLeak(on: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.inside) return;
+    if (!this.hiss) {
+      const src = this.loop();
+      const hp = ctx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 3500;
+      this.hiss = ctx.createGain();
+      this.hiss.gain.value = 0;
+      src.connect(hp).connect(this.hiss).connect(this.inside);
+    }
+    this.hiss.gain.setTargetAtTime(on ? 0.05 : 0, ctx.currentTime, 0.4);
+  }
+
   /** Inside the helmet (visor), just outside (3D), or from above (map: the same, quieter). */
   setPerspective(p: "inside" | "outside" | "far"): void {
     this.perspective = p;
