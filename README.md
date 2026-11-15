@@ -83,7 +83,7 @@ Plan an EVA, then walk it on foot — or just walk. *Free roam on foot* on the m
 | Sample / climb in / field reading · relay mast · gold visor | hold `E` · `R` · `G` |
 | Views · sound · help · settings | `1` `2` `3` (`V` cycles) · `M` · `H` · `,` |
 
-Address options: `?roam=1` free roam, `&crew=ev2` second astronaut, `&look=3d|visor|map`, `&dust=clear|regional|global|extreme` or `&tau=<n>`, `&emergency=leak@900` (or `ankle@<s>`), `&q=low|high`; a plan after `#` (`#stops=…&storm=0`) makes it a mission.
+Address options: `?roam=1` free roam, `&crew=ev2` second astronaut, `&look=3d|visor|map`, `&dust=clear|regional|global|extreme` or `&tau=<n>`, `&emergency=leak@900` (or `ankle@<s>`), `&delay=real` or `&delay=<s>` (radio link to Mission Control; free roam shortens it to 10 s by default so Earth's messages arrive while you walk, and says so), `&q=low|high`; a plan after `#` (`#stops=…&storm=0`) makes it a mission.
 
 ## Run it
 

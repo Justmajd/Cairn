@@ -35,6 +35,8 @@ export interface PlanInfo {
   hash?: string;
   /** Where the plan puts the crew over time: [EVA seconds, x, y].  Mission Control's "Earth's best guess". */
   timeline?: [number, number, number][];
+  /** Free roam: the real one-way light time, when the link runs on a shortened demo delay (lightTimeS). */
+  realLightTimeS?: number;
   /** "roam": the crew is walking it on foot in free roam (physics, not the planner's simulation). */
   mode?: "plan" | "roam";
   /** Free roam: the routed legs, so EV2's device walks exactly the same mission. */

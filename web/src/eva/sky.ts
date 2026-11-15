@@ -176,5 +176,6 @@ export function utcAtLmst(utcMs: number, lmstAtUtc: number, lmst: number): numbe
 /** "12 min 34 s" */
 export function fmtLightTime(s: number): string {
   const m = Math.floor(s / 60);
+  if (m === 0) return `${Math.round(s)} s`;
   return `${m} min ${String(Math.round(s - m * 60)).padStart(2, "0")} s`;
 }
