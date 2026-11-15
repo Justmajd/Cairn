@@ -154,6 +154,47 @@ export interface RelaySuggestion {
   alongM: number; // distance along the whole route where the crew sets it up
   before: RadioCoverage;
   after: RadioCoverage; // estimated by line-of-sight tests along the route (the full relay shadow is made only when planned)
+  /** placed by the crew on the map (not CAIRN's search); how far it stands from the route (m) */
+  manual?: boolean;
+  offRouteM?: number;
+}
+
+/** A relay the crew places by hand may stand this far from the route: they step aside to put it up. */
+export const RELAY_MAX_OFF_ROUTE_M = 60;
+
+/**
+ * A relay where the crew chose to put it.  The crew stands it up as they pass the nearest point of the
+ * route (so it helps from there on), and its mast must see the rover; otherwise a plain reason why not.
+ */
+export function relayAtPoint(
+  shadow: Uint8Array,
+  grid: TerrainGrid,
+  legs: MeasuredPath[],
+  at: XY,
+  mastM = RELAY_MAST_M,
+): { relay: RelaySuggestion } | { reason: string } {
+  // the nearest point of the route: where the crew turns aside to stand it up
+  let best: { leg: number; sample: number; d: number; alongM: number } | null = null;
+  let along = 0;
+  legs.forEach((leg, li) => {
+    leg.samples.forEach((q, i) => {
+      if (i > 0) along += q.dist - leg.samples[i - 1].dist;
+      const d = Math.hypot(q.x - at.x, q.y - at.y);
+      if (!best || d < best.d) best = { leg: li, sample: i, d, alongM: along };
+    });
+  });
+  const near = best as { leg: number; sample: number; d: number; alongM: number } | null;
+  if (!near) return { reason: "Plan a route first: the crew stands the relay up on the way." };
+  if (near.d > RELAY_MAX_OFF_ROUTE_M) {
+    return { reason: `That spot is ${Math.round(near.d)} m from the route. Put the relay within ${RELAY_MAX_OFF_ROUTE_M} m of it: the crew carries the mast and stands it up on the way.` };
+  }
+  if (radioDepthAt(shadow, grid, at.x, at.y) > mastM - SUIT_ANTENNA_M) {
+    return { reason: `From there even the top of the ${mastM} m mast cannot see the rover, so it would relay nothing. Try higher ground with the rover in sight.` };
+  }
+  const before = radioCoverage(shadow, grid, legs);
+  const reaches = (x: number, y: number) => lineOfSight(grid, at, mastM, { x, y }, SUIT_ANTENNA_M);
+  const after = radioCoverage(shadow, grid, legs, { reaches, leg: near.leg, sample: near.sample });
+  return { relay: { at: { x: Math.round(at.x), y: Math.round(at.y) }, leg: near.leg, sample: near.sample, alongM: near.alongM, before, after, manual: true, offRouteM: Math.round(near.d) } };
 }
 
 /**

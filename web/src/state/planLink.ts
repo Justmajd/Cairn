@@ -3,6 +3,7 @@ import type { XY } from "../types";
 /**
  * A plan as it travels in the URL hash:
  *   #stops=cheyava,serpentine&add=812_1460&t=9.5&storm=0&buddy=1&relay=1&rover=903_1101&dwell=cheyava_45
+ * (relay=1: the relay where CAIRN suggests; relay=840_1210: where the crew put it on the map)
  * Custom stops and the rover position are local metres.  Defaults are left out, so a fresh plan
  * gives a short link.  Parsing never throws: anything malformed is simply dropped.
  */
@@ -13,6 +14,8 @@ export interface PlanLink {
   storm: boolean;
   buddy: boolean;
   relay: boolean;
+  /** where the crew put the relay by hand (relay=x_y); null: CAIRN's choice (relay=1) or none */
+  relayAt: XY | null;
   rover: XY | null; // null: where the site data parks it
   dwell: Record<string, number>; // minutes on site where the crew changed them, by stop id
 }
@@ -25,7 +28,8 @@ export function formatPlanLink(l: PlanLink): string {
   if (l.startLmst !== null) parts.push(`t=${+l.startLmst.toFixed(2)}`);
   if (!l.storm) parts.push("storm=0");
   if (l.buddy) parts.push("buddy=1");
-  if (l.relay) parts.push("relay=1");
+  if (l.relayAt) parts.push(`relay=${xy(l.relayAt)}`);
+  else if (l.relay) parts.push("relay=1");
   if (l.rover) parts.push(`rover=${xy(l.rover)}`);
   const dwell = Object.entries(l.dwell);
   if (dwell.length) parts.push(`dwell=${dwell.map(([id, m]) => `${encodeURIComponent(id)}_${Math.round(m)}`).join(",")}`);
@@ -48,7 +52,8 @@ export function parsePlanLink(hash: string): PlanLink | null {
     startLmst: q.has("t") && Number.isFinite(t) && t >= 5 && t <= 19 ? t : null,
     storm: q.get("storm") !== "0",
     buddy: q.get("buddy") === "1",
-    relay: q.get("relay") === "1",
+    relay: q.get("relay") === "1" || parseXY(q.get("relay") ?? "") !== null,
+    relayAt: parseXY(q.get("relay") ?? ""),
     rover: parseXY(q.get("rover") ?? ""),
     dwell: Object.fromEntries(
       (q.get("dwell") ?? "")
