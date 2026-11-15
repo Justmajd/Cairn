@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { measurePath, TerrainGrid } from "../data/grid";
 import { DEFAULT_PARAMS } from "./params";
-import { bestRelay, lineOfSight, radioCoverage, radioDepthAt, radioShadow } from "./radio";
+import { bestRelay, lineOfSight, radioCoverage, radioDepthAt, radioShadow, relayAtPoint, RELAY_MAX_OFF_ROUTE_M } from "./radio";
 
 function grid(n: number, height: (col: number, row: number) => number): TerrainGrid {
   const h = new Float32Array(n * n);
@@ -63,7 +63,28 @@ describe("relay", () => {
     expect(r!.at.x).toBeLessThan(140); // on or near the wall top, the only spot that sees both sides
   });
 
-  it("counts the time spent at a stop with no contact", () => {
+  it("puts a relay where the crew chose, near the route, only if its mast sees the rover", () => {
+    const s = radioShadow(g, rover);
+    const out = measurePath(g, [rover, { x: 190, y: 100 }], DEFAULT_PARAMS);
+    const along = measurePath(g, [{ x: 190, y: 100 }, { x: 190, y: 30 }], DEFAULT_PARAMS);
+    // on the wall top, a few metres off the route: works, and covers the far side
+    const mine = relayAtPoint(s, g, [out, along], { x: 120, y: 108 });
+    expect("relay" in mine).toBe(true);
+    if ("relay" in mine) {
+      expect(mine.relay.manual).toBe(true);
+      expect(mine.relay.offRouteM).toBeGreaterThan(5);
+      expect(mine.relay.after.coveredFraction).toBeGreaterThan(mine.relay.before.coveredFraction + 0.2);
+      expect(mine.relay.leg).toBe(0);
+    }
+    // behind the wall: the mast cannot see the rover
+    const hidden = relayAtPoint(s, g, [out, along], { x: 170, y: 100 });
+    expect("reason" in hidden && hidden.reason).toMatch(/cannot see the rover/);
+    // far from the route
+    const far = relayAtPoint(s, g, [out, along], { x: 60, y: 100 + RELAY_MAX_OFF_ROUTE_M + 20 });
+    expect("reason" in far && far.reason).toMatch(/from the route/);
+  });
+
+    it("counts the time spent at a stop with no contact", () => {
     const s = radioShadow(g, rover);
     // a short hop over the wall to a stop right behind it, 30 min of work there, and back
     const out = measurePath(g, [rover, { x: 150, y: 100 }], DEFAULT_PARAMS);
