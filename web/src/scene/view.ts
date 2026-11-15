@@ -1564,10 +1564,16 @@ export class SceneView {
   }
 
   // ---------------------------------------------------------------- relay
-  /** Portable radio relay on the route: planned (outlined) or up (filled), or none. */
-  setRelay(at: XY | null, up = false): void {
+  /** Portable radio relays on the route: planned (outlined) or up (filled); none clears them. */
+  setRelays(list: { at: XY; up: boolean }[]): void {
+    this.setRelay(null);
+    list.forEach((r, i) => this.setRelay(r.at, r.up, list.length > 1 ? i + 1 : null, false));
+  }
+
+  /** One relay marker (`clear`: remove the others first). */
+  setRelay(at: XY | null, up = false, n: number | null = null, clear = true): void {
     this.dirty = true;
-    for (const child of [...this.relayGroup.children]) {
+    for (const child of clear ? [...this.relayGroup.children] : []) {
       this.relayGroup.remove(child);
       child.traverse((o) => {
         if (o instanceof CSS2DObject) o.element.remove();
@@ -1589,7 +1595,7 @@ export class SceneView {
     this.scaled.push({ obj: holder, px: 9 });
     const el = document.createElement("div");
     el.className = `poi-label relay${up ? " up" : ""}`;
-    el.innerHTML = `<b>${ic.radio}</b><span>${up ? "Relay up" : "Relay"}</span>`;
+    el.innerHTML = `<b>${ic.radio}</b><span>${up ? "Relay up" : "Relay"}${n ? ` ${n}` : ""}</span>`;
     const label = new CSS2DObject(el);
     label.position.set(0, 3.4, 0);
     label.center.set(0.5, 1);

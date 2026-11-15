@@ -10,7 +10,7 @@ import { FieldNote, Notebook } from "./ui/notebook";
 import { sessionFor, sessionParam } from "./hab/session";
 import { HabLink, type LinkState } from "./hab/link";
 import type { EarthMessage, Frame, Member, PlanChange, PlanInfo, ServerMsg } from "./hab/protocol";
-import { bestRelay, relayAtPoint, RELAY_MAX_OFF_ROUTE_M, inContact, lineOfSight, RadioCoverage, radioCoverage, radioShadow, relayFromShadow, RelaySuggestion, RELAY_MAST_M, SUIT_ANTENNA_M } from "./eva/radio";
+import { bestRelay, relayChain, RELAY_MAX_OFF_ROUTE_M, inContact, lineOfSight, RadioCoverage, radioCoverage, radioShadow, relayFromShadow, RelaySuggestion, RELAY_MAST_M, SUIT_ANTENNA_M } from "./eva/radio";
 import { inTerrainShadow } from "./eva/shade";
 import { geometricMedian } from "./routing/median";
 import { formatPlanLink, parsePlanLink } from "./state/planLink";
@@ -47,10 +47,14 @@ interface Plan {
   budget: EvaBudget;
   routeMs: number;
   radio: RadioCoverage; // with the relay when one is planned
-  /** Best spot on the route for a portable relay (null when the walk is in contact anyway). */
+  /** CAIRN's suggested spot for one portable relay (null when the walk is in contact anyway). */
   relay: RelaySuggestion | null;
-  /** Mission time when the crew reaches the relay spot. */
-  relayAtS: number;
+  /** The relays in this plan, in the crew's order: CAIRN's one, or the masts the crew placed (a chain). */
+  relays: RelaySuggestion[];
+  /** Mission time when the crew passes each relay's spot (and stands it up). */
+  relaysPassS: number[];
+  /** Mission time when each relay's link to the rover works (it and every mast between it and the rover are up). */
+  relaysUpS: number[];
 }
 
 /** Steepest ground the pressurised rover may park on (assumption). */
@@ -198,10 +202,10 @@ export class App {
   private radioLost = false;
   /** Plan with the suggested relay (the crew stands it up on the way). */
   private useRelay = false;
-  /** where the crew put the relay on the map, or null: CAIRN's suggested spot */
-  private relayManual: XY | null = null;
-  /** The relay is up during the current EVA. */
-  private relayUp = false;
+  /** where the crew put relay masts on the map (one, or a chain), or none: CAIRN's suggested spot */
+  private relayManual: XY[] = [];
+  /** How many of the plan's relays are up during the current EVA (stood up as the crew passes them). */
+  private relaysStood = new Set<number>();
   /** What happened during the current EVA, for the summary (mission seconds, kind, text). */
   private log: { t: number; kind: "go" | "stop" | "radio" | "alert" | "home" | "note" | "earth"; text: string }[] = [];
 
@@ -482,7 +486,7 @@ export class App {
       else if (act === "show-radio") this.selectLayer("radio");
       else if (act === "relay-on" || act === "relay-off") this.setRelay(act === "relay-on");
       else if (act === "relay-auto") {
-        this.relayManual = null;
+        this.relayManual = [];
         void this.replan();
       }
       else if (act === "spot") this.showSpot(t.dataset.spot === "steep" ? "steep" : "home");
@@ -751,7 +755,7 @@ export class App {
         leg++;
       } else {
         stopNo++;
-        const silent = !inContact(this.radio, this.site.grid, seg.poi.x, seg.poi.y, this.useRelay && plan.relay && leg >= plan.relay.leg + 1 ? this.relayShadowAt(plan.relay.at) : null);
+        const silent = !inContact(this.radio, this.site.grid, seg.poi.x, seg.poi.y, this.relayShadowsBy((r) => leg >= r.leg + 1));
         if (silent) lost.push(`<rect class="lost" x="${X(t).toFixed(1)}" y="${barY - 3}" width="${X(seg.durationS).toFixed(1)}" height="16"/>`);
         bars.push(`<rect class="dwell" x="${X(t).toFixed(1)}" y="${barY}" width="${X(seg.durationS).toFixed(1)}" height="10"/><text class="lbl" x="${X(t + seg.durationS / 2).toFixed(1)}" y="${barY + 22}" text-anchor="middle">${stopNo}</text>`);
         used += o2Litres(0, seg.durationS, P.workingW, P);
@@ -999,29 +1003,38 @@ export class App {
       segments.push({ kind: "walk", path, to, label: to.short });
       if (to.kind !== "shelter") segments.push({ kind: "dwell", poi: to, durationS: to.dwellMin * 60, sheltered: false });
     });
-    let relay = bestRelay(this.radio, grid, legs, RELAY_MAST_M,
+    const relay = bestRelay(this.radio, grid, legs, RELAY_MAST_M,
       order.slice(1, -1).map((p, k) => ({ x: p.x, y: p.y, seconds: p.dwellMin * 60, afterLeg: k })));
-    if (this.relayManual) {
-      // the crew's own spot instead of CAIRN's (still checked: near the route, rover in sight)
-      const mine = relayAtPoint(this.radio, grid, legs, this.relayManual, RELAY_MAST_M);
-      if ("relay" in mine) relay = mine.relay;
+    // the relays in use: the masts the crew placed (still checked: near the route, each sees the rover or
+    // another mast), else CAIRN's suggestion when the crew plans with it
+    let relays: RelaySuggestion[] = [];
+    if (this.relayManual.length) {
+      const mine = relayChain(this.radio, grid, legs, this.relayManual, RELAY_MAST_M);
+      if ("relays" in mine) relays = mine.relays;
       else {
-        this.relayManual = null;
-        this.toast(`${mine.reason} The relay is back where CAIRN suggests.`, 7000);
+        this.relayManual = this.relayManual.filter((_, i) => i !== mine.index);
+        this.toast(`${mine.reason} That relay is off the plan.`, 7000);
+        const rest = this.relayManual.length ? relayChain(this.radio, grid, legs, this.relayManual, RELAY_MAST_M) : null;
+        relays = rest && "relays" in rest ? rest.relays : [];
+        if (!relays.length) this.relayManual = [];
       }
     }
-    let relayAtS = 0;
-    if (relay) {
-      // walk and dwell times up to the relay spot
-      for (let i = 0; i < relay.leg; i++) relayAtS += legs[i].time + (order[i + 1].kind === "shelter" ? 0 : order[i + 1].dwellMin * 60);
-      relayAtS += legs[relay.leg].samples[relay.sample].time;
-    }
+    if (!relays.length && this.useRelay && relay) relays = [{ ...relay, via: -1, ownLeg: relay.leg, ownSample: relay.sample }];
+    if (!relays.length) this.useRelay = false;
+    // walk and dwell times up to a point of the route
+    const timeAt = (leg: number, sample: number) => {
+      let t = 0;
+      for (let i = 0; i < leg; i++) t += legs[i].time + (order[i + 1].kind === "shelter" ? 0 : order[i + 1].dwellMin * 60);
+      return t + legs[leg].samples[sample].time;
+    };
     this.plan = {
       order, legs, straight, budget: buildBudget(segments, this.P, this.lookup, (poi) => grid.shieldAt(poi.x, poi.y)), routeMs: result.ms,
-      radio: relay && this.useRelay
-        ? radioCoverage(this.radio, grid, legs, relayFromShadow(this.relayShadowAt(relay.at), grid, relay.leg, relay.sample))
+      radio: relays.length
+        ? radioCoverage(this.radio, grid, legs, relays.map((r) => relayFromShadow(this.relayShadowAt(r.at), grid, r.leg, r.sample)))
         : radioCoverage(this.radio, grid, legs),
-      relay, relayAtS,
+      relay, relays,
+      relaysPassS: relays.map((r) => timeAt(r.ownLeg ?? r.leg, r.ownSample ?? r.sample)),
+      relaysUpS: relays.map((r) => timeAt(r.leg, r.sample)),
     };
     this.pushRelay();
     this.planError = null;
@@ -1083,7 +1096,7 @@ export class App {
       ? `<p class="t bad">${ic.warn}Too steep to walk</p><p>Slope ${grid.slope[node]}°, beyond the ${this.site.meta.model.slopeLimitDeg}° limit or cut off from the rover.</p><div class="row"><button data-x="close">OK</button></div>`
       : `${PIN_CLOSE}<p class="t">${ic.walk}${fmtDur(this.field.time[node])} from the rover</p><p>Slope ${grid.slope[node]}°${this.site.geologyGrid ? ` · ${esc(this.unitAt(p.x, p.y) ?? "unmapped unit")}` : ""}</p><div class="row">${
           grid.slope[node] <= ROVER_PARK_MAX_SLOPE ? `<button data-x="rover" title="Move the rover (start, end and shelter) here">${ic.home}<span>Park rover</span></button>` : ""
-        }${this.plan ? `<button data-x="relay" title="Put the radio relay mast here (within ${RELAY_MAX_OFF_ROUTE_M} m of the route, with the rover in sight from its ${RELAY_MAST_M} m top)">${ic.radio}<span>Relay here</span></button>` : ""}<button data-x="note" title="Geotagged field note or sample here">${ic.note}<span>Note</span></button><button class="primary" data-x="add">${ic.plus}<span>Add stop</span></button></div>`;
+        }${this.plan ? (this.relayNear(p) >= 0 ? `<button data-x="relay-remove" title="Take this relay mast off the plan">${ic.radio}<span>Remove relay</span></button>` : `<button data-x="relay" title="Put a radio relay mast here (within ${RELAY_MAX_OFF_ROUTE_M} m of the route; it must see the rover or another relay from its ${RELAY_MAST_M} m top)">${ic.radio}<span>Relay here</span></button>`) : ""}<button data-x="note" title="Geotagged field note or sample here">${ic.note}<span>Note</span></button><button class="primary" data-x="add">${ic.plus}<span>Add stop</span></button></div>`;
     this.placePinMenu(menu, clientX, clientY);
     menu.onclick = (ev) => {
       const act = (ev.target as HTMLElement).closest<HTMLElement>("[data-x]")?.dataset.x;
@@ -1092,6 +1105,7 @@ export class App {
       if (act === "add") this.addCustom(p);
       else if (act === "rover") void this.moveRover(p);
       else if (act === "relay") this.placeRelay(p);
+      else if (act === "relay-remove") this.removeRelay(this.relayNear(p));
       else if (act === "note") this.addNote(p);
     };
   }
@@ -1193,7 +1207,7 @@ export class App {
     const field = await this.router.init(this.site.grid, this.P, at);
     this.field = field;
     this.radio = field.radio;
-    this.relayCache = null;
+    this.relayCache.clear();
     this.view.setShelterTimes(field.time);
     const moved: Poi = { ...this.rover, x: at.x, y: at.y };
     this.pois = this.pois.map((q) => (q === this.rover ? moved : q));
@@ -1819,7 +1833,7 @@ export class App {
       (at) => {
         if (this.phase === "planning") this.view.setHoverMarker(at);
       },
-      this.useRelay && this.plan.relay ? this.plan.relay.alongM : null,
+      this.plan.relays.length ? this.plan.relays.map((r) => r.alongM) : null,
     );
   }
 
@@ -2065,7 +2079,7 @@ export class App {
       storm: this.storm,
       buddy: this.buddy,
       relay: this.useRelay,
-      relayAt: this.useRelay ? this.relayManual : null,
+      relayAt: this.useRelay ? this.relayManual : [],
       rover: this.roverMoved() ? this.rover : null,
       dwell: Object.fromEntries(Object.entries(this.dwellOverrides).filter(([id]) => this.selected.includes(id))),
     });
@@ -2184,7 +2198,7 @@ export class App {
       site: this.site.meta, legs: this.plan.legs, distanceM: b.distanceM, timeS: b.totalTimeS, o2UsedL: b.o2UsedL,
       startLmst: fmtLmst(this.startLmst),
       stops: this.stopTimes().map((s) => ({ ...s, lmst: fmtLmst(this.lmstAt(s.arriveS)) })),
-      relay: this.useRelay && this.plan.relay ? { ...this.plan.relay.at, mastM: RELAY_MAST_M } : null,
+      relays: this.plan.relays.map((r) => ({ ...r.at, mastM: RELAY_MAST_M })),
       notes: this.notebook.notes,
     };
   }
@@ -2198,7 +2212,7 @@ export class App {
       site: this.site.meta, legs: this.plan.legs, distanceM: b.distanceM, timeS: b.totalTimeS, o2UsedL: b.o2UsedL,
       startLmst: fmtLmst(this.startLmst),
       stops: this.stopTimes().map((s) => ({ ...s, lmst: fmtLmst(this.lmstAt(s.arriveS)) })),
-      relay: this.useRelay && this.plan.relay ? { ...this.plan.relay.at, mastM: RELAY_MAST_M } : null,
+      relays: this.plan.relays.map((r) => ({ ...r.at, mastM: RELAY_MAST_M })),
       notes: this.notebook.notes,
     };
     const name = `cairn-${this.site.id}-eva`;
@@ -2260,7 +2274,7 @@ export class App {
       radio: {
         coverage: this.plan.radio,
         lostAt: (x, y, leg, i) => this.lostOnPlan(x, y, leg, i),
-        relay: this.useRelay && this.plan.relay ? { at: this.plan.relay.at, alongM: this.plan.relay.alongM, mastM: RELAY_MAST_M, toward: this.relayLeg(this.plan.relay) } : null,
+        relays: this.plan.relays.map((r) => ({ at: r.at, alongM: r.alongM, mastM: RELAY_MAST_M, toward: this.relayLeg(r) })),
         silentStops: this.silentStops().map((p) => p.short),
       },
     });
@@ -2395,7 +2409,7 @@ export class App {
     const pose = m.pose();
     const n = m.next();
     const sun = this.sunAtEva(m.t);
-    const viaRelay = !this.radioLost && this.relayUp && !inContact(this.radio, this.site.grid, pose.x, pose.y);
+    const viaRelay = !this.radioLost && this.relaysStood.size > 0 && !inContact(this.radio, this.site.grid, pose.x, pose.y);
     const frame: Frame = {
       t: m.t,
       x: pose.x,
@@ -2918,7 +2932,7 @@ export class App {
     this.shelterPath = null;
     this.shelteredAtS = null;
     this.radioLost = false;
-    this.relayUp = false;
+    this.relaysStood = new Set();
     this.lowSunWarned = this.sunAtEva(0).elevation < 8; // a plan that starts in low sun was warned about already
     this.log = [{ t: 0, kind: "go", text: "Left the rover" }];
     this.earthQueue = [];
@@ -2929,7 +2943,7 @@ export class App {
     this.logSent = "";
     this.crewSend({ type: "eva", state: "start", evaId: this.evaId, lightTimeS: this.skyAt(0).lightTimeS }, true);
     this.sendFrame();
-    this.view.setRelay(this.useRelay ? this.plan?.relay?.at ?? null : null);
+    this.view.setRelays((this.plan?.relays ?? []).map((r) => ({ at: r.at, up: false })));
     $("#pin-menu").hidden = true;
     this.closeCard();
     this.pushRoutes();
@@ -2963,7 +2977,7 @@ export class App {
     this.view.setBuddy(null);
     if (this.viewMode === "walk") this.setView("plan");
     this.profile?.setCursor(null);
-    this.relayUp = false;
+    this.relaysStood = new Set();
     this.pushRelay();
     this.afterPlan();
   }
@@ -3195,14 +3209,20 @@ export class App {
     const relay = plan.relay;
     const toward = relay ? this.relayLeg(relay) : null;
     const where = relay ? `after ${fmtDist(relay.alongM)}${toward ? ` (on the way to ${esc(toward)})` : ""}` : "";
+    const used = plan.relays;
     const silent = this.silentStops();
     const silentText = silent.length
       ? ` <b class="warnc">No contact at ${silent.map((p) => esc(p.short)).join(" or ")}</b> (${silent.map((p) => `${p.dwellMin} min`).join(", ")} of science).`
       : "";
-    if (relay && this.useRelay) {
-      const whose = relay.manual ? ` at the spot you chose${relay.offRouteM ? `, ${relay.offRouteM} m off the route` : ""}` : " where CAIRN suggests";
-      const auto = relay.manual ? `<button class="link" data-act="relay-auto" title="Put the relay back where CAIRN suggests">Let CAIRN choose</button>` : "";
-      return `<div class="radio-line${silent.length ? " warn" : ""}">${ic.radio}<span>In radio contact for <b>${Math.floor(rc.coveredFraction * 100)}%</b> of the walk, with a relay stood up ${where}${whose}.${silentText} <small class="relay-how">To move it, click the map → <b>Relay here</b>.</small></span>${auto}<button class="link" data-act="relay-off">Remove</button></div>`;
+    if (used.length) {
+      const first = used[0];
+      const t1 = this.relayLeg(first);
+      const chain = used.length > 1;
+      const what = chain
+        ? `with ${used.length} relays you placed, linked mast to mast (${used.map((r, i) => `${i + 1}: after ${fmtDist(r.alongM)}, via ${r.via === -1 ? "the rover" : `relay ${(r.via ?? -1) + 1}`}`).join("; ")})`
+        : `with a relay stood up after ${fmtDist(first.alongM)}${t1 ? ` (on the way to ${esc(t1)})` : ""}${first.manual ? ` at the spot you chose${first.offRouteM ? `, ${first.offRouteM} m off the route` : ""}` : " where CAIRN suggests"}`;
+      const auto = first.manual && relay ? `<button class="link" data-act="relay-auto" title="Use CAIRN's single relay instead">Let CAIRN choose</button>` : "";
+      return `<div class="radio-line${silent.length ? " warn" : ""}">${ic.radio}<span>In radio contact for <b>${Math.floor(rc.coveredFraction * 100)}%</b> of the walk, ${what}.${silentText} <small class="relay-how">Add a relay that links to the rover or to another mast: click the map → <b>Relay here</b> (click a relay to remove it).</small></span>${auto}<button class="link" data-act="relay-off">Remove${chain ? " all" : ""}</button></div>`;
     }
     const whole = rc.lostS < 20 && !silent.length;
     const text = whole
@@ -3218,9 +3238,8 @@ export class App {
   /** Radio line of the hover probe: the rover in sight, the relay (when planned), or no signal. */
   private probeRadio(x: number, y: number): string {
     const grid = this.site.grid;
-    const r = this.useRelay ? this.plan?.relay : null;
     const rover = inContact(this.radio, grid, x, y);
-    const relay = !rover && !!r && inContact(this.relayShadowAt(r.at), grid, x, y);
+    const relay = !rover && inContact(this.radio, grid, x, y, this.relayShadowsBy(() => true));
     return `<dt>Radio</dt><dd class="${rover || relay ? "" : "warnc"}">${rover ? "rover in sight" : relay ? "relay in sight" : "no signal"}</dd>`;
   }
 
@@ -3283,72 +3302,102 @@ export class App {
     }
   }
 
-  /** Out of radio contact at a sample of the planned route (counting the relay once it is up). */
+  /** Radio shadows of the plan's relays whose link works by then (`up` decides per relay). */
+  private relayShadowsBy(up: (r: RelaySuggestion) => boolean): Uint8Array[] {
+    return (this.plan?.relays ?? []).filter(up).map((r) => this.relayShadowAt(r.at));
+  }
+
+  /** Out of radio contact at a sample of the planned route (counting the relays once they are up). */
   private lostOnPlan(x: number, y: number, leg: number, i: number): boolean {
-    const r = this.useRelay ? this.plan?.relay : null;
-    const up = !!r && (leg > r.leg || (leg === r.leg && i > r.sample));
-    return !inContact(this.radio, this.site.grid, x, y, up ? this.relayShadowAt(r!.at) : null);
+    return !inContact(this.radio, this.site.grid, x, y, this.relayShadowsBy((r) => leg > r.leg || (leg === r.leg && i > r.sample)));
   }
 
   /** Stops of the plan where the crew does its science out of radio contact (counting the relay once it is up). */
   private silentStops(): Poi[] {
     const plan = this.plan;
     if (!plan) return [];
-    const r = this.useRelay ? plan.relay : null;
     return plan.order.filter((p, k) => {
       if (p.kind === "shelter") return false;
-      const relayUp = !!r && k >= r.leg + 1;
-      return !inContact(this.radio, this.site.grid, p.x, p.y, relayUp ? this.relayShadowAt(r!.at) : null);
+      return !inContact(this.radio, this.site.grid, p.x, p.y, this.relayShadowsBy((r) => k >= r.leg + 1));
     });
   }
 
   /** Name of the stop the crew is walking to when it reaches the relay spot. */
   private relayLeg(r: RelaySuggestion): string | null {
+    r = { ...r, leg: r.ownLeg ?? r.leg }; // the stop the crew walks to when it passes the mast
     const to = this.plan?.order[r.leg + 1];
     return to && to.kind !== "shelter" ? to.short : to ? "the rover" : null;
   }
 
   /** Relay marker on the map and the radio layer with the relay's coverage added. */
   private pushRelay(): void {
-    const r = this.useRelay ? this.plan?.relay ?? null : null;
-    this.view.setRelay(r ? r.at : null);
-    if (!r) return this.view.setRadioShadow(this.radio);
-    const both = new Uint8Array(this.radio.length);
-    const rs = this.relayShadowAt(r.at);
-    for (let i = 0; i < both.length; i++) both[i] = Math.min(this.radio[i], rs[i]);
-    this.view.setRadioShadow(both);
+    const used = this.plan?.relays ?? [];
+    this.view.setRelays(used.map((r) => ({ at: r.at, up: false })));
+    if (!used.length) return this.view.setRadioShadow(this.radio);
+    const all = new Uint8Array(this.radio);
+    for (const r of used) {
+      const rs = this.relayShadowAt(r.at);
+      for (let i = 0; i < all.length; i++) if (rs[i] < all[i]) all[i] = rs[i];
+    }
+    this.view.setRadioShadow(all);
   }
 
   private setRelay(on: boolean): void {
     this.useRelay = on;
-    if (!on) this.relayManual = null;
+    if (!on) this.relayManual = [];
     void this.replan();
   }
 
-  /** The crew puts the relay mast where they want it (map menu); checked on the next plan. */
+  /** A relay the crew placed near this point (to remove it from the map menu), or -1. */
+  private relayNear(p: XY, radiusM = 25): number {
+    return this.relayManual.findIndex((r) => Math.hypot(r.x - p.x, r.y - p.y) <= radiusM);
+  }
+
+  private removeRelay(k: number): void {
+    this.relayManual = this.relayManual.filter((_, i) => i !== k);
+    if (!this.relayManual.length) this.useRelay = false;
+    void this.replan();
+    this.toast(this.relayManual.length ? "Relay removed. The masts left are checked again." : "Relay removed.", 4000);
+  }
+
+  /**
+   * The crew puts a relay mast where they want it (map menu): one more mast in their chain.  It must stand
+   * near the route and see the rover or one of their masts.  CAIRN's suggestion, if it was in use, stays as
+   * the first mast so the new one can link to it.
+   */
   private placeRelay(p: XY): void {
     if (!this.plan) return this.toast("Plan a route first: the crew stands the relay up on the way.");
-    const check = relayAtPoint(this.radio, this.site.grid, this.plan.legs, p, RELAY_MAST_M);
+    const base = this.relayManual.length ? this.relayManual : this.plan.relays.map((r) => r.at);
+    const next = [...base, { x: Math.round(p.x), y: Math.round(p.y) }];
+    const check = relayChain(this.radio, this.site.grid, this.plan.legs, next, RELAY_MAST_M);
     if ("reason" in check) return this.toast(check.reason, 7000);
-    this.relayManual = { x: Math.round(p.x), y: Math.round(p.y) };
+    this.relayManual = next;
     this.useRelay = true;
     void this.replan();
-    this.toast(`Relay mast placed${check.relay.offRouteM ? `, ${check.relay.offRouteM} m off the route` : " on the route"}. The crew stands it up as they pass.`, 5000);
+    const mine = check.relays[check.relays.length - 1];
+    const via = mine.via === -1 ? "the rover" : `relay ${(mine.via ?? 0) + 1}`;
+    this.toast(`Relay ${next.length > 1 ? `${next.length} ` : ""}placed${mine.offRouteM ? `, ${mine.offRouteM} m off the route` : " on the route"}: it links to ${via}. The crew stands it up as they pass.`, 5000);
   }
 
-  /** Radio shadow of a relay mast at a point, made once per position (~0.1 s) and only when the relay is used. */
-  private relayCache: { x: number; y: number; shadow: Uint8Array } | null = null;
+
+  /** Radio shadow of a relay mast at a point, made once per position (~0.1 s each) and only when relays are used. */
+  private relayCache = new Map<string, Uint8Array>();
   private relayShadowAt(at: XY): Uint8Array {
-    const c = this.relayCache;
-    if (c && c.x === at.x && c.y === at.y) return c.shadow;
-    const shadow = radioShadow(this.site.grid, at, RELAY_MAST_M);
-    this.relayCache = { x: at.x, y: at.y, shadow };
+    const key = `${at.x}_${at.y}`;
+    let shadow = this.relayCache.get(key);
+    if (!shadow) {
+      shadow = radioShadow(this.site.grid, at, RELAY_MAST_M);
+      if (this.relayCache.size > 12) this.relayCache.clear();
+      this.relayCache.set(key, shadow);
+    }
     return shadow;
   }
 
-  /** Relay shadow once the relay is up in this EVA, else null. */
-  private liveRelay(): Uint8Array | null {
-    return this.relayUp && this.plan?.relay ? this.relayShadowAt(this.plan.relay.at) : null;
+  /** Shadows of the relays whose link works now in this EVA (stood up, and every mast to the rover too). */
+  private liveRelay(): Uint8Array[] {
+    const plan = this.plan;
+    const t = this.mission?.t ?? 0;
+    return (plan?.relays ?? []).filter((_, i) => this.relaysStood.has(i) && t >= plan!.relaysUpS[i]).map((r) => this.relayShadowAt(r.at));
   }
 
   /** Warn once if the walk runs late enough for the Sun to drop below 8° (a delay, an emergency at half speed). */
@@ -3366,14 +3415,16 @@ export class App {
 
   /** Tell the crew when the terrain cuts the line of sight to the rover, and when it comes back. */
   private watchRadio(m: Mission): void {
-    const relay = this.useRelay ? this.plan?.relay : null;
-    if (relay && !this.relayUp && m.t >= this.plan!.relayAtS && m.alertS === null && !m.emergency) {
-      this.relayUp = true;
-      this.note("radio", "Relay up");
-      this.view.setRelay(relay.at, true);
-      this.toast("Relay up: radio contact now reaches the ground behind the hills.", 3500);
+    const plan = this.plan;
+    (plan?.relays ?? []).forEach((_, i) => {
+      if (this.relaysStood.has(i) || m.t < plan!.relaysPassS[i] || m.alertS !== null || m.emergency) return;
+      this.relaysStood.add(i);
+      const n = plan!.relays.length > 1 ? ` ${i + 1}` : "";
+      this.note("radio", `Relay${n} up`);
+      this.view.setRelays(plan!.relays.map((q, k) => ({ at: q.at, up: this.relaysStood.has(k) })));
+      this.toast(`Relay${n} up: radio contact now reaches the ground behind the hills.`, 3500);
       this.voice.say(L.fixed("relay"));
-    }
+    });
     const p = m.pose();
     const lost = !m.sheltered && m.phase !== "complete" && !inContact(this.radio, this.site.grid, p.x, p.y, this.liveRelay());
     if (lost === this.radioLost) return;
@@ -3578,7 +3629,7 @@ export class App {
     setText($("#lv-dist"), n.distM > 0 ? `${fmtDist(n.distM)} · ${fmtDur(n.etaS)}` : m.sheltered ? "—" : fmtDur(n.etaS));
     setText($("#lv-walked"), fmtDist(m.distanceM));
     const lr = document.getElementById("lv-radio");
-    const relayOnly = !this.radioLost && this.relayUp && !inContact(this.radio, this.site.grid, m.pose().x, m.pose().y);
+    const relayOnly = !this.radioLost && this.relaysStood.size > 0 && !inContact(this.radio, this.site.grid, m.pose().x, m.pose().y);
     setText(lr, m.sheltered ? "in the rover" : this.radioLost ? "no line of sight to the rover" : relayOnly ? "in contact through the relay" : "in contact with the rover");
     if (lr) lr.className = this.radioLost && !m.sheltered ? "warnc" : "";
     const drillOff = m.phase !== "eva" || m.emergency !== null || m.alertS !== null || !m.segment;
@@ -3723,7 +3774,7 @@ export class App {
     setText(mg, `${margin >= 0 ? "+" : ""}${Math.round(margin)} L`);
     mg.className = margin >= 0 ? "" : "bad";
     setText($("#hud-home"), fmtDur(m.returnTimeS()));
-    const viaRelay = !this.radioLost && this.relayUp && this.mission && !inContact(this.radio, this.site.grid, this.mission.pose().x, this.mission.pose().y);
+    const viaRelay = !this.radioLost && this.relaysStood.size > 0 && this.mission && !inContact(this.radio, this.site.grid, this.mission.pose().x, this.mission.pose().y);
     setText($("#hud-radio"), this.radioLost ? "No signal" : viaRelay ? "Relay ✓" : "Rover ✓");
     $("#hud-radiobox").className = `hud-item${this.radioLost ? " warn" : ""}`;
     setText($("#hud-clock"), fmtClock(m.t));

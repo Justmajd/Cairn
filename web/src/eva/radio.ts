@@ -86,13 +86,16 @@ export function relayFromShadow(relayShadow: Uint8Array, grid: TerrainGrid, leg:
   return { reaches: (x, y) => radioDepthAt(relayShadow, grid, x, y) <= RADIO_LOST_M, leg, sample };
 }
 
-/** In contact at a point: line of sight to the rover, or to a relay that is already up. */
-export function inContact(shadow: Uint8Array, grid: TerrainGrid, x: number, y: number, relay: Uint8Array | null = null): boolean {
-  return radioDepthAt(shadow, grid, x, y) <= RADIO_LOST_M || (relay !== null && radioDepthAt(relay, grid, x, y) <= RADIO_LOST_M);
+/** In contact at a point: line of sight to the rover, or to any relay that is already up (one or several). */
+export function inContact(shadow: Uint8Array, grid: TerrainGrid, x: number, y: number, relay: Uint8Array | Uint8Array[] | null = null): boolean {
+  if (radioDepthAt(shadow, grid, x, y) <= RADIO_LOST_M) return true;
+  const relays = relay === null ? [] : Array.isArray(relay) ? relay : [relay];
+  return relays.some((r) => radioDepthAt(r, grid, x, y) <= RADIO_LOST_M);
 }
 
-/** How much of a set of walks keeps line of sight to the rover (or to the relay, once it is up). */
-export function radioCoverage(shadow: Uint8Array, grid: TerrainGrid, legs: MeasuredPath[], relay: RelayLink | null = null): RadioCoverage {
+/** How much of a set of walks keeps line of sight to the rover (or to a relay, once it is up). */
+export function radioCoverage(shadow: Uint8Array, grid: TerrainGrid, legs: MeasuredPath[], relay: RelayLink | RelayLink[] | null = null): RadioCoverage {
+  const links = relay === null ? [] : Array.isArray(relay) ? relay : [relay];
   let total = 0;
   let lostS = 0;
   let lostM = 0;
@@ -106,10 +109,9 @@ export function radioCoverage(shadow: Uint8Array, grid: TerrainGrid, legs: Measu
       const b = leg.samples[i];
       const dt = b.time - a.time;
       total += dt;
-      const up = relay !== null && (li > relay.leg || (li === relay.leg && i > relay.sample));
       const mx = (a.x + b.x) / 2;
       const my = (a.y + b.y) / 2;
-      const lost = !inContact(shadow, grid, mx, my) && !(up && relay!.reaches(mx, my));
+      const lost = !inContact(shadow, grid, mx, my) && !links.some((r) => (li > r.leg || (li === r.leg && i > r.sample)) && r.reaches(mx, my));
       if (lost) {
         if (!inGap) gaps++;
         inGap = true;
@@ -157,44 +159,104 @@ export interface RelaySuggestion {
   /** placed by the crew on the map (not CAIRN's search); how far it stands from the route (m) */
   manual?: boolean;
   offRouteM?: number;
+  /** what this mast links to: -1 the rover, else the index of another relay in the same chain */
+  via?: number;
+  /** where the crew passes it (its own place on the route; `leg`/`sample` are when the link works:
+   *  once it and every mast between it and the rover are up) */
+  ownLeg?: number;
+  ownSample?: number;
 }
 
 /** A relay the crew places by hand may stand this far from the route: they step aside to put it up. */
 export const RELAY_MAX_OFF_ROUTE_M = 60;
 
 /**
- * A relay where the crew chose to put it.  The crew stands it up as they pass the nearest point of the
- * route (so it helps from there on), and its mast must see the rover; otherwise a plain reason why not.
+ * Relays where the crew chose to put them: one, or a chain.  Each mast stands within
+ * RELAY_MAX_OFF_ROUTE_M of the route (the crew stands it up as they pass the nearest point) and must see
+ * the rover or another mast of the chain, so the link can hop mast to mast around a ridge.  A mast only
+ * helps once it and every mast between it and the rover are up.  Otherwise a plain reason why not.
  */
-export function relayAtPoint(
+export function relayChain(
   shadow: Uint8Array,
   grid: TerrainGrid,
   legs: MeasuredPath[],
-  at: XY,
+  points: XY[],
   mastM = RELAY_MAST_M,
-): { relay: RelaySuggestion } | { reason: string } {
-  // the nearest point of the route: where the crew turns aside to stand it up
-  let best: { leg: number; sample: number; d: number; alongM: number } | null = null;
-  let along = 0;
-  legs.forEach((leg, li) => {
-    leg.samples.forEach((q, i) => {
-      if (i > 0) along += q.dist - leg.samples[i - 1].dist;
-      const d = Math.hypot(q.x - at.x, q.y - at.y);
-      if (!best || d < best.d) best = { leg: li, sample: i, d, alongM: along };
+): { relays: RelaySuggestion[] } | { reason: string; index: number } {
+  // each mast's nearest point of the route, and that point's place in walking order
+  const placed: { at: XY; leg: number; sample: number; d: number; alongM: number; order: number }[] = [];
+  for (const [k, at] of points.entries()) {
+    let best: { leg: number; sample: number; d: number; alongM: number; order: number } | null = null;
+    let along = 0;
+    let order = 0;
+    legs.forEach((leg, li) => {
+      leg.samples.forEach((q, i) => {
+        if (i > 0) along += q.dist - leg.samples[i - 1].dist;
+        const d = Math.hypot(q.x - at.x, q.y - at.y);
+        if (!best || d < best.d) best = { leg: li, sample: i, d, alongM: along, order };
+        order++;
+      });
     });
+    const near = best as { leg: number; sample: number; d: number; alongM: number; order: number } | null;
+    if (!near) return { reason: "Plan a route first: the crew stands the relay up on the way.", index: k };
+    if (near.d > RELAY_MAX_OFF_ROUTE_M) {
+      return { reason: `That spot is ${Math.round(near.d)} m from the route. Put the relay within ${RELAY_MAX_OFF_ROUTE_M} m of it: the crew carries the mast and stands it up on the way.`, index: k };
+    }
+    placed.push({ at: { x: Math.round(at.x), y: Math.round(at.y) }, ...near });
+  }
+  // the chain: masts that see the rover first, then masts that see a linked mast, until nothing changes
+  const via = placed.map(() => -2); // -2 not linked, -1 the rover, k another mast
+  const upOrder = placed.map(() => Infinity); // when its link works (walking order)
+  placed.forEach((p, k) => {
+    if (radioDepthAt(shadow, grid, p.at.x, p.at.y) <= mastM - SUIT_ANTENNA_M) {
+      via[k] = -1;
+      upOrder[k] = p.order;
+    }
   });
-  const near = best as { leg: number; sample: number; d: number; alongM: number } | null;
-  if (!near) return { reason: "Plan a route first: the crew stands the relay up on the way." };
-  if (near.d > RELAY_MAX_OFF_ROUTE_M) {
-    return { reason: `That spot is ${Math.round(near.d)} m from the route. Put the relay within ${RELAY_MAX_OFF_ROUTE_M} m of it: the crew carries the mast and stands it up on the way.` };
+  for (let changed = true; changed; ) {
+    changed = false;
+    placed.forEach((p, k) => {
+      for (const [j, q] of placed.entries()) {
+        if (j === k || via[j] === -2) continue;
+        const when = Math.max(p.order, upOrder[j]);
+        // a better link: one that works sooner on the walk
+        if (when < upOrder[k] && lineOfSight(grid, p.at, mastM, q.at, mastM)) {
+          via[k] = j;
+          upOrder[k] = when;
+          changed = true;
+        }
+      }
+    });
   }
-  if (radioDepthAt(shadow, grid, at.x, at.y) > mastM - SUIT_ANTENNA_M) {
-    return { reason: `From there even the top of the ${mastM} m mast cannot see the rover, so it would relay nothing. Try higher ground with the rover in sight.` };
+  const lone = via.findIndex((v) => v === -2);
+  if (lone >= 0) {
+    const from = placed.length > 1 ? `From relay ${lone + 1}'s spot` : "From there";
+    return { reason: `${from} even the top of the ${mastM} m mast sees neither the rover nor another relay, so it would relay nothing. Try higher ground with the rover or another mast in sight.`, index: lone };
   }
+  // walking order → leg and sample (when each link works)
+  const at = (order: number): { leg: number; sample: number } => {
+    let o = 0;
+    for (const [li, leg] of legs.entries()) {
+      if (order < o + leg.samples.length) return { leg: li, sample: order - o };
+      o += leg.samples.length;
+    }
+    return { leg: legs.length - 1, sample: legs[legs.length - 1].samples.length - 1 };
+  };
+  const links: RelayLink[] = placed.map((p, k) => ({ reaches: (x: number, y: number) => lineOfSight(grid, p.at, mastM, { x, y }, SUIT_ANTENNA_M), ...at(upOrder[k]) }));
   const before = radioCoverage(shadow, grid, legs);
-  const reaches = (x: number, y: number) => lineOfSight(grid, at, mastM, { x, y }, SUIT_ANTENNA_M);
-  const after = radioCoverage(shadow, grid, legs, { reaches, leg: near.leg, sample: near.sample });
-  return { relay: { at: { x: Math.round(at.x), y: Math.round(at.y) }, leg: near.leg, sample: near.sample, alongM: near.alongM, before, after, manual: true, offRouteM: Math.round(near.d) } };
+  const after = radioCoverage(shadow, grid, legs, links);
+  return {
+    relays: placed.map((p, k) => ({
+      at: p.at, ...at(upOrder[k]), ownLeg: p.leg, ownSample: p.sample, alongM: p.alongM, before, after,
+      manual: true, offRouteM: Math.round(p.d), via: via[k],
+    })),
+  };
+}
+
+/** One relay where the crew chose to put it (see relayChain). */
+export function relayAtPoint(shadow: Uint8Array, grid: TerrainGrid, legs: MeasuredPath[], at: XY, mastM = RELAY_MAST_M): { relay: RelaySuggestion } | { reason: string } {
+  const r = relayChain(shadow, grid, legs, [at], mastM);
+  return "relays" in r ? { relay: r.relays[0] } : { reason: r.reason };
 }
 
 /**

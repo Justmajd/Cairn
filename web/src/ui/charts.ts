@@ -22,7 +22,7 @@ export function renderProfile(
   ghost: MeasuredPath[] | null,
   noRadio: ((x: number, y: number, leg: number, sample: number) => boolean) | null = null,
   onHover: ((at: { x: number; y: number } | null) => void) | null = null,
-  relayAtM: number | null = null, // distance along the route where the crew stands up the relay
+  relayAtM: number | number[] | null = null, // distance along the route where the crew stands up each relay
 ): ProfileHandle {
   const W = Math.max(320, host.clientWidth);
   const H = Math.max(90, host.clientHeight);
@@ -105,8 +105,8 @@ export function renderProfile(
     svg += `<line class="stop" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${pad.t - 2}" y2="${H - pad.b}"/><text class="stop-label" x="${x.toFixed(1)}" y="${pad.t - 5}" text-anchor="${anchor}">${esc(stop.short)}</text>`;
     if (i < legs.length) d += legs[i].distance;
   });
-  if (relayAtM !== null) {
-    const x = X(Math.min(total, relayAtM)).toFixed(1);
+  for (const at of relayAtM === null ? [] : Array.isArray(relayAtM) ? relayAtM : [relayAtM]) {
+    const x = X(Math.min(total, at)).toFixed(1);
     svg += `<g class="relay-mark"><line x1="${x}" x2="${x}" y1="${pad.t + 4}" y2="${H - pad.b}"/><path d="M${x},${pad.t - 1} l4,4 -4,4 -4,-4z"/><text x="${x}" y="${pad.t + 18}" text-anchor="middle">relay</text></g>`;
   }
   svg += `<text class="axis" x="${W - pad.r}" y="${H - 4}" text-anchor="end">${fmtDist(total)} walked</text>`;
