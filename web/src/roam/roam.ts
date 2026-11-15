@@ -61,7 +61,11 @@ export class Roam {
   private readonly ground: Ground;
   private readonly avatar: Astronaut;
   private readonly shadow = new BlobShadow();
-  private readonly prints = new Footprints();
+  private readonly prints: Footprints;
+  // ---- frame timing: offer the lighter version when the device struggles
+  private frameSum = 0;
+  private frameN = 0;
+  private slowTold = false;
   private readonly dust: Dust;
   private readonly trail = new Trail();
   private readonly audio = new SuitAudio();
@@ -142,7 +146,7 @@ export class Roam {
   private buddySeen = 0;
   private apart = false;
   private heardTold = false;
-  constructor(private readonly site: SiteData, private readonly view: SceneView) {
+  constructor(private readonly site: SiteData, private readonly view: SceneView, private readonly quality: "high" | "low" = "high") {
     const grid = site.grid;
     this.ground = {
       height: (x, y) => grid.heightAt(x, y),
@@ -187,7 +191,9 @@ export class Roam {
     this.lat = site.meta.centerLonLat?.lat ?? (site.meta.boundsLonLat.south + site.meta.boundsLonLat.north) / 2;
     this.lon = site.meta.centerLonLat?.lon ?? (site.meta.boundsLonLat.west + site.meta.boundsLonLat.east) / 2;
 
-    this.dust = new Dust(MARS_WALKER.g, (x, z) => view.groundAt(x, z));
+    const low = quality === "low";
+    this.dust = new Dust(MARS_WALKER.g, (x, z) => view.groundAt(x, z), low ? 260 : 900);
+    this.prints = new Footprints(low ? 220 : 700);
     // EV1 wears fern stripes, EV2 amber: each device draws its own suit and the other astronaut's
     const FERN = 0xc6f432;
     const AMBER = 0xffc247;
@@ -1176,7 +1182,8 @@ export class Roam {
     this.landKick = 0;
     this.shadow.mesh.visible = true;
     this.shadow.place(feet, groundY, this.sunDir);
-    if (this.tau > 1) this.dust.drift(feet, this.wind, Math.min(260, (this.tau - 0.8) * 30), dt);
+    if (this.tau > 1) this.dust.drift(feet, this.wind, Math.min(this.quality === "low" ? 60 : 260, (this.tau - 0.8) * 30), dt);
+    this.watchFrames(dt);
     this.dust.update(dt);
     if (this.look === "plan" || s.grounded) this.trail.push(feet);
     this.trail.line.visible = this.look === "plan";
@@ -1497,6 +1504,25 @@ export class Roam {
     if (strip.dataset.h !== html.length + ":" + Math.round(h)) {
       strip.dataset.h = html.length + ":" + Math.round(h);
       strip.innerHTML = html;
+    }
+  }
+
+  /**
+   * Average frame time over a few seconds of walking: if the device cannot keep ~25 frames a second at
+   * full quality, offer the lighter version (coarser mesh, 50 cm image, fewer particles), keeping the plan.
+   */
+  private watchFrames(dt: number): void {
+    if (this.quality === "low" || this.slowTold || document.hidden || dt >= 0.1) return;
+    this.frameSum += dt;
+    if (++this.frameN < 150) return;
+    const avg = this.frameSum / this.frameN;
+    this.frameSum = 0;
+    this.frameN = 0;
+    if (avg > 0.04) {
+      this.slowTold = true;
+      const q = new URLSearchParams(location.search);
+      q.set("q", "low");
+      this.toast(`Running at ${Math.round(1 / avg)} frames a second. <a href="?${esc(q.toString())}${esc(location.hash)}">Open the lighter version</a> (coarser mesh, fewer particles; your plan stays).`, true);
     }
   }
 
