@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_PARAMS } from "./params";
 import { walkSpeedMs } from "./metabolic";
-import { EARTH_G, Ground, impactFrom, jumpOf, MARS_G, MARS_WALKER, newWalker, stepWalker, walkRunMs, WalkEvent } from "./walker";
+import { EARTH_G, Ground, impactFrom, jumpOf, MARS_G, MARS_WALKER, newWalker, stepWalker, toppleTime, walkRunMs, WalkEvent } from "./walker";
 
 const flat: Ground = { height: () => 0, sand: () => 0, effort: () => 1, min: -1000, max: 1000 };
 const ramp = (deg: number): Ground => ({ ...flat, height: (x) => x * Math.tan((deg * Math.PI) / 180) });
@@ -65,4 +65,25 @@ describe("walker", () => {
     expect(land).toBeDefined();
     if (land && land.kind === "land") expect(land.impactMs).toBeCloseTo(impactFrom(2, MARS_G), 0);
   });
+
+  it("topples more slowly in Mars gravity: time scales with 1/sqrt(g)", () => {
+    const mars = toppleTime(MARS_G, 1, 0.12, 1, 0);
+    const earth = toppleTime(EARTH_G, 1, 0.12, 1, 0);
+    expect(mars / earth).toBeCloseTo(Math.sqrt(EARTH_G / MARS_G), 1);
+    expect(mars).toBeGreaterThan(1);
+  });
+
+  it("after a fall on a steep slope, slides down to steady ground before getting up", () => {
+    // 40° down to x = 6, flat beyond
+    const hill: Ground = { ...flat, height: (x) => (x < 6 ? -x * Math.tan((40 * Math.PI) / 180) : -6 * Math.tan((40 * Math.PI) / 180)) };
+    const s = newWalker(0, 0, 0);
+    s.downT = MARS_WALKER.getUpS;
+    s.gait = "down";
+    run(s, idle, hill, 1);
+    expect(s.downT).toBeCloseTo(MARS_WALKER.getUpS, 5); // still sliding: the get-up has not started
+    run(s, idle, hill, 8);
+    expect(s.x).toBeGreaterThan(6); // came down onto the flat
+    expect(s.downT).toBeLessThan(MARS_WALKER.getUpS);
+  });
 });
+

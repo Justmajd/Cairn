@@ -17,7 +17,7 @@ cd web
 npm ci                 # install
 npm run dev:all        # Vite dev server (5173) + hab server (8787) in one terminal; Ctrl+C stops both
 npm run dev:https      # same over https:// (phones need it for the microphone); local cert in web/.cert
-npm test               # vitest (102 tests: model, routing, data, hab server end to end)
+npm test               # vitest (104 tests: model, routing, data, hab server end to end)
 npm run typecheck      # app tsconfig + server tsconfig
 npm run build          # tsc + vite build → web/dist (and dist/sw.js)
 npm start              # build, then serve dist + hab on http://localhost:8787 (production-like)
@@ -196,6 +196,7 @@ assumptions). Never present them as NASA specs.
   `marsEnvironment` (reflections for the models; `scene.environment`). The view's sun light follows the real Sun.
 - Missions: the planner's *Walk it yourself* (`app.ts` `walkItYourself`) saves a `RoamPlan` (`roam/plan.ts`, sessionStorage, keyed by site + plan hash) and opens `?roam=1#<plan>`; without a saved plan, roam routes the plan link itself with `Router`. `Roam` then draws the legs, numbers the stops, handles hold-E sampling (clock + O₂ at `workingW` for the dwell), off-route time, boarding at the rover, and the debrief (`finish`).
 - Visor = inside the helmet (`Astronaut.firstPerson`: helmet hidden, arms forward, body follows the view); `SuitAudio.setPerspective` crossfades the inside bus (fan, breathing in a bubble comb, conducted steps, heart) and the outside bus (wind, faint low-passed steps).
+- Falls and slides (`roam/avatar.ts`): no ragdoll — a pressurised suit is stiff. A fall topples as an inverted pendulum in Mars gravity (`toppleTime` in `eva/walker.ts`, tested) onto hands and knees; the last 4.2 s of `downT` (7 s, `getUpS`) are the suited get-up (sit back → one knee up → stand). The topple runs until the hands touch the terrain (`settle` rests the lowest contact point on the ground, `alignToGround` tilts to the slope); while down on ground steeper than the suit's grip the walker keeps sliding (`sliding`) and the get-up timer waits. A slide is a seated, feet-first pose fitted to the slope. All joints are eased each frame (`smoothJoints`, ~70 ms), so no state change snaps; `setAction` poses sampling and boarding.
 - `roam/avatar.ts` — articulated astronaut posed from the physics, blob shadow, instanced boot prints,
   dust (coarse ballistic + fine settling), map trail.  `roam/audio.ts` — synthesised suit sound (WebAudio).
 - Debug: `window.cairn.roam` (`.state`, `.tick(dt)`); with the pane hidden, call `roam.tick` and

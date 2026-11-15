@@ -4,7 +4,7 @@ import type { SiteData } from "../data/loaders";
 import type { RoamLook, SceneView } from "../scene/view";
 import type { Poi } from "../types";
 import { DEFAULT_PARAMS } from "../eva/params";
-import { breathsPerMin, EARTH_G, Ground, heartRate, jumpOf, MARS_WALKER, newWalker, stepWalker, walkRunMs, WALKER_NOTES, WalkEvent, WalkerState } from "../eva/walker";
+import { breathsPerMin, toppleTime, EARTH_G, Ground, heartRate, jumpOf, MARS_WALKER, newWalker, stepWalker, walkRunMs, WALKER_NOTES, WalkEvent, WalkerState } from "../eva/walker";
 import { fmtLmst, lmstAt as lmstAtUtc, MARS_HOUR_S, solarGeometry, SolarGeometry, sunAt } from "../eva/sun";
 import { fmtLightTime, marsSky, utcAtLmst } from "../eva/sky";
 import { inContact, radioShadow } from "../eva/radio";
@@ -52,7 +52,7 @@ const compass = (deg: number) => COMPASS[Math.round((((deg % 360) + 360) % 360) 
 export class Roam {
   private readonly walker: WalkerState;
   private readonly ground: Ground;
-  private readonly avatar = new Astronaut();
+  private readonly avatar: Astronaut;
   private readonly shadow = new BlobShadow();
   private readonly prints = new Footprints();
   private readonly dust: Dust;
@@ -88,6 +88,7 @@ export class Roam {
   private camDip = 0;
   private readonly smoothEye = new THREE.Vector3();
   private readonly smoothCam = new THREE.Vector3();
+  private readonly smoothFocus = new THREE.Vector3();
   private camInit = false;
   private visited = new Set<string>();
   private told = new Set<string>();
@@ -144,6 +145,7 @@ export class Roam {
     this.lon = site.meta.centerLonLat?.lon ?? (site.meta.boundsLonLat.west + site.meta.boundsLonLat.east) / 2;
 
     this.dust = new Dust(MARS_WALKER.g, (x, z) => view.groundAt(x, z));
+    this.avatar = new Astronaut(MARS_WALKER.g, (x, z) => view.groundAt(x, z));
     view.add(this.avatar.root);
     view.add(this.avatar.mapMarker, 13);
     view.add(this.shadow.mesh);
@@ -296,6 +298,7 @@ export class Roam {
       prompt.style.setProperty("--p", String(Math.min(1, this.holdT / HOLD_S)));
       prompt.classList.toggle("moving", !still);
     }
+    this.avatar.setAction(act && (this.keys.has("e") || this.touchHold) ? act : null, this.holdT / HOLD_S);
     if (act && this.holdT >= HOLD_S) {
       this.holdT = 0;
       if (act === "sample") this.sample();
@@ -805,7 +808,7 @@ export class Roam {
       if (e.fell) this.falls++;
       else if (e.hard) this.hardLandings++;
       if (e.fell) {
-        this.toast(`<b>Down.</b> You hit the ground at ${e.impactMs.toFixed(1)} m/s. Getting up in a pressurised suit takes about ${MARS_WALKER.getUpS} s — check the suit, then stand.`, true);
+        this.toast(`<b>Down.</b> You hit the ground at ${e.impactMs.toFixed(1)} m/s and topple onto your hands — slowly: a fall takes ${toppleTime(MARS_WALKER.g).toFixed(1)} s on Mars, ${toppleTime(EARTH_G).toFixed(1)} s on Earth. Getting up in a pressurised suit takes about ${MARS_WALKER.getUpS} s: sit back, one knee up, push.`, true);
       } else if (e.hard) {
         this.toast(`<b>Hard landing:</b> ${e.impactMs.toFixed(1)} m/s into the ground. On Earth the same drop would hit at ${(e.impactMs * Math.sqrt(EARTH_G / MARS_WALKER.g)).toFixed(1)} m/s.`, true);
       } else if (e.jump) {
@@ -820,7 +823,7 @@ export class Roam {
       this.once("lope", `<b>Loping.</b> Above ${walkRunMs(MARS_WALKER.g, MARS_WALKER.legM).toFixed(1)} m/s a walk becomes a series of bounds on Mars (on Earth people switch at ${walkRunMs(EARTH_G, MARS_WALKER.legM).toFixed(1)} m/s). You cannot steer while in the air.`);
     } else if (e.kind === "slide") {
       this.avatar.addDust(0.08);
-      if (e.slopeDeg > 8) this.toast(`<b>Sliding:</b> ${Math.round(e.slopeDeg)}° is steeper than the boots can hold on this ground. Lean (WASD) to steer.`, true);
+      if (e.slopeDeg > 8) this.toast(`<b>Sliding:</b> ${Math.round(e.slopeDeg)}° is steeper than the boots can hold on this ground: sit down, slide feet first and brake with your hands. Lean (WASD) to steer.`, true);
     } else if (e.kind === "up") {
       this.toast("Back on your feet.");
     } else if (e.kind === "edge" && this.t - this.lastEdge > 6) {
@@ -844,11 +847,20 @@ export class Roam {
       // a helmet is not a gimbal: the view lags the body by a few hundredths of a second
       this.smoothEye.lerp(eye, Math.min(1, dt * 22));
       const cp = Math.cos(this.pitch);
-      const target = this.smoothEye.clone().add(new THREE.Vector3(Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp));
+      const look = new THREE.Vector3(Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp);
+      // tumbling: the view goes where the helmet faces
+      const w = this.avatar.poseWeight;
+      if (w > 0) look.lerp(this.avatar.faceWorld(), w).normalize();
+      if (Math.abs(look.y) > 0.995) look.x += 0.02;
+      const target = this.smoothEye.clone().add(look);
       this.view.setRoamCamera(this.smoothEye, target, 70);
     } else if (this.look === "orbit") {
-      const focus = feet.clone();
-      focus.y += 1.25;
+      // follow the body itself, so a fall or a slide stays in the middle of the view
+      const centre = this.avatar.centreWorld();
+      if (!this.camInit) this.smoothFocus.copy(centre);
+      this.smoothFocus.lerp(centre, Math.min(1, dt * 6));
+      const focus = this.smoothFocus.clone();
+      focus.y += 0.15;
       const cp = Math.cos(this.pitch);
       const want = focus.clone().add(new THREE.Vector3(-Math.sin(this.yaw) * cp, -Math.sin(this.pitch), Math.cos(this.yaw) * cp).multiplyScalar(this.chaseDist));
       const floor = this.view.groundAt(want.x, want.z) + 0.6;
@@ -952,7 +964,7 @@ export class Roam {
       : s.gait === "lope" ? ["Loping", "bounding gait"]
       : s.gait === "walk" ? ["", ""]
       : s.gait === "slide" ? ["Sliding", `${Math.round(s.slopeDeg)}° — too steep to hold`]
-      : s.gait === "down" ? ["Down", `getting up · ${s.downT.toFixed(1)} s`]
+      : s.gait === "down" ? (s.sliding ? ["Down", "sliding to steadier ground"] : ["Down", `getting up · ${s.downT.toFixed(1)} s`])
       : ["", ""];
     set("gaitbig", big);
     set("gaitsub", sub);

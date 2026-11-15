@@ -12,9 +12,127 @@ type V3 = THREE.Vector3;
 
 interface Joint {
   pivot: THREE.Group;
-  knee?: THREE.Group;
+  knee: THREE.Group;
 }
 
+/**
+ * A whole-body pose: lean (forward, rad), lift (body raised or lowered, m), and per side (left, right)
+ * hip and shoulder flexion (+ forward), knee bend (− backward), elbow bend (+), arm spread `shZ`.
+ */
+interface Pose {
+  lean: number;
+  lift: number;
+  hip: [number, number];
+  knee: [number, number];
+  sh: [number, number];
+  elb: [number, number];
+  shZ: number;
+}
+
+/** On hands and knees after a fall: torso pitched ~70° forward, thighs upright, shins flat, arms straight down. */
+const ALL_FOURS: Pose = { lean: 1.22, lift: 0.24, hip: [1.22, 1.22], knee: [-1.5, -1.5], sh: [1.18, 1.18], elb: [0.3, 0.3], shZ: 0.1 };
+/** Flat on the front, braced on the forearms: how a body slides down a slope too steep to rest on. */
+const PRONE: Pose = { lean: 1.5, lift: 0, hip: [0.12, 0.06], knee: [-0.3, -0.18], sh: [2.05, 1.95], elb: [1.35, 1.35], shZ: 0.32 };
+/** Part way through a topple at lean `th` (rad): arms coming forward to break the fall, knees giving. */
+function toppleAt(th: number): Pose {
+  const k = Math.min(1, th);
+  return { lean: th, lift: 0, hip: [0.55 * k, 0.45 * k], knee: [-0.9 * k, -0.8 * k], sh: [1.35 * k + 0.25 * Math.max(0, th - 1), 1.25 * k], elb: [0.25, 0.25], shZ: 0.15 };
+}
+/** Taking a sample: down on the right knee, left foot planted, the right hand reaching to the ground. */
+function samplePose(p: number): Pose {
+  const reach = Math.sin(Math.min(1, p) * Math.PI * 3) * 0.08; // working the scoop
+  return { lean: 0.55, lift: 0, hip: [1.4, 0.3], knee: [-1.45, -1.62], sh: [0.75, 1.35 + reach], elb: [0.6, 0.25 + reach], shZ: 0.14 };
+}
+/** At the suitport: arms up to the hatch rim, pulling in. */
+function boardPose(p: number): Pose {
+  return { lean: -0.05 - 0.1 * p, lift: 0, hip: [0.05, 0], knee: [-0.1, -0.05], sh: [2.2 + 0.2 * p, 2.25 + 0.2 * p], elb: [0.5 - 0.2 * p, 0.5 - 0.2 * p], shZ: 0.18 };
+}
+/** Kneeling, sitting back on the heels, hands on the thighs. */
+const KNEEL: Pose = { lean: 0.2, lift: -0.36, hip: [0.2, 0.2], knee: [-1.55, -1.55], sh: [0.45, 0.45], elb: [0.7, 0.7], shZ: 0.12 };
+/** One knee up (left foot planted), pushing on the raised knee. */
+const LUNGE: Pose = { lean: 0.42, lift: -0.34, hip: [1.45, 0.35], knee: [-1.45, -1.6], sh: [0.75, 0.5], elb: [0.6, 0.5], shZ: 0.1 };
+/** Standing straight (the walking animation takes over from here). */
+const STAND: Pose = { lean: 0.05, lift: 0, hip: [0, 0], knee: [0, 0], sh: [0, 0], elb: [0.35, 0.35], shZ: 0.12 };
+/**
+ * Seated slide, feet first down a slope of `slopeDeg`: the back about 20° off the slope behind (the
+ * pack just clear of it), legs out along the slope downhill, heels digging in, hands back to brake.
+ * Angles are worked out from the slope so the body lies on the ground rather than in it.
+ */
+function slidePose(slopeDeg: number): Pose {
+  const slope = (Math.min(60, Math.max(20, slopeDeg)) * Math.PI) / 180;
+  const back = Math.max(0.25, Math.PI / 2 - slope - 0.35); // lean back from vertical
+  const legs = Math.PI / 2 - slope + back; // thighs along the slope, relative to the torso
+  const seat = 0.2; // pelvis height above the ground
+  return {
+    lean: -back,
+    lift: seat - 0.92 * Math.cos(back),
+    hip: [legs, legs - 0.08],
+    knee: [-0.25, -0.15],
+    sh: [-1.0 + back, -0.95 + back],
+    elb: [0.2, 0.2],
+    shZ: 0.32,
+  };
+}
+
+const ease = (x: number) => x * x * (3 - 2 * x);
+const UP = new THREE.Vector3(0, 1, 0);
+const lerpPose = (a: Pose, b: Pose, t: number): Pose => {
+  const k = ease(Math.max(0, Math.min(1, t)));
+  const m = (x: number, y: number) => x + (y - x) * k;
+  const m2 = (x: [number, number], y: [number, number]): [number, number] => [m(x[0], y[0]), m(x[1], y[1])];
+  return { lean: m(a.lean, b.lean), lift: m(a.lift, b.lift), hip: m2(a.hip, b.hip), knee: m2(a.knee, b.knee), sh: m2(a.sh, b.sh), elb: m2(a.elb, b.elb), shZ: m(a.shZ, b.shZ) };
+};
+
+/** The suited get-up, `u` seconds into its 4.2 s: sit back (1.3 s), one knee up (1.4 s), push to stand (1.5 s). */
+function getUp(u: number, from: Pose = ALL_FOURS): Pose {
+  if (u < 1.3) return lerpPose(from, KNEEL, u / 1.3);
+  if (u < 2.7) return lerpPose(KNEEL, LUNGE, (u - 1.3) / 1.4);
+  return lerpPose(LUNGE, STAND, (u - 2.7) / 1.5);
+}
+
+/** A woven-fabric bump texture for the suit's outer layer (the thermal micrometeoroid garment). */
+function weave(): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#808080";
+  g.fillRect(0, 0, 128, 128);
+  for (let y = 0; y < 128; y += 4) {
+    for (let x = 0; x < 128; x += 4) {
+      const over = ((x >> 2) + (y >> 2)) % 2 === 0;
+      g.fillStyle = over ? "#9a9a9a" : "#6a6a6a";
+      g.fillRect(x, y, 4, 2);
+      g.fillStyle = over ? "#727272" : "#949494";
+      g.fillRect(x, y + 2, 4, 2);
+    }
+  }
+  // a few seams and soft wrinkles
+  g.strokeStyle = "rgba(40,40,40,0.5)";
+  g.lineWidth = 1;
+  for (let i = 0; i < 6; i++) {
+    g.beginPath();
+    g.moveTo(0, 10 + i * 21);
+    g.bezierCurveTo(40, 4 + i * 21, 80, 18 + i * 21, 128, 10 + i * 21);
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(4, 4);
+  return t;
+}
+
+/**
+ * The astronaut: a planetary surface suit built to real proportions (about 1.9 m with the helmet),
+ * after the shapes of current NASA surface-suit designs but not a copy of any one suit: a hard upper
+ * torso with shoulder and waist bearings, a soft fabric layer with ribbed joints, a life-support pack,
+ * a helmet with a clear bubble, gold sun visor, lamps and a camera, lugged boots and articulated gloves.
+ *
+ * It is posed by the walking physics.  A pressurised suit is stiff (its joints are held near their
+ * neutral angles by ~30 kPa inside), so it does not flop: a fall is a topple, timed as an inverted
+ * pendulum in Mars gravity, onto outstretched hands and knees; getting up is the slow suited sequence
+ * (sit back on the heels, one knee up, push to stand); a slide on steep ground is seated, feet first,
+ * braking with the hands.
+ */
 export class Astronaut {
   readonly root = new THREE.Group();
   private readonly body = new THREE.Group();
@@ -25,21 +143,49 @@ export class Astronaut {
   private landDip = 0;
   private lean = 0;
   private dust = 0;
-  private readonly suitMat = new THREE.MeshStandardMaterial({ color: 0xefebe4, roughness: 0.85 });
-  private static readonly CLEAN = new THREE.Color(0xefebe4);
-  private static readonly DUSTY = new THREE.Color(0xc39a74);
+  private fp = false;
+  private readonly suitMat: THREE.MeshPhysicalMaterial;
+  private readonly bootMat: THREE.MeshPhysicalMaterial;
+  private static readonly CLEAN = new THREE.Color(0xeeebe5);
+  private static readonly DUSTY = new THREE.Color(0xbf946c);
 
-  constructor() {
-    // suit fabric picks up dust as you walk (see addDust)
+  // ---- falls and slides
+  /** the topple: lean angle (rad) and its rate, integrated as an inverted pendulum */
+  private topple: { th: number; om: number; contactT: number | null; thC: number } | null = null;
+  private proneW = 0;
+  // ---- small motions and actions
+  private breath = 0;
+  private turnPhase = 0;
+  private lastHeading: number | null = null;
+  private action: { kind: "sample" | "board"; progress: number } | null = null;
+  private actionW = 0;
+  private actionKind: "sample" | "board" = "sample";
+  private actionP = 0;
+  // ---- smoothing: every joint eases toward its target, so no state change ever snaps
+  private readonly smoothQ = new Map<THREE.Object3D, THREE.Quaternion>();
+  private readonly smoothP = new Map<THREE.Object3D, THREE.Vector3>();
+  private offY = 0;
+  private smoothInit = false;
+  private slideW = 0;
+  /** how far the body is posed by a fall or a slide (0 … 1): the visor follows the head by this much */
+  private overW = 0;
+
+  constructor(private readonly g = 3.721, private readonly groundAt: (x: number, z: number) => number = () => 0) {
+    const bump = weave();
+    this.suitMat = new THREE.MeshPhysicalMaterial({ color: Astronaut.CLEAN, roughness: 0.93, sheen: 0.7, sheenRoughness: 0.75, sheenColor: new THREE.Color(0xffffff), bumpMap: bump, bumpScale: 1.2 });
+    this.bootMat = this.suitMat.clone();
     const suit = this.suitMat;
-    const soft = new THREE.MeshStandardMaterial({ color: 0xd9d5cd, roughness: 0.9 }); // bellows at the joints
-    const hard = new THREE.MeshStandardMaterial({ color: 0xf2f0ec, roughness: 0.45, metalness: 0.05 }); // composite shells
-    const metal = new THREE.MeshStandardMaterial({ color: 0xb4b8be, roughness: 0.32, metalness: 0.7 });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x45413d, roughness: 0.85 });
-    const stripe = new THREE.MeshStandardMaterial({ color: 0xc6f432, roughness: 0.6, emissive: 0x2a3608 });
-    const gold = new THREE.MeshPhysicalMaterial({ color: 0xe0a84a, metalness: 0.9, roughness: 0.18, clearcoat: 1, emissive: 0x3a2306 });
-    const bubble = new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0, roughness: 0.05, clearcoat: 1, transparent: true, opacity: 0.16, depthWrite: false });
-    const lamp = new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0xfff1c4, emissiveIntensity: 1.2 });
+    const lower = this.bootMat; // lower legs and boots get dustier first
+    const soft = new THREE.MeshPhysicalMaterial({ color: 0xd8d3ca, roughness: 0.95, sheen: 0.5, sheenRoughness: 0.8, bumpMap: bump, bumpScale: 2 }); // bellows
+    const hard = new THREE.MeshPhysicalMaterial({ color: 0xf3f1ec, roughness: 0.38, clearcoat: 0.4, clearcoatRoughness: 0.5 }); // composite shells
+    const metal = new THREE.MeshStandardMaterial({ color: 0xb8bcc2, roughness: 0.3, metalness: 0.75 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x3e3a36, roughness: 0.9 });
+    const glove = new THREE.MeshPhysicalMaterial({ color: 0x4a4540, roughness: 0.85, sheen: 0.4, bumpMap: bump, bumpScale: 0.6 });
+    const stripe = new THREE.MeshStandardMaterial({ color: 0xc6f432, roughness: 0.7, emissive: 0x222c07 });
+    const gold = new THREE.MeshPhysicalMaterial({ color: 0xe0a84a, metalness: 0.9, roughness: 0.16, clearcoat: 1, emissive: 0x3a2306 });
+    const bubble = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.04, clearcoat: 1, transparent: true, opacity: 0.14, depthWrite: false });
+    const lamp = new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0xfff1c4, emissiveIntensity: 1.3 });
+    const lens = new THREE.MeshStandardMaterial({ color: 0x0b0e12, roughness: 0.1, metalness: 0.8 });
     const screen = new THREE.MeshStandardMaterial({ color: 0x0d1410, emissive: 0x4fbf6a, emissiveIntensity: 0.6 });
     const mesh = (geo: THREE.BufferGeometry, mat: THREE.Material, x = 0, y = 0, z = 0, parent: THREE.Object3D = this.body) => {
       const m = new THREE.Mesh(geo, mat);
@@ -47,93 +193,132 @@ export class Astronaut {
       parent.add(m);
       return m;
     };
-    /** a limb segment: tapered tube with a ribbed bellows joint at its top */
-    const segment = (parent: THREE.Object3D, rTop: number, rBot: number, len: number, mat: THREE.Material) => {
-      mesh(new THREE.CylinderGeometry(rTop, rBot, len, 14), mat, 0, -len / 2, 0, parent);
-      for (let i = 0; i < 3; i++) mesh(new THREE.TorusGeometry(rTop * 1.02, 0.012, 6, 16).rotateX(Math.PI / 2), soft, 0, -0.03 - i * 0.03, 0, parent);
+    const ring = (r: number, t: number, mat: THREE.Material, y: number, parent: THREE.Object3D) => mesh(new THREE.TorusGeometry(r, t, 8, 24).rotateX(Math.PI / 2), mat, 0, y, 0, parent);
+    /** a limb segment: a tapered fabric tube, ribbed where it bends */
+    const segment = (parent: THREE.Object3D, rTop: number, rBot: number, len: number, mat: THREE.Material, ribs = 3) => {
+      mesh(new THREE.CylinderGeometry(rTop, rBot, len, 18, 4), mat, 0, -len / 2, 0, parent);
+      for (let i = 0; i < ribs; i++) ring(rTop * 1.03, 0.013, soft, -0.035 - i * 0.032, parent);
     };
     this.root.add(this.body);
 
-    // legs: hip bearing → thigh → knee → lower leg → boot with a thick sole
+    // ---- legs: hip bearing → thigh (ID stripe) → knee → lower leg → ankle → boot with a lugged sole
     for (const side of [-1, 1]) {
       const hip = new THREE.Group();
       hip.position.set(side * 0.12, 0.92, 0);
-      mesh(new THREE.SphereGeometry(0.115, 14, 10), soft, 0, 0, 0, hip);
-      segment(hip, 0.11, 0.095, 0.42, suit);
+      mesh(new THREE.SphereGeometry(0.125, 16, 12), soft, 0, 0, 0, hip);
+      ring(0.115, 0.02, metal, -0.06, hip); // hip bearing
+      segment(hip, 0.12, 0.1, 0.42, suit, 2);
+      ring(0.113, 0.02, stripe, -0.22, hip); // EV identification stripe
       const knee = new THREE.Group();
       knee.position.y = -0.44;
-      mesh(new THREE.SphereGeometry(0.1, 12, 10), soft, 0, 0, 0, knee);
-      segment(knee, 0.095, 0.085, 0.36, suit);
-      mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 14), metal, 0, -0.36, 0, knee); // ankle bearing
-      const boot = mesh(roundedBox(0.17, 0.13, 0.32, 0.05), hard, 0, -0.43, -0.055, knee);
-      mesh(roundedBox(0.18, 0.04, 0.33, 0.015), dark, 0, -0.065, 0, boot);
+      mesh(new THREE.SphereGeometry(0.108, 14, 10), soft, 0, 0, 0, knee);
+      mesh(new THREE.SphereGeometry(0.075, 12, 8), hard, 0, 0.01, -0.07, knee).scale.set(1, 1.1, 0.6); // knee pad
+      segment(knee, 0.1, 0.09, 0.34, lower, 3);
+      ring(0.095, 0.018, metal, -0.34, knee); // ankle bearing
+      const boot = new THREE.Group();
+      boot.position.set(0, -0.43, 0);
+      knee.add(boot);
+      mesh(roundedBox(0.19, 0.15, 0.34, 0.06), lower, 0, 0.02, -0.05, boot);
+      mesh(roundedBox(0.17, 0.11, 0.14, 0.04), hard, 0, 0.08, 0.04, boot); // heel cup
+      mesh(roundedBox(0.2, 0.045, 0.36, 0.018), dark, 0, -0.06, -0.05, boot); // sole
+      for (let i = 0; i < 6; i++) mesh(new THREE.BoxGeometry(0.19, 0.02, 0.025), dark, 0, -0.09, 0.1 - i * 0.055, boot); // lugs
       hip.add(knee);
       this.body.add(hip);
       this.legs.push({ pivot: hip, knee });
     }
-    // brief and waist: a soft lower torso, a metal waist bearing
-    mesh(new THREE.SphereGeometry(0.21, 16, 12), suit, 0, 0.95, 0).scale.set(1.18, 0.8, 0.9);
-    mesh(new THREE.TorusGeometry(0.2, 0.025, 8, 24).rotateX(Math.PI / 2), metal, 0, 1.06, 0);
-    // hard upper torso: a lathe-turned shell, wider at the shoulders
+    // ---- brief and waist: soft lower torso, a metal waist bearing, the hard upper torso above
+    mesh(new THREE.CapsuleGeometry(0.2, 0.1, 6, 16), suit, 0, 0.98, 0).scale.set(1.2, 1, 0.92);
+    ring(0.205, 0.026, metal, 1.08, this.body);
     const hut = new THREE.LatheGeometry([
-      new THREE.Vector2(0.19, 0), new THREE.Vector2(0.22, 0.08), new THREE.Vector2(0.25, 0.22), new THREE.Vector2(0.27, 0.34),
-      new THREE.Vector2(0.24, 0.43), new THREE.Vector2(0.14, 0.49), new THREE.Vector2(0.1, 0.5),
-    ], 24);
-    mesh(hut, hard, 0, 1.06, 0).scale.set(1.12, 1, 0.82);
-    mesh(new THREE.BoxGeometry(0.5, 0.05, 0.02), stripe, 0, 1.36, -0.205); // chest band
-    // display and control module on the chest
-    const dcm = mesh(roundedBox(0.3, 0.15, 0.1, 0.03), hard, 0, 1.2, -0.27);
-    mesh(new THREE.PlaneGeometry(0.16, 0.07), screen, -0.04, 0.02, -0.052, dcm).rotation.y = Math.PI;
-    for (const x of [0.08, 0.11]) mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.02, 8).rotateX(Math.PI / 2), dark, x, 0.02, -0.055, dcm);
-    // portable life-support system (backpack) with an antenna and a stripe
-    const pack = mesh(roundedBox(0.48, 0.62, 0.24, 0.06), hard, 0, 1.3, 0.3);
-    mesh(new THREE.BoxGeometry(0.49, 0.05, 0.245), stripe, 0, 0.2, 0, pack);
-    mesh(roundedBox(0.36, 0.14, 0.06, 0.02), dark, 0, -0.16, 0.13, pack);
-    mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.38, 6), metal, 0.18, 0.47, 0.05, pack);
-    // neck ring and helmet: a clear bubble over the head, a gold sun visor half down, two lamps
-    // (the helmet is its own group: in the visor view the camera is inside it, so it is hidden there)
+      new THREE.Vector2(0.2, 0), new THREE.Vector2(0.23, 0.07), new THREE.Vector2(0.26, 0.2), new THREE.Vector2(0.285, 0.32),
+      new THREE.Vector2(0.27, 0.4), new THREE.Vector2(0.2, 0.47), new THREE.Vector2(0.13, 0.5), new THREE.Vector2(0.11, 0.51),
+    ], 28);
+    mesh(hut, hard, 0, 1.08, 0).scale.set(1.15, 1, 0.84);
+    mesh(new THREE.BoxGeometry(0.52, 0.045, 0.02), stripe, 0, 1.38, -0.215); // chest band
+    // display and control module, with hoses running back to the pack
+    const dcm = mesh(roundedBox(0.32, 0.16, 0.11, 0.035), hard, 0, 1.2, -0.285);
+    mesh(new THREE.PlaneGeometry(0.17, 0.075), screen, -0.045, 0.02, -0.057, dcm).rotation.y = Math.PI;
+    for (const [x, c] of [[0.085, dark], [0.12, metal]] as const) mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.025, 10).rotateX(Math.PI / 2), c, x, 0.025, -0.06, dcm);
+    for (const side of [-1, 1]) {
+      const hose = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(side * 0.16, 1.17, -0.27), new THREE.Vector3(side * 0.3, 1.1, -0.18),
+        new THREE.Vector3(side * 0.33, 1.12, 0.05), new THREE.Vector3(side * 0.22, 1.2, 0.22),
+      ]);
+      mesh(new THREE.TubeGeometry(hose, 20, 0.018, 8), dark);
+    }
+    // ---- life-support pack: shell, lid, lower shroud, handles, vents, rear lights, antenna
+    const pack = new THREE.Group();
+    pack.position.set(0, 1.3, 0.32);
+    this.body.add(pack);
+    mesh(roundedBox(0.5, 0.64, 0.26, 0.07), hard, 0, 0, 0, pack);
+    mesh(roundedBox(0.46, 0.08, 0.24, 0.03), hard, 0, 0.35, -0.01, pack);
+    mesh(roundedBox(0.44, 0.16, 0.2, 0.05), suit, 0, -0.39, -0.02, pack);
+    mesh(new THREE.BoxGeometry(0.51, 0.045, 0.265), stripe, 0, 0.2, 0, pack);
+    for (let i = 0; i < 5; i++) mesh(new THREE.BoxGeometry(0.3, 0.012, 0.01), dark, 0, -0.08 - i * 0.035, 0.133, pack); // vent
+    for (const side of [-1, 1]) {
+      const handle = mesh(new THREE.TorusGeometry(0.06, 0.012, 6, 12, Math.PI), metal, side * 0.255, 0.12, 0, pack);
+      handle.rotation.set(0, side * Math.PI / 2, Math.PI / 2);
+      mesh(new THREE.CircleGeometry(0.018, 10), lamp, side * 0.17, 0.28, 0.132, pack);
+    }
+    mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.42, 6), metal, 0.19, 0.55, 0.06, pack);
+    mesh(new THREE.SphereGeometry(0.016, 8, 6), dark, 0.19, 0.77, 0.06, pack);
+
+    // ---- helmet (its own group: hidden in the visor view, where the camera is inside it)
     const hm = this.helmet;
     this.body.add(hm);
-    mesh(new THREE.TorusGeometry(0.15, 0.03, 8, 24).rotateX(Math.PI / 2), metal, 0, 1.57, 0, hm);
+    ring(0.155, 0.032, metal, 1.585, hm); // neck ring
     mesh(new THREE.SphereGeometry(0.11, 14, 12), dark, 0, 1.69, 0.01, hm); // head and comms cap inside
-    const shell = mesh(new THREE.SphereGeometry(0.2, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.62), hard, 0, 1.69, 0.015, hm);
-    shell.rotation.x = 0.55; // covers the back and top, open at the face
-    const visor = mesh(new THREE.SphereGeometry(0.195, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.42), gold, 0, 1.69, 0, hm);
+    const shell = mesh(new THREE.SphereGeometry(0.205, 26, 18, 0, Math.PI * 2, 0, Math.PI * 0.6), hard, 0, 1.69, 0.02, hm);
+    shell.rotation.x = 0.6; // covers the back and top, open at the face
+    const visor = mesh(new THREE.SphereGeometry(0.198, 26, 16, 0, Math.PI * 2, 0, Math.PI * 0.42), gold, 0, 1.69, 0, hm);
     visor.rotation.x = -1.1;
-    mesh(new THREE.SphereGeometry(0.19, 22, 16), bubble, 0, 1.69, 0, hm);
+    mesh(new THREE.SphereGeometry(0.19, 26, 18), bubble, 0, 1.69, 0, hm);
+    mesh(new THREE.BoxGeometry(0.03, 0.05, 0.3), hard, 0, 1.9, 0.03, hm); // crest rail
     for (const side of [-1, 1]) {
-      const lampBox = mesh(roundedBox(0.05, 0.05, 0.08, 0.015), hard, side * 0.2, 1.76, -0.02, hm);
-      mesh(new THREE.CircleGeometry(0.018, 12), lamp, 0, 0, -0.041, lampBox).rotation.y = Math.PI;
+      const box = mesh(roundedBox(0.055, 0.06, 0.1, 0.018), hard, side * 0.205, 1.76, -0.02, hm);
+      mesh(new THREE.CircleGeometry(0.02, 14), lamp, 0, 0.005, -0.051, box).rotation.y = Math.PI;
+      if (side > 0) mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.03, 10).rotateX(Math.PI / 2), lens, 0, -0.022, -0.055, box); // camera
     }
-    // arms: shoulder bearing → upper arm → elbow → forearm → wrist ring → glove
+
+    // ---- arms: shoulder bearing → upper arm (stripe) → elbow → forearm (wrist checklist) → wrist ring → glove
     for (const side of [-1, 1]) {
       const sh = new THREE.Group();
-      sh.position.set(side * 0.33, 1.42, 0);
-      mesh(new THREE.SphereGeometry(0.105, 12, 10), soft, 0, 0, 0, sh);
-      segment(sh, 0.085, 0.075, 0.3, suit);
+      sh.position.set(side * 0.34, 1.42, 0);
+      mesh(new THREE.SphereGeometry(0.115, 14, 10), soft, 0, 0, 0, sh);
+      const bearing = mesh(new THREE.TorusGeometry(0.1, 0.022, 8, 22), metal, side * 0.035, 0, 0, sh);
+      bearing.rotation.y = Math.PI / 2;
+      segment(sh, 0.095, 0.082, 0.3, suit, 2);
+      ring(0.09, 0.016, stripe, -0.16, sh);
       const elbow = new THREE.Group();
       elbow.position.y = -0.32;
-      mesh(new THREE.SphereGeometry(0.075, 10, 8), soft, 0, 0, 0, elbow);
-      segment(elbow, 0.072, 0.06, 0.26, suit);
-      mesh(new THREE.TorusGeometry(0.062, 0.016, 8, 16).rotateX(Math.PI / 2), metal, 0, -0.27, 0, elbow);
-      const glove = mesh(roundedBox(0.09, 0.13, 0.06, 0.025), dark, 0, -0.35, -0.01, elbow);
-      mesh(roundedBox(0.03, 0.06, 0.03, 0.012), dark, side * -0.05, 0.02, -0.02, glove);
+      mesh(new THREE.SphereGeometry(0.083, 12, 10), soft, 0, 0, 0, elbow);
+      segment(elbow, 0.078, 0.066, 0.25, suit, 3);
+      ring(0.07, 0.022, metal, -0.265, elbow); // wrist disconnect
+      if (side < 0) mesh(roundedBox(0.09, 0.11, 0.03, 0.01), hard, 0.0, -0.14, -0.075, elbow); // cuff checklist
+      const hand = new THREE.Group();
+      hand.position.y = -0.3;
+      elbow.add(hand);
+      mesh(new THREE.CylinderGeometry(0.066, 0.06, 0.06, 14), glove, 0, 0, 0, hand); // gauntlet
+      mesh(roundedBox(0.1, 0.1, 0.05, 0.02), glove, 0, -0.08, -0.005, hand); // palm
+      for (let f = 0; f < 4; f++) {
+        const finger = mesh(new THREE.CapsuleGeometry(0.0125, 0.055, 3, 6), glove, -0.034 + f * 0.023, -0.155, -0.012, hand);
+        finger.rotation.x = 0.35; // gloves are stiff: the fingers stay a little curled
+      }
+      const thumb = mesh(new THREE.CapsuleGeometry(0.014, 0.045, 3, 6), glove, side * -0.055, -0.07, -0.025, hand);
+      thumb.rotation.z = side * -0.6;
       sh.add(elbow);
       this.body.add(sh);
       this.arms.push({ pivot: sh, knee: elbow });
     }
-    this.root.traverse((o) => {
-      if (o instanceof THREE.Mesh) o.castShadow = false;
-    });
 
-    // map marker: a fern ring that keeps a readable size from far away
+    // ---- map marker: a fern ring that keeps a readable size from far away
     this.marker = new THREE.Group();
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.25, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xc6f432, transparent: true, opacity: 0.95, depthTest: false, fog: false }));
+    const ringM = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.25, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xc6f432, transparent: true, opacity: 0.95, depthTest: false, fog: false }));
     const dot = new THREE.Mesh(new THREE.CircleGeometry(0.5, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xc6f432, transparent: true, opacity: 0.5, depthTest: false, fog: false }));
     const nose = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.9, 3).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xc6f432, depthTest: false, fog: false }));
     nose.position.set(0, 0, -1.6);
-    for (const m of [ring, dot, nose]) m.renderOrder = 30;
-    this.marker.add(ring, dot, nose);
+    for (const m of [ringM, dot, nose]) m.renderOrder = 30;
+    this.marker.add(ringM, dot, nose);
     this.marker.visible = false;
   }
 
@@ -142,16 +327,181 @@ export class Astronaut {
     return this.marker;
   }
 
+  /** How much a fall or slide poses the body (0 … 1): the visor camera follows the head by this much. */
+  get poseWeight(): number {
+    return this.overW;
+  }
+
   /**
    * Pose the suit from the physics: legs swing with the stride phase, both legs tuck in a bound,
-   * knees soak up a landing, the body leans into acceleration, and a fall lays it on the ground.
+   * knees soak up a landing, the body leans into acceleration.  Falls and slides are laid over that.
    */
   update(s: WalkerState, at: V3, dt: number, landed: number, showMarker: boolean): void {
-    this.root.position.copy(at);
-    this.root.rotation.y = -s.heading;
     this.marker.position.copy(at).y += 0.05;
     this.marker.rotation.y = -s.heading;
     this.marker.visible = showMarker;
+    this.animate(s, at, dt, landed);
+    let over = 0;
+
+    // a fall: the body topples until it really meets the ground (hands first, the belly on a steep drop),
+    // settles onto the terrain and tilts with it, slides on down if the ground is too steep to rest on,
+    // and only then gets up — all timed against the walker's clock
+    if (s.gait === "down") {
+      if (!this.topple) this.topple = { th: 0.12, om: Math.min(1.2, Math.hypot(s.vx, s.vy) / 0.3) * 0.35, contactT: null, thC: 0 };
+      const t = this.topple;
+      const L = 1.0; // centre of mass above the feet (m)
+      let pose: Pose;
+      let align = 0;
+      if (t.contactT === null) {
+        t.om += (this.g / L) * Math.sin(t.th) * dt;
+        t.th += t.om * dt;
+        pose = toppleAt(t.th);
+      } else {
+        t.contactT += dt;
+        this.proneW += Math.sign((s.sliding ? 1 : 0) - this.proneW) * Math.min(Math.abs((s.sliding ? 1 : 0) - this.proneW), dt / 0.5);
+        const rest = lerpPose(ALL_FOURS, PRONE, this.proneW);
+        const k = Math.min(1, t.contactT / 0.4);
+        pose = lerpPose(toppleAt(t.thC), rest, k);
+        align = ease(k);
+        const u = 4.2 - s.downT; // the last 4.2 s of being down are the get-up
+        if (u > 0 && !s.sliding) {
+          pose = getUp(u, rest);
+          align = 1 - ease(Math.max(0, Math.min(1, (u - 1.3) / 1.4)));
+        }
+      }
+      this.applyPose(pose, 1);
+      this.alignToGround(align);
+      const hands = this.settle();
+      if (t.contactT === null && (hands <= 0.02 || t.th >= 1.55)) {
+        t.contactT = 0;
+        t.thC = t.th;
+      }
+      over = 1;
+    } else if (this.topple) {
+      this.topple = null;
+      this.proneW = 0;
+    }
+
+    // a slide: seated, feet first downhill, leaning back on the hands
+    const goal = s.gait === "slide" ? 1 : 0;
+    this.slideW += Math.sign(goal - this.slideW) * Math.min(Math.abs(goal - this.slideW), dt / (goal ? 0.6 : 1.4));
+    if (this.slideW > 0.001 && s.gait !== "down") {
+      const k = this.slideW * this.slideW * (3 - 2 * this.slideW);
+      this.applyPose(slidePose(s.slopeDeg), k);
+      over = Math.max(over, k);
+    }
+
+    // actions: kneel to take a sample; reach for the suitport's hatch
+    const want = this.action && s.gait !== "down" && s.gait !== "slide" ? 1 : 0;
+    if (this.action) {
+      this.actionKind = this.action.kind;
+      this.actionP = this.action.progress;
+    }
+    this.actionW += Math.sign(want - this.actionW) * Math.min(Math.abs(want - this.actionW), dt / 0.45);
+    if (this.actionW > 0.001) {
+      const k = ease(this.actionW);
+      this.applyPose(this.actionKind === "sample" ? samplePose(this.actionP) : boardPose(this.actionP), k);
+      if (this.actionKind === "sample") this.settle(k);
+      over = Math.max(over, this.actionKind === "sample" ? k * 0.6 : 0);
+    }
+    this.overW = over;
+    this.smoothJoints(at, dt);
+  }
+
+  /** What the hands are doing at a stop or the rover (null: nothing); `progress` 0 … 1 of the hold. */
+  setAction(kind: "sample" | "board" | null, progress = 0): void {
+    this.action = kind ? { kind, progress } : null;
+  }
+
+  /**
+   * Ease every joint from where it was toward where this frame's pose puts it (a time constant of
+   * ~70 ms: quick enough for the stride, slow enough that a change of state never snaps).
+   */
+  private smoothJoints(at: V3, dt: number): void {
+    const objs = [this.root, this.body, ...this.legs.flatMap((j) => [j.pivot, j.knee]), ...this.arms.flatMap((j) => [j.pivot, j.knee])];
+    const k = 1 - Math.exp(-dt * 14);
+    const off = this.root.position.y - at.y;
+    if (!this.smoothInit) {
+      for (const o of objs) {
+        this.smoothQ.set(o, o.quaternion.clone());
+        this.smoothP.set(o, o.position.clone());
+      }
+      this.offY = off;
+      this.smoothInit = true;
+      return;
+    }
+    for (const o of objs) {
+      const q = this.smoothQ.get(o)!;
+      q.slerp(o.quaternion, k);
+      o.quaternion.copy(q);
+      if (o !== this.root) {
+        const p = this.smoothP.get(o)!;
+        p.lerp(o.position, k);
+        o.position.copy(p);
+      }
+    }
+    this.offY += (off - this.offY) * k;
+    this.root.position.y = at.y + this.offY;
+  }
+
+  /** Tilt the whole body (about the feet) to the slope under it, by `a` (0 upright … 1 on the slope). */
+  private alignToGround(a: number): void {
+    if (a <= 0.001) return;
+    this.root.updateMatrixWorld(true);
+    const c = this.body.localToWorld(new THREE.Vector3(0, 0.6, -0.5));
+    const e = 0.6;
+    const dx = (this.groundAt(c.x + e, c.z) - this.groundAt(c.x - e, c.z)) / (2 * e);
+    const dz = (this.groundAt(c.x, c.z + e) - this.groundAt(c.x, c.z - e)) / (2 * e);
+    const n = new THREE.Vector3(-dx, 1, -dz).normalize();
+    const tilt = new THREE.Quaternion().setFromUnitVectors(UP, n);
+    this.root.quaternion.premultiply(new THREE.Quaternion().slerp(tilt, a));
+  }
+
+  /**
+   * Rest the body on the terrain: whichever contact point (fingertips, knees, toes, heels, elbows, chest,
+   * helmet, pack) is lowest relative to the ground under it decides the height, so nothing floats and
+   * nothing sinks.  Returns how far the hands are above the ground afterwards (m).
+   */
+  private settle(weight = 1): number {
+    this.root.updateMatrixWorld(true);
+    const pts: [THREE.Object3D, number, number, number, boolean][] = [];
+    for (const a of this.arms) pts.push([a.knee, 0, -0.47, 0, true], [a.knee, 0, 0, 0.06, false]);
+    for (const l of this.legs) pts.push([l.knee, 0, 0.01, -0.12, false], [l.knee, 0, -0.51, -0.2, false], [l.knee, 0, -0.51, 0.1, false]);
+    pts.push([this.body, 0, 1.25, -0.34, false], [this.body, 0, 1.7, -0.21, false], [this.body, 0, 1.55, 0.47, false], [this.body, 0, 0.82, 0.12, false]);
+    let low = Infinity;
+    let hand = Infinity;
+    const v = new THREE.Vector3();
+    for (const [o, x, y, z, isHand] of pts) {
+      o.localToWorld(v.set(x, y, z));
+      const clear = v.y - this.groundAt(v.x, v.z);
+      low = Math.min(low, clear);
+      if (isHand) hand = Math.min(hand, clear);
+    }
+    if (Number.isFinite(low)) this.root.position.y -= low * weight;
+    return hand - low;
+  }
+
+  /** Blend the current joint angles toward a pose by `w`. */
+  private applyPose(p: Pose, w: number): void {
+    const mix = (a: number, b: number) => a + (b - a) * w;
+    this.lean = mix(this.lean, p.lean);
+    this.body.rotation.set(-this.lean, 0, 0);
+    this.body.position.set(0, mix(this.body.position.y, p.lift), 0);
+    this.legs.forEach((l, i) => {
+      l.pivot.rotation.x = mix(l.pivot.rotation.x, p.hip[i]);
+      l.knee.rotation.x = mix(l.knee.rotation.x, p.knee[i]);
+    });
+    this.arms.forEach((a, i) => {
+      a.pivot.rotation.x = mix(a.pivot.rotation.x, p.sh[i]);
+      a.pivot.rotation.z = mix(a.pivot.rotation.z, (i === 0 ? -1 : 1) * p.shZ);
+      a.knee.rotation.x = mix(a.knee.rotation.x, p.elb[i]);
+    });
+  }
+
+  /** The walking animation. */
+  private animate(s: WalkerState, at: V3, dt: number, landed: number): void {
+    this.root.position.copy(at);
+    this.root.rotation.set(0, -s.heading, 0);
     if (landed > 0) this.landDip = Math.min(0.22, landed * 0.06);
     this.landDip = Math.max(0, this.landDip - dt * 0.6);
 
@@ -164,6 +514,25 @@ export class Astronaut {
     let arm = 0;
     let crouch = this.landDip;
     const k = Math.min(1, speed / 0.9);
+    // breathing: a slow rise and fall of the chest, the arms drifting with it
+    this.breath += dt * ((14 + Math.min(30, Math.max(0, s.effortW - 100) * 0.045)) / 60) * Math.PI * 2;
+    const br = Math.sin(this.breath);
+    // turning on the spot: small shuffling steps
+    let dh = this.lastHeading === null ? 0 : s.heading - this.lastHeading;
+    dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+    this.lastHeading = s.heading;
+    const turning = s.gait === "stand" && Math.abs(dh) / Math.max(dt, 1e-3) > 0.5;
+    if (s.gait === "stand") {
+      // keep stepping while turning; when the turn stops, finish the step under way, then stand
+      if (turning || Math.abs(Math.sin(this.turnPhase)) > 0.08) this.turnPhase += dt * 7;
+      else this.turnPhase = 0;
+      hipA = Math.sin(this.turnPhase) * 0.16;
+      hipB = -hipA;
+      kneeA = Math.max(0, Math.sin(this.turnPhase - 0.9)) * 0.3;
+      kneeB = Math.max(0, Math.sin(this.turnPhase + Math.PI - 0.9)) * 0.3;
+      arm = 0.03 * br;
+      crouch += 0.006 * (1 + br);
+    }
     if (s.gait === "walk") {
       hipA = Math.sin(ph) * 0.42 * k;
       hipB = -hipA;
@@ -173,72 +542,73 @@ export class Astronaut {
     } else if (s.gait === "air" || s.gait === "lope") {
       // a bound: lead leg forward, trailing leg back, knees bent; tucked tighter in a jump
       const jump = s.air?.jump ?? false;
-      const tuck = jump ? 0.75 : 0.45;
-      const stride = jump ? 0.15 : 0.38 * Math.min(1, speed / 1.6);
+      // rising: legs tucked; coming down: legs reach for the ground, arms out for balance
+      const falling = s.gait === "air" && s.vz < 0;
+      const tuck = (jump ? 0.75 : 0.45) * (falling ? 0.45 : 1);
+      const stride = jump ? (falling ? 0.28 : 0.15) : 0.38 * Math.min(1, speed / 1.6);
       hipA = stride;
-      hipB = -stride * 0.6;
+      hipB = -stride * 0.6 + (falling && jump ? 0.2 : 0);
       kneeA = tuck;
       kneeB = tuck * 1.2;
-      arm = jump ? -0.5 : 0.25;
+      arm = jump ? (falling ? -0.15 : -0.5) : 0.25;
       if (s.gait === "lope") crouch += 0.06;
-    } else if (s.gait === "slide") {
-      hipA = 0.5;
-      hipB = 0.3;
-      kneeA = 0.8;
-      kneeB = 0.9;
-      crouch += 0.2;
-      arm = -0.7;
     }
     const legs: [number, number][] = [[hipA, kneeA], [hipB, kneeB]];
     this.legs.forEach((l, i) => {
-      l.pivot.rotation.x = -legs[i][0] + legs[i][1] * 0.35;
-      l.knee!.rotation.x = -legs[i][1]; // knees bend backward
+      l.pivot.rotation.set(legs[i][0] + legs[i][1] * 0.35, 0, 0);
+      l.knee.rotation.set(-legs[i][1], 0, 0); // knees bend backward
     });
     this.arms.forEach((a, i) => {
-      if (this.fp && s.gait !== "down") {
+      if (this.fp) {
         // seen from inside the helmet: a pressurised suit holds the arms a little forward and out, so
         // the gloves come into view at the bottom when you glance down; they still swing with the stride
-        a.pivot.rotation.x = 0.45 + (i === 0 ? arm : -arm) * 0.35;
-        a.pivot.rotation.z = (i === 0 ? -1 : 1) * 0.22;
-        a.knee!.rotation.x = 0.95;
+        a.pivot.rotation.set(0.45 + (i === 0 ? arm : -arm) * 0.35, 0, (i === 0 ? -1 : 1) * 0.22);
+        a.knee.rotation.set(0.95, 0, 0);
         return;
       }
-      a.pivot.rotation.x = i === 0 ? arm : -arm;
-      a.pivot.rotation.z = (i === 0 ? -1 : 1) * (s.gait === "air" ? 0.35 : 0.12);
-      a.knee!.rotation.x = 0.35 + Math.abs(arm) * 0.4; // elbows bend forward
+      a.pivot.rotation.set(i === 0 ? arm : -arm, 0, (i === 0 ? -1 : 1) * (s.gait === "air" ? 0.35 : 0.12));
+      a.knee.rotation.set(0.35 + Math.abs(arm) * 0.4, 0, 0); // elbows bend forward
     });
-    // lean into the motion; flat on the ground after a fall
-    const leanGoal = s.gait === "down" ? -1.35 : s.gait === "lope" || s.gait === "air" ? 0.22 * Math.min(1, speed / 2) : 0.08 * k;
-    this.lean += (leanGoal - this.lean) * Math.min(1, dt * (s.gait === "down" ? 6 : 4));
-    this.body.rotation.x = -this.lean;
-    this.body.position.y = -crouch * (s.gait === "down" ? 0 : 1) + (s.gait === "down" ? 0.25 : 0);
+    const leanGoal = (s.gait === "lope" || s.gait === "air" ? 0.22 * Math.min(1, speed / 2) : 0.08 * k) + (s.gait === "stand" ? 0.012 * br : 0);
+    this.lean += (leanGoal - this.lean) * Math.min(1, dt * 4);
+    this.body.rotation.set(-this.lean, 0, 0);
+    this.body.position.set(0, -crouch, 0);
   }
 
   /** Mars dust clings to the suit: a little with every step, a lot from a fall or a slide (0 clean … 1 caked). */
   addDust(amount: number): void {
     this.dust = Math.min(1, this.dust + amount);
-    this.suitMat.color.copy(Astronaut.CLEAN).lerp(Astronaut.DUSTY, this.dust * 0.75);
+    this.suitMat.color.copy(Astronaut.CLEAN).lerp(Astronaut.DUSTY, this.dust * 0.6);
+    this.bootMat.color.copy(Astronaut.CLEAN).lerp(Astronaut.DUSTY, Math.min(1, this.dust * 1.6 + 0.08));
   }
 
-  /** Visor view: the camera is inside the helmet, so the helmet is hidden; the rest of the body stays. */
+  /** Visor view: the camera is inside the helmet; only the arms stay in view. */
   firstPerson(on: boolean): void {
     this.fp = on;
-    // from inside the helmet only the arms are in view: the torso, pack and legs would surround the
-    // camera (a real suit hides them too — the helmet is fixed and you cannot look down at your chest)
+    // the torso, pack and legs would surround the camera (a real suit hides them too — the helmet is
+    // fixed and you cannot look down at your chest)
     const arms = new Set<THREE.Object3D>(this.arms.map((a) => a.pivot));
     for (const c of this.body.children) c.visible = !on || arms.has(c);
   }
-  private fp = false;
 
-  /** Where the eyes are (world), following the body's lean, crouch and falls. */
+  /** Where the eyes are (world), following the body's lean, crouch, falls and tumbles. */
   eyeWorld(out = new THREE.Vector3()): THREE.Vector3 {
     this.root.updateMatrixWorld(true);
     return this.body.localToWorld(out.set(0, 1.71, -0.1));
   }
 
-  /** Eye height above the feet this frame (crouches and falls lower it). */
-  eyeHeight(): number {
-    return 1.67 - this.landDip * 0.9 + (this.lean < -0.5 ? -1.1 : 0);
+  /** The middle of the body (world): what the 3D camera looks at, standing, fallen or sliding. */
+  centreWorld(out = new THREE.Vector3()): THREE.Vector3 {
+    this.root.updateMatrixWorld(true);
+    return this.body.localToWorld(out.set(0, 1.1, 0));
+  }
+
+  /** Which way the face points (world): for the visor camera while tumbling. */
+  faceWorld(out = new THREE.Vector3()): THREE.Vector3 {
+    this.root.updateMatrixWorld(true);
+    const q = new THREE.Quaternion();
+    this.body.getWorldQuaternion(q);
+    return out.set(0, -0.25, -1).normalize().applyQuaternion(q);
   }
 }
 

@@ -52,7 +52,7 @@ export const MARS_WALKER: WalkerConfig = {
   stanceS: 0.14,
   hardLandingMs: 2.6,
   fallMs: 4.2,
-  getUpS: 3,
+  getUpS: 7,
 };
 
 export const WALKER_NOTES: { label: string; value: string; basis: string }[] = [
@@ -64,7 +64,8 @@ export const WALKER_NOTES: { label: string; value: string; basis: string }[] = [
   { label: "Boot friction", value: "μ 0.6 firm, 0.42 sand", basis: "Assumption (dry granular soil)" },
   { label: "Jump take-off", value: "1.6 m/s", basis: "Assumption: a suited, loaded jump" },
   { label: "Lope bound", value: "0.8 m/s up, 2.2 m/s top speed", basis: "Assumption, after the Apollo crews' bounding gait" },
-  { label: "Falls", value: "impact over 4.2 m/s", basis: "Assumption; getting up takes 3 s" },
+  { label: "Falls", value: "impact over 4.2 m/s", basis: "Assumption. The body topples like an inverted pendulum (centre of mass 1.0 m up): about 1.6× slower in Mars gravity than on Earth" },
+  { label: "Getting up", value: "about 7 s", basis: "Assumption: sit back on the heels, one knee up, push to stand — the stiff pressurised suit allows little else (Apollo crews often needed several tries)" },
   { label: "Heart rate", value: "62 + 0.2 bpm per W over rest", basis: "Assumption, for the display only" },
   { label: "Air drag", value: "none", basis: "Mars air is ~0.02 kg/m³: under 0.05 N at a lope" },
 ];
@@ -110,6 +111,8 @@ export interface WalkerState {
   air: { t: number; z0: number; peak: number; x0: number; y0: number; jump: boolean } | null;
   /** last lope or jump: lets the gait show "lope" while bounding */
   bounding: boolean;
+  /** down, and still sliding toward steadier ground (the get-up waits for it) */
+  sliding: boolean;
   steps: number;
   distM: number;
   climbM: number;
@@ -135,7 +138,7 @@ export type WalkEvent =
 
 export function newWalker(x: number, y: number, z: number, heading = 0): WalkerState {
   return {
-    x, y, z, vx: 0, vy: 0, vz: 0, grounded: true, gait: "stand", heading, phase: 0, foot: 0, stanceT: 0, downT: 0, air: null, bounding: false,
+    x, y, z, vx: 0, vy: 0, vz: 0, grounded: true, gait: "stand", heading, phase: 0, foot: 0, stanceT: 0, downT: 0, air: null, bounding: false, sliding: false,
     steps: 0, distM: 0, climbM: 0, energyJ: 0, o2L: 0, powerW: 100, effortW: 100, slopeDeg: 0, sand: 0, maxJumpM: 0, maxAirS: 0, t: 0,
   };
 }
@@ -153,6 +156,23 @@ export function jumpOf(v: number, g: number): { heightM: number; airS: number } 
 /** Speed of a fall from `h` metres. */
 export function impactFrom(h: number, g: number): number {
   return Math.sqrt(2 * g * Math.max(0, h));
+}
+
+/**
+ * Time to topple from nearly upright to hands-and-knees: an inverted pendulum (θ'' = g/L · sin θ) from
+ * `theta0` to `thetaEnd` radians, with an initial spin `omega0` (rad/s).  Mars gravity makes it slower.
+ */
+export function toppleTime(g: number, comM = 1.0, theta0 = 0.12, thetaEnd = 1.0, omega0 = 0.3): number {
+  let th = theta0;
+  let om = omega0;
+  let t = 0;
+  const h = 1 / 1000;
+  while (th < thetaEnd && t < 10) {
+    om += (g / comM) * Math.sin(th) * h;
+    th += om * h;
+    t += h;
+  }
+  return t;
 }
 
 /** Natural step rate of a leg swinging as a pendulum, scaled to human cadence (steps/s). */
@@ -212,12 +232,29 @@ function tick(s: WalkerState, input: WalkInput, jump: boolean, ground: Ground, d
   if (s.grounded) {
     const speed = Math.hypot(s.vx, s.vy);
     if (s.downT > 0) {
-      // knocked down: friction stops the body, then the slow climb back up
+      // knocked down.  On ground steeper than the suit's grip (friction angle) the body keeps sliding
+      // downhill; only on steady ground does friction stop it and the slow climb back up begin.
       s.gait = "down";
-      s.downT -= dt;
-      const k = Math.max(0, 1 - dt * 4);
-      s.vx *= k;
-      s.vy *= k;
+      const muBody = mu * 0.85; // a suit on its front grips a little less than boots
+      const sp = Math.hypot(s.vx, s.vy);
+      s.sliding = gradLen > muBody || (sp > 0.25 && gradLen > muBody * 0.6);
+      if (gradLen > 1e-6 && gradLen > muBody) {
+        const sin = Math.sin(slope);
+        const a = g * (sin - muBody * cos) * cos;
+        s.vx += (-gx / gradLen) * a * dt;
+        s.vy += (-gy / gradLen) * a * dt;
+      } else {
+        // kinetic friction brings it to rest (μ·g·cos θ), then the timer runs
+        const stop = muBody * g * cos * dt;
+        if (sp <= stop) {
+          s.vx = 0;
+          s.vy = 0;
+        } else {
+          s.vx -= (s.vx / sp) * stop;
+          s.vy -= (s.vy / sp) * stop;
+        }
+      }
+      if (!s.sliding && Math.hypot(s.vx, s.vy) < 0.05) s.downT -= dt;
       locomotionW = 260;
       if (s.downT <= 0) {
         s.downT = 0;
@@ -304,7 +341,7 @@ function tick(s: WalkerState, input: WalkInput, jump: boolean, ground: Ground, d
 
   // the body faces its motion; standing still it turns toward the stick
   const sp = Math.hypot(s.vx, s.vy);
-  const face = sp > 0.15 ? Math.atan2(s.vx, s.vy) : want > 0.2 ? Math.atan2(ix, iy) : s.heading;
+  const face = s.gait === "down" ? s.heading : sp > 0.15 ? Math.atan2(s.vx, s.vy) : want > 0.2 ? Math.atan2(ix, iy) : s.heading;
   let dh = face - s.heading;
   dh = Math.atan2(Math.sin(dh), Math.cos(dh));
   s.heading += dh * Math.min(1, dt * (s.grounded ? 6 : 1.5));

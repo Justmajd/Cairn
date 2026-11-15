@@ -71,7 +71,7 @@ body.roam-on .poi-label { pointer-events: none; }
 .rm-gait b { font: 700 20px var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
 .rm-gait.warn b { color: var(--warn); }
 .rm-gait span { font: 500 12px var(--mono); color: #dffcf7; }
-#roam[data-look="plan"] .rm-gait { top: 30%; }
+#roam[data-look="plan"] .rm-gait, #roam[data-look="orbit"] .rm-gait { top: 26%; }
 
 .rm-toast { position: absolute; left: 50%; top: calc(var(--gap) + 88px); transform: translateX(-50%); width: min(560px, calc(100vw - 32px)); padding: 11px 15px; border-radius: var(--r-md); background: var(--panel); border: 1px solid var(--line-2); box-shadow: var(--shadow); font-size: 13.5px; line-height: 1.45; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); animation: rm-in 0.35s var(--ease-glide) backwards; }
 .rm-toast b { color: var(--accent); }
