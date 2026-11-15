@@ -952,7 +952,12 @@ svg.timeline .sunt { fill: #f0e442; font: 500 9px var(--mono); }
 @media (max-width: 560px) { .brief-links { grid-template-columns: 1fr; } }
 
 /* main menu: an EVA under way on the hab, with its own Mission Control */
-.brief-live { display: grid; gap: 8px; margin: 14px 0 22px; }
+.brief-live { display: grid; gap: 8px; margin: 18px 0 4px; }
+/* a session where EV1 is still planning: quieter than a live EVA */
+.brief-live-row.planning { border-color: var(--line-2); background: rgba(18, 17, 16, 0.6); }
+.brief-live-row.planning .pulse, .brief-live-row.planning .pulse::after { background: var(--steel); }
+.brief-live-row.planning small { color: var(--steel); }
+.brief-mc:disabled { opacity: 0.55; cursor: default; }
 .brief-live[hidden] { display: none; }
 .brief-live-row { position: relative; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px 14px; padding: 12px 14px; border-radius: var(--r-md); border: 1px solid rgb(var(--fern-rgb) / 0.45); background: linear-gradient(135deg, rgb(var(--fern-rgb) / 0.1), rgb(var(--fern-rgb) / 0.03) 60%), rgba(18, 17, 16, 0.6); box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08); animation: pop-in 0.45s var(--ease-glide) backwards; }
 .brief-live-row .pulse { position: relative; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }

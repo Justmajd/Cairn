@@ -1,4 +1,5 @@
 import { HabLink, habApi, type LinkState } from "../hab/link";
+import { sessionFor } from "../hab/session";
 import type { CrewPose, EarthMessage, Frame, LogEntry, Member, ServerMsg } from "../hab/protocol";
 import type { PlanInfo } from "../hab/protocol";
 
@@ -27,7 +28,10 @@ export class RoamHab {
   onPlan: (p: PlanInfo) => void = () => {};
   onChange: () => void = () => {};
 
+  /** the crew session (hab/session.ts): the planner's, carried in the address */
+  readonly session: string | null;
   constructor(readonly site: string, readonly member: Member) {
+    this.session = sessionFor(site, member);
     void this.open();
   }
 
@@ -37,7 +41,7 @@ export class RoamHab {
 
   private async open(): Promise<void> {
     if (!(await habApi.available())) return;
-    const link = new HabLink("crew", this.site, this.member);
+    const link = new HabLink("crew", this.site, this.member, this.session);
     this.link = link;
     link.onState((s) => {
       this.state = s;
@@ -53,12 +57,16 @@ export class RoamHab {
       this.onChange();
     });
     if (this.member === "ev1") link.send({ type: "eva", state: "idle" }); // close an EVA a reload left open
+    if (this.pendingPlan) link.send({ type: "plan", plan: this.pendingPlan }, true); // sent before the link was up
     // leaving the page ends the walk on the hab, so the main menu's live card does not list it
     window.addEventListener("pagehide", () => this.end(true, "Free roam closed during the walk."));
   }
 
+  private pendingPlan: PlanInfo | null = null;
   plan(p: PlanInfo): void {
-    if (this.member === "ev1") this.link?.send({ type: "plan", plan: p }, true);
+    if (this.member !== "ev1") return;
+    this.pendingPlan = p; // free roam knows its plan before the hab link is open: keep it for then
+    this.link?.send({ type: "plan", plan: p }, true);
   }
 
   start(lightTimeS: number): void {

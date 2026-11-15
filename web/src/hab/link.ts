@@ -4,6 +4,7 @@
  * server stopped) everything here quietly reports "offline" and the planner works on its own.
  */
 import type { ClientMsg, Member, NoteRecord, Role, ServerMsg } from "./protocol";
+import { setSessionInUrl } from "./session";
 
 export type LinkState = "connecting" | "online" | "offline";
 
@@ -27,6 +28,8 @@ export class HabLink {
     private readonly role: Role,
     private readonly site: string,
     private readonly member: Member = "ev1",
+    /** the crew's session (hab/session.ts); updated when the hab says which one this device joined */
+    public session: string | null = null,
   ) {
     this.connect();
     window.addEventListener("online", () => this.state !== "online" && this.reconnectNow());
@@ -84,7 +87,7 @@ export class HabLink {
     this.ws = ws;
     ws.onopen = () => {
       this.retry = 0;
-      ws.send(JSON.stringify({ type: "hello", role: this.role, site: this.site, ...(this.role === "crew" ? { member: this.member } : {}) } satisfies ClientMsg));
+      ws.send(JSON.stringify({ type: "hello", role: this.role, site: this.site, ...(this.role === "crew" ? { member: this.member } : {}), ...(this.session ? { session: this.session } : {}) } satisfies ClientMsg));
       for (const m of this.sticky.values()) ws.send(JSON.stringify(m));
       this.setState("online");
     };
@@ -94,6 +97,11 @@ export class HabLink {
         msg = JSON.parse(String(ev.data)) as ServerMsg;
       } catch {
         return;
+      }
+      // the hab says which session this device is in: keep it (reconnects rejoin it) and show it in the address
+      if (msg.type === "joined" && msg.session) {
+        this.session = msg.session;
+        setSessionInUrl(msg.session);
       }
       for (const fn of this.listeners) fn(msg);
     };

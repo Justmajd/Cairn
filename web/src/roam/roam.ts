@@ -20,6 +20,7 @@ import { measurePath } from "../data/grid";
 import { parsePlanLink } from "../state/planLink";
 import { loadRoamPlan, RoamPlan } from "./plan";
 import { RoamHab } from "./hab";
+import { sessionParam } from "../hab/session";
 import type { CrewPose, EarthMessage, Frame, Member, PlanInfo } from "../hab/protocol";
 import { autonomyHtml, type Decision } from "../ui/autonomy";
 import { RadiationModel } from "../eva/radiation";
@@ -973,7 +974,7 @@ export class Roam {
     );
     const m = document.querySelector("#modal")!;
     m.querySelector("[data-again]")?.addEventListener("click", () => location.reload());
-    m.querySelector("[data-planner]")?.addEventListener("click", () => dissolveTo(`?site=${encodeURIComponent(this.site.id)}&skip=1${location.hash}`));
+    m.querySelector("[data-planner]")?.addEventListener("click", () => dissolveTo(`?site=${encodeURIComponent(this.site.id)}&skip=1${this.backLink()}${location.hash}`));
   }
 
   private fieldDebrief(): string {
@@ -1048,6 +1049,11 @@ export class Roam {
       </div>`;
   }
 
+  /** Back to the planner as the same astronaut, in the same crew session. */
+  private backLink(): string {
+    return `${this.member === "ev2" ? "&crew=ev2" : ""}${sessionParam(this.hab.session)}`;
+  }
+
   /** The intro's heading and goal: EV2, a mission (handed over, or routed once the route is ready), or a free walk. */
   private introGoal(): string {
     const p = this.plan;
@@ -1067,7 +1073,7 @@ export class Roam {
       if (act === "go") {
         this.stepOutside();
       } else if (act === "menu") dissolveTo(`?site=${encodeURIComponent(this.site.id)}&menu=1`);
-      else if (act === "planner") dissolveTo(`?site=${encodeURIComponent(this.site.id)}&skip=1`);
+      else if (act === "planner") dissolveTo(`?site=${encodeURIComponent(this.site.id)}&skip=1${this.backLink()}`);
       else if (act === "sound") this.toggleSound();
       else if (act === "help") this.help();
       else if (act === "settings") this.openSettings();

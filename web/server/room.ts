@@ -23,6 +23,8 @@ const key = (e: LogEntry) => `${e.t.toFixed(3)}|${e.kind}|${e.text}`;
 /** A running EVA whose crew has been gone this long stops being listed as live (ms). */
 export const STALE_CREW_MS = 10 * 60 * 1000;
 
+let openedCount = 0;
+
 export class Room {
   plan: PlanInfo | null = null;
   evaId: string | null = null;
@@ -50,8 +52,14 @@ export class Room {
   private msgCount = 0;
 
   readonly site: string;
-  constructor(site: string) {
+  /** the crew session this room is (one per EV1; the site's id for the default session) */
+  readonly key: string;
+  /** when the session was opened (ms, plus a counter so two in the same millisecond still have an order):
+   *  the newest is the one EV2 and Mission Control join by default */
+  readonly created = Date.now() + (openedCount++ % 1000) / 1000;
+  constructor(site: string, key: string = site) {
     this.site = site;
+    this.key = key;
   }
 
   /** Earth sees what happened up to this EVA time. */
