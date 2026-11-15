@@ -18,6 +18,9 @@ import { openModal } from "../ui/modals";
 import { measurePath } from "../data/grid";
 import { parsePlanLink } from "../state/planLink";
 import { loadRoamPlan, RoamPlan } from "./plan";
+import { RoamHab } from "./hab";
+import type { Frame, PlanInfo } from "../hab/protocol";
+import { autonomyHtml, type Decision } from "../ui/autonomy";
 import type { XY } from "../types";
 
 /** Close enough to a stop to work there, and to the rover's hull to climb in (m). */
@@ -110,6 +113,10 @@ export class Roam {
   private hardLandings = 0;
   private samples: { name: string; atS: number }[] = [];
   private routeT = 0;
+  // ---- the hab link: Mission Control watches the walk, one light time late
+  private readonly hab: RoamHab;
+  private lightTimeS = 0;
+  private decisions: Decision[] = [];
   private heardTold = false;
   constructor(private readonly site: SiteData, private readonly view: SceneView) {
     const grid = site.grid;
@@ -153,6 +160,8 @@ export class Roam {
     view.add(this.dust.points);
     view.add(this.trail.line);
     this.markStops();
+    this.hab = new RoamHab(site.id, "ev1");
+    this.hab.onChange = () => this.renderLink();
 
     this.host = document.createElement("div");
     this.host.id = "roam";
@@ -166,8 +175,8 @@ export class Roam {
     if (this.plan) {
       this.useMission(this.plan.stops, this.plan.legs);
       this.faceRoute();
-    }
-    else if (link) void this.routeLink(link.stops, link.add, link.dwell);
+    } else if (link) void this.routeLink(link.stops, link.add, link.dwell);
+    else this.hab.plan(this.planInfo());
     this.renderMission();
   }
 
@@ -182,6 +191,103 @@ export class Roam {
       const i = ids.indexOf(p.id);
       return { poi: p, active: this.stops.length ? i >= 0 && i >= this.next : p.kind === "objective", order: i >= 0 ? i + 1 : null };
     }));
+  }
+
+  /** What Mission Control draws: the walk area, the mission's route and stops, and the planned timeline. */
+  private planInfo(): PlanInfo {
+    const meta = this.site.meta;
+    const route: [number, number][] = [];
+    for (const leg of this.legs) for (const q of leg) {
+      const last = route[route.length - 1];
+      if (!last || Math.hypot(q.x - last[0], q.y - last[1]) >= 4) route.push([Math.round(q.x * 10) / 10, Math.round(q.y * 10) / 10]);
+    }
+    // the plan's timeline: walking at the planner's pace, then the time on site at each stop
+    const timeline: [number, number, number][] = [];
+    if (this.plan) {
+      const walkS = this.plan.planned.walkTimeS;
+      const distM = Math.max(1, this.plan.planned.distM);
+      let t = 0;
+      this.legs.forEach((leg, i) => {
+        for (let k = 0; k < leg.length; k++) {
+          if (k > 0) t += (Math.hypot(leg[k].x - leg[k - 1].x, leg[k].y - leg[k - 1].y) / distM) * walkS;
+          if (k % 6 === 0 || k === leg.length - 1) timeline.push([Math.round(t), Math.round(leg[k].x), Math.round(leg[k].y)]);
+        }
+        const st = this.stops[i];
+        if (st) {
+          t += st.dwellMin * 60;
+          timeline.push([Math.round(t), Math.round(st.x), Math.round(st.y)]);
+        }
+      });
+    }
+    const p = DEFAULT_PARAMS;
+    return {
+      site: meta.id,
+      siteName: meta.name,
+      sizeM: meta.sizeM,
+      image: `${this.site.base}${meta.texture.file}`,
+      route,
+      stops: [
+        { id: this.rover.id, name: this.rover.name, short: this.rover.short, x: this.rover.x, y: this.rover.y, kind: "shelter", order: 0 },
+        ...this.stops.map((st, i) => ({ id: st.id, name: st.name, short: st.short, x: st.x, y: st.y, kind: "objective" as const, order: i + 1 })),
+      ],
+      roverName: meta.rover?.name ?? "Rover",
+      startLmst: fmtLmst(this.startLmst),
+      distanceM: this.plan?.planned.distM ?? 0,
+      timeS: this.plan?.planned.timeS ?? 0,
+      o2SupplyL: p.o2SupplyL,
+      o2ReserveL: p.o2SupplyL * p.reserveFraction,
+      lightTimeS: this.lightTimeS,
+      storm: false,
+      buddy: false,
+      dust: { tau: 0.5, name: "Typical season" },
+      hash: this.plan?.hash ?? location.hash,
+      timeline,
+      mode: "roam",
+    };
+  }
+
+  /** One telemetry frame: what Mission Control will see of this moment, one light time from now. */
+  private frameNow(): Frame {
+    const s = this.walker;
+    const tg = this.target();
+    const dr = Math.max(0, this.roverGap());
+    const sun = sunAt(this.lat, this.lmst(), this.solar);
+    return {
+      t: this.t,
+      x: s.x,
+      y: s.y,
+      headingDeg: (s.heading * 180) / Math.PI,
+      o2LeftL: DEFAULT_PARAMS.o2SupplyL - s.o2L,
+      doseUGy: 0,
+      doseRate: 0,
+      baseline: 0,
+      status: `On foot · ${s.gait === "down" ? "down" : s.gait === "slide" ? "sliding" : s.gait === "air" ? "in the air" : s.gait === "lope" ? "loping" : s.gait === "walk" ? "walking" : "standing"}${this.finished ? " · back in the rover" : ""}`,
+      next: tg ? tg.name : this.plan ? "the rover" : "exploring",
+      nextDistM: tg ? Math.hypot(tg.x - s.x, tg.y - s.y) : 0,
+      homeS: dr / 0.8,
+      radio: this.contact ? "ok" : "lost",
+      sheltered: this.finished,
+      storm: false,
+      lmst: fmtLmst(this.lmst()),
+      sunEl: sun.elevation,
+      lightTimeS: this.lightTimeS,
+      speed: document.hidden ? 0 : 1,
+      hidden: document.hidden,
+    };
+  }
+
+  /** A decision the crew had to take alone (Earth is a light time away): kept for the debrief and sent to Earth. */
+  private decided(text: string): void {
+    this.decisions.push({ t: this.t, text });
+    this.hab.note(this.t, "alert", text);
+  }
+
+  /** The hab link's state, in the mission panel. */
+  private renderLink(): void {
+    const el = this.host?.querySelector<HTMLElement>(".rm-link");
+    if (!el) return;
+    const h = this.hab;
+    el.innerHTML = h.online ? `<i class="on"></i>Hab linked${h.mcOnline ? ` · Mission Control watching, ${fmtLightTime(this.lightTimeS)} behind` : " · Mission Control not connected"}` : `<i></i>No hab link: walking on your own`;
   }
 
   /** Turn to where the first leg leaves the rover: the camera behind you, looking along the route. */
@@ -199,6 +305,7 @@ export class Roam {
   private useMission(stops: MissionStop[], legs: XY[][]): void {
     this.stops = stops;
     this.legs = legs;
+    queueMicrotask(() => this.hab.plan(this.planInfo()));
     const grid = this.site.grid;
     this.view.setRoutes({ safe: legs.map((l) => measurePath(grid, l, DEFAULT_PARAMS)), straight: [], showStraight: false, shelter: null, dimSafe: false });
     this.markStops();
@@ -238,7 +345,9 @@ export class Roam {
     if (!this.plan) {
       const all = this.site.pois.filter((p) => p.kind !== "shelter").length;
       box.innerHTML = `<p class="eyebrow">// Explore</p><b>${this.visited.size} of ${all} stops found</b>
-        <span>Walk to the cairns. To walk a planned EVA as a mission, plan it and choose <a href="?site=${site}&skip=1">Walk it yourself</a>.</span>`;
+        <span>Walk to the cairns. To walk a planned EVA as a mission, plan it and choose <a href="?site=${site}&skip=1">Walk it yourself</a>.</span>
+        <p class="rm-link"></p>`;
+      this.renderLink();
       return;
     }
     const n = this.stops.length;
@@ -251,7 +360,9 @@ export class Roam {
         <dt>EVA clock</dt><dd data-k="mclock"></dd>
         <dt>O₂ used</dt><dd data-k="mo2"></dd>
         <dt>Off route</dt><dd data-k="moff"></dd>
-      </dl>`;
+      </dl>
+      <p class="rm-link"></p>`;
+    this.renderLink();
   }
 
   private target(): XY & { name: string; dwellMin: number } | null {
@@ -343,6 +454,7 @@ export class Roam {
     this.walker.energyJ += p.workingW * dwellS;
     this.t += dwellS;
     this.samples.push({ name: st.name, atS: this.t });
+    this.hab.note(this.t, "stop", `Sample collected at ${st.name} (${st.dwellMin} min on site)`);
     this.next++;
     this.markStops();
     this.renderMission();
@@ -368,6 +480,9 @@ export class Roam {
       { ok: this.falls === 0 && off <= 0.1, text: `Safe walking: no falls, under 10 % of the walk off the planned route (${this.falls} ${this.falls === 1 ? "fall" : "falls"}, ${Math.round(off * 100)} % off route)` },
     ];
     const stars = outOfO2 ? 0 : checks.filter((c) => c.ok).length;
+    if (outOfO2) this.decided("Out of oxygen before reaching the rover");
+    this.hab.note(this.t, outOfO2 ? "alert" : "home", outOfO2 ? "Suit out of oxygen" : "Back in the rover through the suitport");
+    this.hab.end(outOfO2, outOfO2 ? "Free roam: out of oxygen before the rover." : `Free roam: ${this.samples.length} of ${this.stops.length} samples, ${stars} of 3 stars.`);
     const row = (k: string, plan: string, you: string) => `<tr><td>${k}</td><td>${plan}</td><td><b>${you}</b></td></tr>`;
     openModal(
       outOfO2 ? "EVA failed: out of oxygen" : "EVA complete",
@@ -384,6 +499,7 @@ export class Roam {
           ${row("Highest jump", "—", s.maxJumpM > 0 ? `${Math.round(s.maxJumpM * 100)} cm` : "—")}
         </table>
         <p class="fine">Planned figures come from the planner's model for this exact route; yours come from the walking physics as you walked it. Suit numbers are demo assumptions.</p>
+        ${autonomyHtml(this.decisions, this.lightTimeS)}
         <div class="rm-debrief-acts"><button class="primary big" data-again>Walk it again</button><button class="big" data-planner>Back to the planner</button></div>
       </div>`,
       false,
@@ -460,6 +576,8 @@ export class Roam {
         this.host.querySelector(".rm-intro")?.remove();
         this.audio.start();
         this.started = true;
+        this.hab.start(this.lightTimeS);
+        this.hab.note(this.t, "go", this.plan ? `Left the rover on foot to walk the plan: ${this.stops.map((x) => x.short).join(", ")}` : "Left the rover on foot (free roam)");
         this.toast("Outside. The rover is behind you; its suitports are on the rear wall. <b>WASD</b> to walk, <b>Shift</b> to lope, <b>Space</b> to jump.");
       } else if (act === "menu") dissolveTo(`?site=${encodeURIComponent(this.site.id)}&menu=1`);
       else if (act === "planner") dissolveTo(`?site=${encodeURIComponent(this.site.id)}&skip=1`);
@@ -700,6 +818,7 @@ export class Roam {
     if (!this.finished) this.t += dt;
     for (const e of events) this.onEvent(e);
     if (this.plan) this.mission(dt);
+    if (this.started && !this.finished) this.hab.frame(dt, this.frameNow());
 
     const feet = this.view.toWorld(s.x, s.y, s.z);
     const groundY = this.view.groundAt(feet.x, feet.z);
@@ -805,7 +924,10 @@ export class Roam {
       this.landKick = e.impactMs;
       this.camDip = Math.max(this.camDip, Math.min(0.25, 0.02 + e.impactMs * 0.04));
       this.avatar.addDust(e.fell ? 0.25 : 0.002 * (1 + e.impactMs));
-      if (e.fell) this.falls++;
+      if (e.fell) {
+        this.falls++;
+        this.decided(`Fell at ${e.impactMs.toFixed(1)} m/s; checked the suit and got up`);
+      }
       else if (e.hard) this.hardLandings++;
       if (e.fell) {
         this.toast(`<b>Down.</b> You hit the ground at ${e.impactMs.toFixed(1)} m/s and topple onto your hands — slowly: a fall takes ${toppleTime(MARS_WALKER.g).toFixed(1)} s on Mars, ${toppleTime(EARTH_G).toFixed(1)} s on Earth. Getting up in a pressurised suit takes about ${MARS_WALKER.getUpS} s: sit back, one knee up, push.`, true);
@@ -823,6 +945,7 @@ export class Roam {
       this.once("lope", `<b>Loping.</b> Above ${walkRunMs(MARS_WALKER.g, MARS_WALKER.legM).toFixed(1)} m/s a walk becomes a series of bounds on Mars (on Earth people switch at ${walkRunMs(EARTH_G, MARS_WALKER.legM).toFixed(1)} m/s). You cannot steer while in the air.`);
     } else if (e.kind === "slide") {
       this.avatar.addDust(0.08);
+      if (e.slopeDeg > 8) this.decided(`Slid on a ${Math.round(e.slopeDeg)}° slope`);
       if (e.slopeDeg > 8) this.toast(`<b>Sliding:</b> ${Math.round(e.slopeDeg)}° is steeper than the boots can hold on this ground: sit down, slide feet first and brake with your hands. Lean (WASD) to steer.`, true);
     } else if (e.kind === "up") {
       this.toast("Back on your feet.");
@@ -901,6 +1024,7 @@ export class Roam {
     this.sunDir.set(Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
     const utc = utcAtLmst(this.solUtc, lmstAtUtc(this.solUtc, this.lon), this.startLmst) + this.t * 1000;
     const sky = marsSky(utc, this.lat, this.lon);
+    this.lightTimeS = sky.lightTimeS;
     const km = (b: { distanceKm: number }) => `${Math.round(b.distanceKm).toLocaleString("en")} km`;
     this.view.setSkyBodies({
       earth: { dir: sky.earth.dir, sizeDeg: sky.earth.sizeDeg, caption: `${fmtLightTime(sky.lightTimeS)} by radio` },
@@ -986,7 +1110,10 @@ export class Roam {
       set("mo2", `${Math.round(s.o2L)} L <small>/ ${Math.round(this.plan.planned.o2L)} L planned</small>`);
       set("moff", this.offM > OFF_ROUTE_M ? `<em class="bad">${Math.round(this.offM)} m</em>` : `${Math.round(this.offM)} m`);
     }
-    if (left <= p.o2SupplyL * p.reserveFraction) this.once("reserve", "<b>Oxygen at reserve.</b> Head back to the rover.", true);
+    if (left <= p.o2SupplyL * p.reserveFraction && !this.told.has("reserve")) {
+      this.once("reserve", "<b>Oxygen at reserve.</b> Head back to the rover.", true);
+      this.decided("Oxygen at the 25 % reserve: turned back for the rover");
+    }
   }
 
   private compassStrip(heading: number, roverBrg: number, goalBrg: number | null = null): void {
