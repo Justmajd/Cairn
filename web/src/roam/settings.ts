@@ -2,7 +2,7 @@
  * Free roam's settings, kept in this browser only (localStorage, failing quietly): which key does what,
  * a calmer camera, and captions for sound cues.
  */
-export type Action = "forward" | "back" | "left" | "right" | "lope" | "jump" | "use" | "visor";
+export type Action = "forward" | "back" | "left" | "right" | "lope" | "jump" | "use" | "visor" | "mast";
 
 export const ACTIONS: { id: Action; label: string }[] = [
   { id: "forward", label: "Walk forward" },
@@ -11,11 +11,12 @@ export const ACTIONS: { id: Action; label: string }[] = [
   { id: "right", label: "Step right" },
   { id: "lope", label: "Lope (hold)" },
   { id: "jump", label: "Jump" },
-  { id: "use", label: "Sample / climb in (hold)" },
+  { id: "use", label: "Sample / climb in / field reading (hold)" },
   { id: "visor", label: "Gold sun visor" },
+  { id: "mast", label: "Relay mast: stand up / pick up" },
 ];
 
-export const DEFAULT_KEYS: Record<Action, string> = { forward: "w", back: "s", left: "a", right: "d", lope: "Shift", jump: " ", use: "e", visor: "g" };
+export const DEFAULT_KEYS: Record<Action, string> = { forward: "w", back: "s", left: "a", right: "d", lope: "Shift", jump: " ", use: "e", visor: "g", mast: "r" };
 /** Keys that already do something else (views, sound, help, settings), so they cannot be bound. */
 export const RESERVED = new Set(["1", "2", "3", "v", "m", "h", "?", ",", "Escape", "Enter", "Tab"]);
 /** The arrows always walk, whatever else is bound. */

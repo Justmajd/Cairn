@@ -7,9 +7,10 @@ import { DEFAULT_PARAMS } from "../eva/params";
 import { cadence, breathsPerMin, toppleTime, EARTH_G, Ground, heartRate, jumpOf, MARS_WALKER, newWalker, stepWalker, walkRunMs, WALKER_NOTES, WalkEvent, WalkerState } from "../eva/walker";
 import { fmtLmst, lmstAt as lmstAtUtc, MARS_HOUR_S, solarGeometry, SolarGeometry, sunAt } from "../eva/sun";
 import { fmtLightTime, marsSky, utcAtLmst } from "../eva/sky";
-import { inContact, radioShadow } from "../eva/radio";
+import { inContact, radioDepthAt, radioShadow, RADIO_LOST_M, RELAY_MAST_M, SUIT_ANTENNA_M } from "../eva/radio";
 import { Astronaut, BlobShadow, Dust, Footprints, Trail } from "./avatar";
-import { ROVER_HALF } from "../scene/models";
+import { makeRelayMast, makeSurveyFlag, ROVER_HALF } from "../scene/models";
+import { FieldWork, type Find } from "./field";
 import { SuitAudio } from "./audio";
 import { $, esc, fmtClock, fmtDist, fmtDose, fmtDur } from "../ui/dom";
 import { ic } from "../ui/icons";
@@ -35,6 +36,9 @@ const AT_ROVER_M = 1.6;
 const HOLD_S = 2.2;
 /** Further than this from the planned route counts as off route (m). */
 const OFF_ROUTE_M = 15;
+/** Work time of a field reading and of standing up or packing the relay mast (s, at the working rate). */
+const READING_S = 60;
+const MAST_S = 120;
 
 interface MissionStop {
   id: string;
@@ -150,6 +154,11 @@ export class Roam {
   private buddySeen = 0;
   private apart = false;
   private heardTold = false;
+  // ---- field work between the stops (field.ts): readings, finds, the relay mast
+  private readonly field: FieldWork;
+  private fieldT = 0;
+  private fieldOpen = !matchMedia("(pointer: coarse)").matches;
+  private mast: { x: number; y: number; shadow: Uint8Array; obj: THREE.Object3D } | null = null;
   constructor(private readonly site: SiteData, private readonly view: SceneView, private readonly quality: "high" | "low" = "high") {
     const grid = site.grid;
     this.ground = {
@@ -213,6 +222,15 @@ export class Roam {
     view.add(this.dust.points);
     view.add(this.trail.line);
     this.markStops();
+    const minerals = site.meta.minerals;
+    this.field = new FieldWork(grid, {
+      minerals: minerals ? site.mineralGrid : null,
+      mineralBands: minerals?.bands.map((b) => ({ key: b.key, name: b.name })) ?? [],
+      geology: site.geology ? site.geologyGrid : null,
+      units: site.geology?.units.map((u) => ({ id: u.id, name: u.name, symbol: u.symbol })) ?? [],
+      traverse: site.rover?.traverse ?? [],
+      roverName: site.meta.rover?.name ?? null,
+    });
     this.hab = new RoamHab(site.id, this.member);
     this.hab.onBuddy = (p) => {
       this.buddyTarget = p;
@@ -575,18 +593,124 @@ export class Roam {
   }
 
   /** What E does here, if anything: sample at the next stop, climb in at the rover. */
-  private action(): "sample" | "board" | null {
-    if (!this.plan || this.finished) return null;
+  private action(): "sample" | "board" | "scan" | null {
     const s = this.walker;
-    if (!s.grounded || s.gait === "down") return null;
-    if (this.next < this.stops.length) {
-      const st = this.stops[this.next];
-      return Math.hypot(st.x - s.x, st.y - s.y) < AT_STOP_M ? "sample" : null;
+    if (this.finished || !this.started || !s.grounded || s.gait === "down") return null;
+    if (this.plan) {
+      if (this.next < this.stops.length) {
+        const st = this.stops[this.next];
+        if (Math.hypot(st.x - s.x, st.y - s.y) < AT_STOP_M) return "sample";
+      } else if (this.roverGap() < AT_ROVER_M) return "board";
     }
-    return this.roverGap() < AT_ROVER_M ? "board" : null;
+    return this.roverGap() < 4 ? null : "scan";
   }
 
-  private mission(dt: number): void {
+  // ================================================================ field work
+  /** Work on the spot: the clock runs on, oxygen at the working rate (as at a stop). */
+  private work(seconds: number): void {
+    const p = DEFAULT_PARAMS;
+    this.walker.o2L += workO2(seconds, p.workingW, p.kJPerLitreO2);
+    this.walker.energyJ += p.workingW * seconds;
+    this.t += seconds;
+    this.updateSky(true);
+  }
+
+  /** A field reading at your boots: what the maps say, and any find it makes. */
+  private reading(): void {
+    const s = this.walker;
+    this.work(READING_S);
+    const { reading: r, finds } = this.field.scan(s.x, s.y, this.t);
+    const parts = [
+      `${r.soil === "sand" ? "loose sand" : r.soil} (${r.sandPct} % sand)`,
+      `${r.slopeDeg}° slope`,
+      r.unit ? `${r.unit.name} (${r.unit.symbol})` : "",
+      this.site.grid.shield ? `terrain blocks ${r.blockedPct} % of the sky` : "",
+    ].filter(Boolean);
+    const min = r.minerals?.filter((m) => m.detected).map((m) => `${m.name.toLowerCase()} stronger than ${Math.floor(m.rank * 100)} % of detections`) ?? [];
+    this.hab.note(this.t, "science", `Field reading: ${parts.join(", ")}${min.length ? `; CRISM: ${min.join(", ")}` : ""}`);
+    if (finds.length) this.found(finds);
+    else this.toast(`<b>Field reading</b> ${esc(parts.join(" · "))}${r.minerals ? `<br><small>CRISM, 18 m pixels: ${min.length ? esc(min.join(" · ")) : "no mineral above the detection floor"}</small>` : ""}`);
+    this.renderField();
+  }
+
+  /** Finds: a toast, a survey flag on the ground, a line in the crew log (Earth reads it a light time later). */
+  private found(finds: Find[]): void {
+    for (const f of finds) {
+      const flag = makeSurveyFlag(f.id.startsWith("mineral") ? 0xc6f432 : 0x9fb4c6);
+      flag.position.copy(this.view.toWorld(f.x + 0.7, f.y, this.site.grid.heightAt(f.x + 0.7, f.y)));
+      this.view.add(flag);
+      this.hab.note(f.t, "science", `${f.title}. ${f.text}`);
+    }
+    const f = finds[finds.length - 1];
+    this.toast(`<b>${esc(f.title)}</b> ${esc(f.text)}${finds.length > 1 ? ` <small>(+${finds.length - 1} more in the field log)</small>` : ""}`);
+    this.renderField();
+  }
+
+  /** R: stand the relay mast up here (it must see the rover from its top), or pack it up again. */
+  private toggleMast(): void {
+    const s = this.walker;
+    if (this.finished || !this.started) return;
+    if (!s.grounded || s.gait === "down" || Math.hypot(s.vx, s.vy) > 0.25) return this.toast("Stand still to work with the mast.");
+    const grid = this.site.grid;
+    if (this.mast) {
+      if (Math.hypot(this.mast.x - s.x, this.mast.y - s.y) > 3) return this.toast(`The mast is ${fmtDist(Math.hypot(this.mast.x - s.x, this.mast.y - s.y))} away. Walk back to it to pack it up.`);
+      this.mast.obj.removeFromParent();
+      this.view.invalidate();
+      this.mast = null;
+      this.field.relayUp = false;
+      this.work(MAST_S);
+      this.toast(`<b>Mast packed</b> (${MAST_S / 60} min of work). Carry it on to the next blind spot.`);
+      this.renderField();
+      return;
+    }
+    // the mast's antenna is RELAY_MAST_M up, the suit's SUIT_ANTENNA_M: it sees over that much more ground
+    const depth = radioDepthAt(this.radio, grid, s.x, s.y);
+    if (depth > RADIO_LOST_M + (RELAY_MAST_M - SUIT_ANTENNA_M)) {
+      return this.toast(`<b>No line of sight to the rover from here</b>, even from the top of the ${RELAY_MAST_M} m mast. Stand it up on ground that can still see the rover.`, true);
+    }
+    const x = s.x + Math.sin(s.heading) * 1.2;
+    const y = s.y + Math.cos(s.heading) * 1.2;
+    const obj = makeRelayMast();
+    obj.position.copy(this.view.toWorld(x, y, grid.heightAt(x, y)));
+    this.view.add(obj);
+    this.mast = { x, y, shadow: radioShadow(grid, { x, y }, RELAY_MAST_M), obj };
+    this.field.relayUp = true;
+    this.work(MAST_S);
+    this.hab.note(this.t, "radio", "Relay mast up");
+    this.decided("Stood up the relay mast");
+    this.toast(`<b>Relay mast up</b> (${MAST_S / 60} min of work). Its top sees the rover; behind ridges that hide the rover you now talk through it.`);
+    this.renderField();
+  }
+
+  /** The field panel: tasks with live hints, the spectral signal where CRISM imaged. */
+  private renderField(): void {
+    const box = this.host.querySelector<HTMLElement>(".rm-field")!;
+    const s = this.walker;
+    const tasks = this.field.tasks(s.x, s.y, !this.contact);
+    const done = tasks.filter((t) => t.done).length;
+    const sig = this.fieldOpen ? this.field.signal(s.x, s.y) : null;
+    const bar = (rank: number) => `<i class="rm-sig"><i style="width:${Math.round(rank * 100)}%"></i></i>`;
+    const html = `<button class="rm-field-head" data-act="field" aria-expanded="${this.fieldOpen}"><span class="eyebrow">// Field work</span><b>${done} of ${tasks.length}</b></button>
+      ${this.fieldOpen ? `<ul>${tasks.map((t) => `<li class="${t.done ? "done" : ""}"><b>${t.done ? "✓" : "○"} ${esc(t.title)}</b><span>${esc(t.detail)}</span></li>`).join("")}</ul>
+      ${sig ? `<div class="rm-spectra"><small>CRISM signal within 40 m</small>${sig.map((b) => `<label>${esc(b.name)}${bar(b.rank)}<em>${b.rank > 0 ? `${Math.floor(b.rank * 100)} %${b.bearing ? ` ${b.bearing}` : ""}` : "—"}</em></label>`).join("")}</div>` : this.field.hasMinerals ? `<p class="rm-spectra-off">Outside CRISM's footprint: no mineral signal here.</p>` : ""}
+      <button class="rm-mast" data-act="mast">${this.mast ? "Pack up the mast" : "Stand up the relay mast"} <kbd>${esc(keyName(this.settings.keys.mast))}</kbd></button>` : ""}`;
+    if (box.innerHTML !== html) box.innerHTML = html;
+  }
+
+  private fieldTick(dt: number): void {
+    this.fieldT -= dt;
+    if (this.fieldT > 0) return;
+    this.fieldT = 0.25;
+    const s = this.walker;
+    if (this.started && !this.finished) {
+      const finds = this.field.walk(s.x, s.y, this.t);
+      if (finds.length) this.found(finds);
+    }
+    this.renderField();
+  }
+
+  /** Hold E (or the Hold button): sample at the stop, climb in at the rover, or take a field reading. */
+  private useHold(dt: number): void {
     const act = this.action();
     const prompt = this.host.querySelector<HTMLElement>(".rm-act")!;
     const holding = this.keys.has("use") || this.touchHold;
@@ -594,22 +718,33 @@ export class Roam {
     const still = Math.hypot(s.vx, s.vy) < 0.25;
     if (act && holding && still) this.holdT += dt;
     else this.holdT = Math.max(0, this.holdT - dt * 3);
-    prompt.hidden = !act;
+    // a field reading is always possible, so its prompt stays quiet until you stop walking
+    prompt.hidden = !act || (act === "scan" && !still && this.holdT === 0);
+    prompt.classList.toggle("quiet", act === "scan");
     if (act) {
+      const key = matchMedia("(pointer: coarse)").matches ? "Hold" : `Hold ${keyName(this.settings.keys.use)}`;
       const st = this.stops[this.next];
-      const what = act === "sample" ? `collect a sample at ${esc(st.short)} <small>(${st.dwellMin} min of work)</small>` : "climb into the suitport and end the EVA";
-      const html = `<b>${matchMedia("(pointer: coarse)").matches ? "Hold" : "Hold E"}</b> to ${what}`;
+      const what =
+        act === "sample" ? `collect a sample at ${esc(st.short)} <small>(${st.dwellMin} min of work)</small>`
+        : act === "board" ? "climb into the suitport and end the EVA"
+        : `for a field reading <small>(${READING_S / 60} min)</small>`;
+      const html = `<b>${key}</b> ${act === "scan" ? "" : "to "}${what}`;
       const label = prompt.querySelector<HTMLElement>("span")!;
       if (label.innerHTML !== html) label.innerHTML = html;
       prompt.style.setProperty("--p", String(Math.min(1, this.holdT / HOLD_S)));
       prompt.classList.toggle("moving", !still);
     }
-    this.avatar.setAction(act && (this.keys.has("use") || this.touchHold) ? act : null, this.holdT / HOLD_S);
+    this.avatar.setAction(act && holding ? (act === "board" ? "board" : "sample") : null, this.holdT / HOLD_S);
     if (act && this.holdT >= HOLD_S) {
       this.holdT = 0;
       if (act === "sample") this.chooseSample();
-      else this.finish(false);
+      else if (act === "board") this.finish(false);
+      else this.reading();
     }
+  }
+
+  private mission(dt: number): void {
+    const s = this.walker;
     // off route: distance to the planned legs, a few times a second
     this.routeT -= dt;
     if (this.routeT <= 0) {
@@ -822,6 +957,7 @@ export class Roam {
           ${st && this.stormAlarm ? row("Radiation dose", "—", `${fmtDose(st.doseUGy)} (sheltering avoided ${fmtDose(st.avoided(st.deadlineS + 3600))} in the next hour)`) : ""}
         </table>
         <p class="fine">Planned figures come from the planner's model for this exact route; yours come from the walking physics as you walked it. Suit numbers are demo assumptions.</p>
+        ${this.fieldDebrief()}
         ${autonomyHtml(this.decisions, this.lightTimeS)}
         <div class="rm-debrief-acts"><button class="primary big" data-again>Walk it again</button><button class="big" data-planner>Back to the planner</button></div>
       </div>`,
@@ -830,6 +966,16 @@ export class Roam {
     const m = document.querySelector("#modal")!;
     m.querySelector("[data-again]")?.addEventListener("click", () => location.reload());
     m.querySelector("[data-planner]")?.addEventListener("click", () => dissolveTo(`?site=${encodeURIComponent(this.site.id)}&skip=1${location.hash}`));
+  }
+
+  private fieldDebrief(): string {
+    const s = this.walker;
+    const tasks = this.field.tasks(s.x, s.y, !this.contact);
+    const finds = this.field.finds;
+    return `<div class="rm-fieldlog"><h3>Field work · ${tasks.filter((t) => t.done).length} of ${tasks.length} tasks</h3>
+      <ul class="rm-checks">${tasks.map((t) => `<li class="${t.done ? "ok" : ""}">${t.done ? "✓" : "✗"} ${esc(t.title)}</li>`).join("")}</ul>
+      ${finds.length ? `<table class="keys">${finds.map((f) => `<tr><td>T+${fmtClock(f.t)}</td><td><b>${esc(f.title)}</b> — ${esc(f.text)}</td></tr>`).join("")}</table>` : `<p class="fine">No finds this time. Hold E away from the stops for field readings.</p>`}
+      <p class="fine">${this.field.readings.length} field reading${this.field.readings.length === 1 ? "" : "s"}, ${fmtDur(this.field.readings.length * READING_S)} of work.</p></div>`;
   }
 
   // ================================================================ interface
@@ -860,6 +1006,7 @@ export class Roam {
         <div class="rm-tile tr"><small>Walked</small><b data-k="dist">—</b><span data-k="steps"></span></div>
       </section>
       <section class="rm-mission panel" aria-label="Mission"></section>
+      <section class="rm-field panel" aria-label="Field work"></section>
       <section class="rm-storm" role="status" hidden></section>
       <div class="rm-emergency" role="status" hidden></div>
       <section class="rm-science panel" role="status" hidden></section>
@@ -887,7 +1034,7 @@ export class Roam {
           <li><kbd>Shift</kbd> lope — bound like the Apollo crews; above ${vRun.toFixed(1)} m/s a walk turns into one anyway</li>
           <li><kbd>Space</kbd> jump</li>
           <li><kbd>Mouse</kbd> look (click the view to lock the pointer, Esc to free it) · <kbd>Scroll</kbd> zoom</li>
-          <li><kbd>E</kbd> (hold) sample, climb in · <kbd>G</kbd> gold sun visor</li>
+          <li><kbd>E</kbd> (hold) sample at a stop, climb in, or take a field reading anywhere · <kbd>R</kbd> relay mast · <kbd>G</kbd> gold sun visor</li>
           <li><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> map, 3D, visor (inside the helmet) · <kbd>M</kbd> sound · <kbd>H</kbd> help</li>
         </ul>
         <p class="fine">Terrain, Sun, Earth and moons are real for this site and date. The suit and body numbers are demo assumptions (Help lists them).</p>
@@ -909,6 +1056,11 @@ export class Roam {
       else if (act === "sound") this.toggleSound();
       else if (act === "help") this.help();
       else if (act === "settings") this.openSettings();
+      else if (act === "mast") this.toggleMast();
+      else if (act === "field") {
+        this.fieldOpen = !this.fieldOpen;
+        this.renderField();
+      }
     });
     window.addEventListener("keydown", (ev) => {
       if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
@@ -922,6 +1074,8 @@ export class Roam {
         this.stepOutside();
       } else if (a === "visor") {
         if (!ev.repeat) this.goldVisor();
+      } else if (a === "mast") {
+        if (!ev.repeat) this.toggleMast();
       } else if (a) {
         ev.preventDefault();
         this.keys.add(a);
@@ -1170,7 +1324,8 @@ export class Roam {
         <tr><td><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td><td>Walk (in the map view, W is north)</td></tr>
         <tr><td><kbd>Shift</kbd></td><td>Lope: a bounding run</td></tr>
         <tr><td><kbd>Space</kbd></td><td>Jump</td></tr>
-        <tr><td><kbd>E</kbd> (hold)</td><td>Collect a sample at the next stop; climb back into the rover</td></tr>
+        <tr><td><kbd>E</kbd> (hold)</td><td>Collect a sample at the next stop; climb back into the rover; anywhere else, a field reading (1 min of work)</td></tr>
+        <tr><td><kbd>R</kbd></td><td>Stand up the relay mast (it must see the rover from its ${RELAY_MAST_M} m top), or pack it up (2 min of work)</td></tr>
         <tr><td><kbd>G</kbd></td><td>Lower or raise the gold sun visor (visor view)</td></tr>
         <tr><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>V</kbd></td><td>Map, 3D (behind you), visor (inside the helmet); V cycles</td></tr>
         <tr><td>Mouse / drag</td><td>Look around; scroll zooms the map and 3D views</td></tr>
@@ -1186,6 +1341,12 @@ export class Roam {
         <li><b>Oxygen, heart and breathing</b> follow the planner's walking model (Minetti), so the numbers match a planned EVA. Work at a stop runs the clock forward by the planned time on site, at the working rate.</li>
         <li><b>Sound:</b> in the visor you hear your suit — fan, breathing in the bubble, footsteps through the boots, your heart. Outside (3D, map) you hear what a microphone on the ground would: wind and faint, dull footsteps. Mars' thin CO₂ air carries sound poorly and high pitches least (Perseverance's microphones).</li>
         <li><b>In a suit the helmet turns with the body:</b> in the visor view your body turns to face where you look, and you see your own arms and boots.</li>
+      </ul>
+      <h3>Field work</h3>
+      <ul class="rm-why">
+        <li><b>Field readings</b> show what the orbital maps say about the ground at your boots: CAIRN's sand and slope maps from HiRISE, the USGS geologic unit, how much sky the terrain blocks (the storm's shielding map) and, where CRISM imaged, mineral strength (18 m pixels). A real crew would carry a handheld spectrometer; here the reading comes from the orbital data.</li>
+        <li><b>Finds</b> plant a survey flag and go into the crew log, so Mission Control reads them one light time later.</li>
+        <li><b>The rover's route</b> joins the rover's logged stops in straight lines; its real wheel tracks wander around that line.</li>
       </ul>
       <h3>Practise an emergency</h3>
       <p class="rm-practice">${this.emergency ? `Under way: ${this.emergency.kind === "leak" ? "suit leak" : "twisted ankle"}.` : `<button data-practice="leak">Suit leak</button><button data-practice="ankle">Twisted ankle</button>`} The rule is the same as in the planner: stop the science and go home now.</p>
@@ -1254,7 +1415,9 @@ export class Roam {
     }
     if (!this.finished) this.t += dt;
     for (const e of events) this.onEvent(e);
+    this.useHold(dt);
     if (this.plan) this.mission(dt);
+    this.fieldTick(dt);
     if (this.started && !this.finished) this.hab.frame(dt, this.frameNow());
     if (this.started) this.hab.pose(dt, this.selfPose());
     this.updateBuddy(dt);
@@ -1475,7 +1638,12 @@ export class Roam {
       deimos: { dir: sky.deimos.dir, sizeDeg: sky.deimos.sizeDeg, caption: km(sky.deimos) },
     });
     const s = this.walker;
-    this.contact = inContact(this.radio, this.site.grid, s.x, s.y);
+    const direct = inContact(this.radio, this.site.grid, s.x, s.y);
+    this.contact = direct || (this.mast !== null && inContact(this.mast.shadow, this.site.grid, s.x, s.y));
+    if (!direct && this.contact && !this.field.relayUsed && this.started) {
+      this.field.relayUsed = true;
+      this.found([{ id: "relay", title: "Talking through the relay", text: "The rover is out of sight, but the mast relays your radio. Mission Control keeps hearing you.", t: this.t, x: s.x, y: s.y }]);
+    }
     this.renderLink(); // once a second: the other astronaut's distance
     this.checkStops();
   }

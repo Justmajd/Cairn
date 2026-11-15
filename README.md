@@ -71,6 +71,7 @@ Plan an EVA, then walk it on foot — or just walk. *Free roam on foot* on the m
 - **Missions**: the planned route and numbered stops; hold E to sample after picking the target from the **rover's own photos** at that stop; the clock runs on by the planned work time; climb back in through the suitport. The debrief scores oxygen, time, safe walking and (if the storm hit) sheltering in time, and lists the **decisions made alone**.
 - **Earth one light time behind**: with the hab server, Mission Control watches the walk late, draws **Earth's best guess** of where you are now from the plan, and its messages reach your helmet only after the real delay (a revised plan can be accepted or declined).
 - **Two astronauts**: open the same page with `&crew=ev2` on a second device; each sees the other's suit (EV1 fern stripes, EV2 amber), with no delay between them.
+- **Field work on the way**: hold E anywhere for a field reading of the ground at your boots (CAIRN's sand and slope maps, the USGS geologic unit, how much sky the terrain blocks and, at Jezero, CRISM mineral strength). A task list gives each site its jobs with live hints: hunt for strong olivine, Fe/Mg clay and carbonate with a 40 m spectral signal; cross three geologic units; follow the real rover's route for 50 m; three soil tests 100 m apart; find the most sheltered 1 % of the ground for a storm; and stand up the relay mast (`R`) where it sees the rover, then talk through it from radio shadow. Finds plant a survey flag, go into Mission Control's log and the debrief. Readings and the mast cost work time and oxygen, like samples.
 - **Harder walks**: the **20 May 2024 solar storm** mid-mission (30 minutes to get inside), **suit leak** or **twisted ankle** practice, and **dust storms** at measured optical depth.
 - **Scenario presets**: a clear morning at Cheyava Falls, the 2024 storm, Gale in the 2018 global dust storm, two astronauts, a suit leak — each one tap to plan or to walk.
 - **Settings**: rebind keys, reduce camera shake, captions for sound cues. Phones start on the light quality; slow laptops are offered it.
@@ -78,7 +79,7 @@ Plan an EVA, then walk it on foot — or just walk. *Free roam on foot* on the m
 | Free roam | Keys (rebindable) |
 |---|---|
 | Walk · lope · jump | `W` `A` `S` `D` or arrows · `Shift` · `Space` (thumb stick and buttons on touch) |
-| Sample / climb in · gold visor | hold `E` · `G` |
+| Sample / climb in / field reading · relay mast · gold visor | hold `E` · `R` · `G` |
 | Views · sound · help · settings | `1` `2` `3` (`V` cycles) · `M` · `H` · `,` |
 
 Address options: `?roam=1` free roam, `&crew=ev2` second astronaut, `&look=3d|visor|map`, `&dust=clear|regional|global|extreme` or `&tau=<n>`, `&emergency=leak@900` (or `ankle@<s>`), `&q=low|high`; a plan after `#` (`#stops=…&storm=0`) makes it a mission.
@@ -99,7 +100,7 @@ Open the address Vite prints (normally http://localhost:5173).
 |---|---|
 | `npm run dev:all` | Development: frontend and hab server together, one terminal (Ctrl+C stops both) |
 | `npm run dev` | Development server (frontend only) |
-| `npm test` | 116 unit and integration tests (including the hab server end to end) |
+| `npm test` | 122 unit and integration tests (including the hab server end to end) |
 | `npm run build` | Type-check and build to `web/dist/` |
 | `npm run preview` | Serve the built app |
 | `npm start` | Build, then serve the app with the hab server (Mission Control, shared notebook) |
