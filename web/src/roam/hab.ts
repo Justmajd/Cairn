@@ -26,6 +26,8 @@ export class RoamHab {
   onBuddy: (p: CrewPose) => void = () => {};
   /** EV2: EV1's plan, to walk the same mission. */
   onPlan: (p: PlanInfo) => void = () => {};
+  /** EV2: whether EV1 is still in the session. */
+  onEv1: (online: boolean) => void = () => {};
   onChange: () => void = () => {};
 
   /** the crew session (hab/session.ts): the planner's, carried in the address */
@@ -54,6 +56,7 @@ export class RoamHab {
       else if (m.type === "buddy") this.onBuddy(m.pose);
       else if (m.type === "live" && m.frame.pose) this.onBuddy(m.frame.pose);
       else if (m.type === "crewplan") this.onPlan(m.plan);
+      else if (m.type === "ev1") this.onEv1(m.online);
       this.onChange();
     });
     if (this.member === "ev1") link.send({ type: "eva", state: "idle" }); // close an EVA a reload left open

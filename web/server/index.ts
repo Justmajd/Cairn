@@ -91,6 +91,11 @@ function countEv2(key: string): void {
   const ev2 = ev2s(key).length;
   for (const c of inRoom(key, "crew")) if (c.member === "ev1") send(c, { type: "members", ev2 });
 }
+/** Tell EV2 whether its EV1 is still in the session (EV1 closed CAIRN, or came back). */
+function tellEv2AboutEv1(key: string, to?: Client): void {
+  const online = hasEv1(key);
+  for (const c of to ? [to] : ev2s(key)) send(c, { type: "ev1", online });
+}
 
 function countMc(key: string): void {
   const online = inRoom(key, "mc").length;
@@ -121,6 +126,7 @@ async function onMessage(c: Client, raw: string): Promise<void> {
       deliver(key, r.setCrewOnline(true));
       send(c, { type: "notebook", notes: await store.notes(msg.site) });
       if (c.member === "ev2") {
+        tellEv2AboutEv1(key, c);
         // catch up with EV1: the plan, whether an EVA is under way, and where it is now
         if (r.plan) send(c, { type: "crewplan", plan: r.plan });
         send(c, { type: "crew-eva", eva: r.evaId ? { id: r.evaId, running: r.running, ended: r.ended } : null });
@@ -128,6 +134,7 @@ async function onMessage(c: Client, raw: string): Promise<void> {
         if (r.running && f) send(c, { type: "live", frame: f });
       }
       countEv2(key);
+      if (c.member === "ev1") tellEv2AboutEv1(key);
     }
     countMc(key);
     return;
@@ -420,6 +427,7 @@ wss.on("connection", (ws: WebSocket) => {
     const r = rooms.get(c.key);
     if (c.role === "crew" && r && inRoom(c.key, "crew").length === 0) deliver(c.key, r.setCrewOnline(false));
     if (c.role === "crew") countEv2(c.key);
+    if (c.role === "crew" && c.member === "ev1") tellEv2AboutEv1(c.key);
     if (c.role === "mc") countMc(c.key);
   });
 });

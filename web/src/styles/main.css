@@ -1080,3 +1080,14 @@ svg.timeline .sunt { fill: #f0e442; font: 500 9px var(--mono); }
   .seg button, .top-actions button { padding: 0 7px; }
   #btn-demo { display: none; }
 }
+
+/* EV2: EV1 has left the session */
+.ev1-left { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 80; width: min(420px, calc(100vw - 32px)); display: grid; gap: 8px; padding: 18px 20px; border-radius: var(--r-lg); background: var(--panel-solid, rgba(18, 17, 16, 0.97)); border: 1px solid rgba(245, 181, 68, 0.55); box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6); animation: ev1-left-in 0.35s var(--ease-glide) backwards; }
+@keyframes ev1-left-in { from { opacity: 0; transform: translate(-50%, calc(-50% + 10px)); } }
+.ev1-left .eyebrow { margin: 0; font: 500 10px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--warn); }
+.ev1-left b { font: 600 17px var(--sans); color: var(--text); }
+.ev1-left > span { font-size: 13px; line-height: 1.5; color: var(--text-2); }
+.ev1-left-acts { display: flex; gap: 8px; margin-top: 6px; }
+.ev1-left-acts button { height: 36px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--raise); color: var(--text); font: 500 13.5px var(--sans); cursor: pointer; pointer-events: auto; }
+.ev1-left-acts button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .ev1-left { animation: none; } }

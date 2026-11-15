@@ -192,6 +192,8 @@ export type ServerMsg =
   | { type: "crew-eva"; eva: McSnapshot["eva"] }
   | { type: "live"; frame: Frame }
   | { type: "buddy"; pose: CrewPose }
+  /** To EV2: whether EV1 is in the session (sent on joining, and when EV1 leaves or comes back). */
+  | { type: "ev1"; online: boolean }
   /** The hab's answer to hello: the session this device is in (EV2 and Mission Control may not have known it). */
   | { type: "joined"; session: string }
   /** The other astronaut went out on foot in free roam (relayed from EV1 to EV2, or EV2 to EV1). */

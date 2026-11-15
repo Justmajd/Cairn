@@ -37,6 +37,7 @@ import type { ExportPlan } from "./ui/export";
 import { toLonLat } from "./data/geo";
 import { promptInstall, saveForOffline } from "./ui/offline";
 import { RouteCallouts, Voice } from "./ui/voice";
+import { Ev1Watch } from "./ui/ev1Left";
 import { L, PHRASES, type Dest } from "./ui/voiceLines";
 
 interface Plan {
@@ -214,6 +215,7 @@ export class App {
   }
   private readonly voice = new Voice();
   private callouts = new RouteCallouts();
+  private readonly ev1Watch = new Ev1Watch(new URLSearchParams(location.search).get("site") ?? "jezero", () => this.toast("EV1 is back in the session.", 4000));
   private roverCheckCache: RoverCheck | null = null;
 
   constructor(
@@ -2429,6 +2431,11 @@ export class App {
           this.toast("EV2 joined on another device. Buddy mode is on: you plan, and you walk the EVA together.", 6000);
         } else this.toast("EV2 joined on another device.", 4000);
       }
+      return;
+    }
+    if (m.type === "ev1") {
+      // EV2: EV1 closed CAIRN or lost their connection (or came back)
+      if (this.member === "ev2") this.ev1Watch.update(m.online);
       return;
     }
     if (m.type === "outside") {
