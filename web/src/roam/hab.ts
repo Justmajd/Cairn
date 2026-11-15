@@ -17,6 +17,7 @@ export class RoamHab {
   mcOnline = 0;
   private log: LogEntry[] = [];
   private evaId: string | null = null;
+  private ended = false;
   private frameT = 0;
 
   onEarth: (m: EarthMessage) => void = () => {};
@@ -52,6 +53,8 @@ export class RoamHab {
       this.onChange();
     });
     if (this.member === "ev1") link.send({ type: "eva", state: "idle" }); // close an EVA a reload left open
+    // leaving the page ends the walk on the hab, so the main menu's live card does not list it
+    window.addEventListener("pagehide", () => this.end(true, "Free roam closed during the walk."));
   }
 
   plan(p: PlanInfo): void {
@@ -65,7 +68,8 @@ export class RoamHab {
   }
 
   end(aborted: boolean, summary: string): void {
-    if (this.member !== "ev1" || !this.evaId) return;
+    if (this.member !== "ev1" || !this.evaId || this.ended) return;
+    this.ended = true;
     this.sendLog();
     this.link?.send({ type: "eva", state: "end", evaId: this.evaId, aborted, summary }, true);
     this.link?.forget("frame");

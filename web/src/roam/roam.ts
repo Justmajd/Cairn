@@ -903,15 +903,7 @@ export class Roam {
       if (look) return this.setLook(look);
       const act = el.closest<HTMLElement>("[data-act]")?.dataset.act;
       if (act === "go") {
-        this.host.querySelector(".rm-intro")?.remove();
-        this.audio.start();
-        this.started = true;
-        this.hab.start(this.lightTimeS);
-        this.hab.note(this.t, "go", this.plan ? `Left the rover on foot to walk the plan: ${this.stops.map((x) => x.short).join(", ")}` : "Left the rover on foot (free roam)");
-        if (this.tau > 1) {
-          const de = dustEffect(this.tau, 30);
-          this.toast(`<b>Dust storm:</b> τ ${this.tau.toFixed(1)} (${esc(this.dustName)}). Sunlight about ${Math.round(de.sunlight * 100)} % of a clear day, dark landmarks fade at ${fmtVisibility(de.visibilityM)}. Navigate by the compass and the beacons over the stops (visor).`, true);
-        } else this.toast("Outside. The rover is behind you; its suitports are on the rear wall. <b>WASD</b> to walk, <b>Shift</b> to lope, <b>Space</b> to jump.");
+        this.stepOutside();
       } else if (act === "menu") dissolveTo(`?site=${encodeURIComponent(this.site.id)}&menu=1`);
       else if (act === "planner") dissolveTo(`?site=${encodeURIComponent(this.site.id)}&skip=1`);
       else if (act === "sound") this.toggleSound();
@@ -927,25 +919,27 @@ export class Roam {
       if (a === "jump") {
         ev.preventDefault();
         if (!ev.repeat) this.jumpQueued = true;
-        this.host.querySelector(".rm-intro")?.remove();
+        this.stepOutside();
       } else if (a === "visor") {
         if (!ev.repeat) this.goldVisor();
       } else if (a) {
         ev.preventDefault();
         this.keys.add(a);
-        if (a !== "lope" && a !== "use") this.host.querySelector(".rm-intro")?.remove();
+        if (a !== "lope" && a !== "use") this.stepOutside();
       } else if (k === "1" || k === "2" || k === "3") this.setLook(LOOKS[Number(k) - 1][0]);
       else if (k === "v") this.setLook(LOOKS[(LOOKS.findIndex((l) => l[0] === this.look) + 1) % 3][0]);
       else if (k === "m") this.toggleSound();
       else if (k === "h" || k === "?") this.help();
       else if (k === ",") this.openSettings();
-      else if (k === "Enter") this.host.querySelector(".rm-intro")?.remove();
+      else if (k === "Enter") this.stepOutside();
     });
     window.addEventListener("keyup", (ev) => {
       const a = actionOf(this.settings.keys, ev.key);
       if (a) this.keys.delete(a);
     });
     window.addEventListener("blur", () => this.keys.clear());
+    // a different plan in the address (edited, or a link opened in this tab): start again with it
+    window.addEventListener("hashchange", () => location.reload());
 
     // looking around: pointer lock on a mouse, drag as a fallback and on touch screens
     canvas.addEventListener("click", () => {
@@ -992,7 +986,7 @@ export class Roam {
       const r = stick.getBoundingClientRect();
       this.stick = { id: ev.pointerId, x0: r.left + r.width / 2, y0: r.top + r.height / 2 };
       this.audio.start();
-      this.host.querySelector(".rm-intro")?.remove();
+      this.stepOutside();
     });
     stick.addEventListener("pointermove", (ev) => {
       if (!this.stick || ev.pointerId !== this.stick.id) return;
@@ -1081,6 +1075,20 @@ export class Roam {
     this.gold = !this.gold;
     this.host.classList.toggle("gold", this.look === "walk" && this.gold);
     if (this.look === "walk") this.toast(this.gold ? "Gold sun visor down: it blocks most visible light and infrared." : "Sun visor up.");
+  }
+
+  /** Out of the suitport: the walk starts (sound, the hab's EVA, the first message), whatever started it. */
+  private stepOutside(): void {
+    if (this.started) return;
+    this.host.querySelector(".rm-intro")?.remove();
+    this.audio.start();
+    this.started = true;
+    this.hab.start(this.lightTimeS);
+    this.hab.note(this.t, "go", this.plan ? `Left the rover on foot to walk the plan: ${this.stops.map((x) => x.short).join(", ")}` : "Left the rover on foot (free roam)");
+    if (this.tau > 1) {
+      const de = dustEffect(this.tau, 30);
+      this.toast(`<b>Dust storm:</b> τ ${this.tau.toFixed(1)} (${esc(this.dustName)}). Sunlight about ${Math.round(de.sunlight * 100)} % of a clear day, dark landmarks fade at ${fmtVisibility(de.visibilityM)}. Navigate by the compass and the beacons over the stops (visor).`, true);
+    } else this.toast("Outside. The rover is behind you; its suitports are on the rear wall. <b>WASD</b> to walk, <b>Shift</b> to lope, <b>Space</b> to jump.");
   }
 
   /** Settings: rebind keys, calm the camera, captions for sound cues. */
