@@ -24,6 +24,7 @@ import { autonomyHtml, type Decision } from "../ui/autonomy";
 import { RadiationModel } from "../eva/radiation";
 import { RoamStorm } from "./storm";
 import { distanceToLegs, gapToBox, scoreWalk, workO2 } from "./score";
+import { ACTIONS, actionOf, DEFAULT_KEYS, keyName, loadSettings, normKey, rebind, saveSettings, type Action, type RoamSettings } from "./settings";
 import { CLEAR_TAU, DUST_PRESETS, dustEffect, fmtVisibility } from "../eva/dust";
 import type { XY } from "../types";
 
@@ -79,7 +80,10 @@ export class Roam {
   private pitch = -0.08;
   private chaseDist = 6;
   private mapHeight = 260;
+  /** actions held down (see settings.ts: keys map to actions) */
   private readonly keys = new Set<string>();
+  private settings: RoamSettings = loadSettings();
+  private binding: Action | null = null;
   private jumpQueued = false;
   private touch = { x: 0, y: 0, lope: false };
   private touchHold = false;
@@ -224,6 +228,8 @@ export class Roam {
     document.body.classList.add("roam-on");
     this.render();
     this.bind();
+    this.audio.onCue = (t) => this.caption(t);
+    this.host.querySelector<HTMLElement>(".rm-captions")!.hidden = !this.settings.captions;
     const startLook = new URLSearchParams(location.search).get("look");
     this.setLook(startLook === "visor" ? "walk" : startLook === "map" ? "plan" : "orbit");
     this.updateSky(true);
@@ -583,7 +589,7 @@ export class Roam {
   private mission(dt: number): void {
     const act = this.action();
     const prompt = this.host.querySelector<HTMLElement>(".rm-act")!;
-    const holding = this.keys.has("e") || this.touchHold;
+    const holding = this.keys.has("use") || this.touchHold;
     const s = this.walker;
     const still = Math.hypot(s.vx, s.vy) < 0.25;
     if (act && holding && still) this.holdT += dt;
@@ -598,7 +604,7 @@ export class Roam {
       prompt.style.setProperty("--p", String(Math.min(1, this.holdT / HOLD_S)));
       prompt.classList.toggle("moving", !still);
     }
-    this.avatar.setAction(act && (this.keys.has("e") || this.touchHold) ? act : null, this.holdT / HOLD_S);
+    this.avatar.setAction(act && (this.keys.has("use") || this.touchHold) ? act : null, this.holdT / HOLD_S);
     if (act && this.holdT >= HOLD_S) {
       this.holdT = 0;
       if (act === "sample") this.chooseSample();
@@ -838,6 +844,7 @@ export class Roam {
         <div class="pill rm-actions">
           <button data-act="planner" title="Plan an EVA here">${ic.route}<span>Planner</span></button>
           <button data-act="sound" title="Suit sound on or off (M)">${ic.voiceOn}</button>
+          <button data-act="settings" title="Keys, camera shake, captions (,)">${ic.sliders}</button>
           <button data-act="help" title="Controls and what is modelled (H)">${ic.info}</button>
         </div>
       </header>
@@ -861,6 +868,7 @@ export class Roam {
       <div class="rm-toast" role="status" aria-live="polite" hidden></div>
       <section class="rm-earth" role="alert" hidden></section>
       <div class="rm-hint" data-k="hint"></div>
+      <div class="rm-captions" role="log" aria-label="Sound captions" hidden></div>
       <div class="rm-touch" aria-hidden="true">
         <div class="rm-stick"><i></i></div>
         <button class="rm-btn rm-lope" data-touch="lope">Lope</button>
@@ -908,30 +916,35 @@ export class Roam {
       else if (act === "planner") dissolveTo(`?site=${encodeURIComponent(this.site.id)}&skip=1`);
       else if (act === "sound") this.toggleSound();
       else if (act === "help") this.help();
+      else if (act === "settings") this.openSettings();
     });
     window.addEventListener("keydown", (ev) => {
       if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
       if (!$("#modal").hidden) return;
-      const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+      const k = normKey(ev.key);
+      const a = actionOf(this.settings.keys, ev.key);
       this.audio.start();
-      if (k === " ") {
+      if (a === "jump") {
         ev.preventDefault();
         if (!ev.repeat) this.jumpQueued = true;
         this.host.querySelector(".rm-intro")?.remove();
+      } else if (a === "visor") {
+        if (!ev.repeat) this.goldVisor();
+      } else if (a) {
+        ev.preventDefault();
+        this.keys.add(a);
+        if (a !== "lope" && a !== "use") this.host.querySelector(".rm-intro")?.remove();
       } else if (k === "1" || k === "2" || k === "3") this.setLook(LOOKS[Number(k) - 1][0]);
       else if (k === "v") this.setLook(LOOKS[(LOOKS.findIndex((l) => l[0] === this.look) + 1) % 3][0]);
       else if (k === "m") this.toggleSound();
       else if (k === "h" || k === "?") this.help();
+      else if (k === ",") this.openSettings();
       else if (k === "Enter") this.host.querySelector(".rm-intro")?.remove();
-      if (k === "e") this.keys.add("e");
-      if (k === "g") this.goldVisor();
-      if (["w", "a", "s", "d", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Shift"].includes(k)) {
-        ev.preventDefault();
-        this.keys.add(k);
-        if (k !== "Shift") this.host.querySelector(".rm-intro")?.remove();
-      }
     });
-    window.addEventListener("keyup", (ev) => this.keys.delete(ev.key.length === 1 ? ev.key.toLowerCase() : ev.key));
+    window.addEventListener("keyup", (ev) => {
+      const a = actionOf(this.settings.keys, ev.key);
+      if (a) this.keys.delete(a);
+    });
     window.addEventListener("blur", () => this.keys.clear());
 
     // looking around: pointer lock on a mouse, drag as a fallback and on touch screens
@@ -1070,6 +1083,68 @@ export class Roam {
     if (this.look === "walk") this.toast(this.gold ? "Gold sun visor down: it blocks most visible light and infrared." : "Sun visor up.");
   }
 
+  /** Settings: rebind keys, calm the camera, captions for sound cues. */
+  private openSettings(): void {
+    if (document.pointerLockElement) document.exitPointerLock();
+    const st = this.settings;
+    const body = () => `<table class="keys rm-binds">${ACTIONS.map((a) => `<tr><td>${a.label}</td><td><button data-bind="${a.id}">${this.binding === a.id ? "Press a key…" : esc(keyName(st.keys[a.id]))}</button></td></tr>`).join("")}
+        <tr><td>Arrows</td><td>always walk</td></tr></table>
+      <p class="rm-set-row"><button data-reset>Reset keys</button></p>
+      <label class="rm-check"><input type="checkbox" data-opt="reduceShake" ${st.reduceShake ? "checked" : ""}/> Reduce camera shake <small>(no head bob or dip on footsteps in the visor; on by default when your system asks for reduced motion)</small></label>
+      <label class="rm-check"><input type="checkbox" data-opt="captions" ${st.captions ? "checked" : ""}/> Captions for sound cues <small>(radio tones, breathing, heartbeat, footsteps, hiss, wind)</small></label>
+      <p class="fine">Kept in this browser only.</p>`;
+    openModal("Free roam settings", `<div class="rm-settings">${body()}</div>`, false);
+    const box = $("#modal").querySelector<HTMLElement>(".rm-settings")!;
+    const redraw = () => (box.innerHTML = body());
+    box.addEventListener("click", (ev) => {
+      const el = ev.target as HTMLElement;
+      const b = el.closest<HTMLElement>("[data-bind]");
+      if (b) {
+        this.binding = b.dataset.bind as Action;
+        redraw();
+        const take = (kev: KeyboardEvent) => {
+          kev.preventDefault();
+          kev.stopImmediatePropagation();
+          window.removeEventListener("keydown", take, true);
+          const action = this.binding!;
+          this.binding = null;
+          if (kev.key !== "Escape") {
+            const next = rebind(st.keys, action, kev.key);
+            if (next) st.keys = next;
+            else this.toast(`${esc(keyName(normKey(kev.key)))} is used for something else.`, true);
+          }
+          saveSettings(st);
+          redraw();
+        };
+        window.addEventListener("keydown", take, true);
+      } else if (el.closest("[data-reset]")) {
+        st.keys = { ...DEFAULT_KEYS };
+        saveSettings(st);
+        redraw();
+      }
+    });
+    box.addEventListener("change", (ev) => {
+      const el = ev.target as HTMLInputElement;
+      const opt = el.dataset.opt as "reduceShake" | "captions" | undefined;
+      if (!opt) return;
+      st[opt] = el.checked;
+      saveSettings(st);
+      if (opt === "captions") this.host.querySelector<HTMLElement>(".rm-captions")!.hidden = !el.checked;
+    });
+  }
+
+  /** One sound cue as a caption line (shown for a few seconds). */
+  private caption(text: string): void {
+    if (!this.settings.captions) return;
+    const box = this.host.querySelector<HTMLElement>(".rm-captions")!;
+    box.hidden = false;
+    const line = document.createElement("span");
+    line.textContent = text;
+    box.append(line);
+    while (box.children.length > 3) box.firstElementChild!.remove();
+    window.setTimeout(() => line.remove(), 4000);
+  }
+
   private toggleSound(): void {
     this.audio.start();
     this.audio.setMuted(!this.audio.muted);
@@ -1091,7 +1166,7 @@ export class Roam {
         <tr><td><kbd>G</kbd></td><td>Lower or raise the gold sun visor (visor view)</td></tr>
         <tr><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>V</kbd></td><td>Map, 3D (behind you), visor (inside the helmet); V cycles</td></tr>
         <tr><td>Mouse / drag</td><td>Look around; scroll zooms the map and 3D views</td></tr>
-        <tr><td><kbd>M</kbd> <kbd>H</kbd></td><td>Sound, this help</td></tr>
+        <tr><td><kbd>M</kbd> <kbd>H</kbd> <kbd>,</kbd></td><td>Sound, this help, settings (rebind keys, calmer camera, captions)</td></tr>
       </table>
       <h3>What you feel, and why</h3>
       <ul class="rm-why">
@@ -1202,8 +1277,8 @@ export class Roam {
 
   private input(): { x: number; y: number; lope: boolean; jump: boolean } {
     const k = this.keys;
-    let f = (k.has("w") || k.has("ArrowUp") ? 1 : 0) - (k.has("s") || k.has("ArrowDown") ? 1 : 0);
-    let r = (k.has("d") || k.has("ArrowRight") ? 1 : 0) - (k.has("a") || k.has("ArrowLeft") ? 1 : 0);
+    let f = (k.has("forward") ? 1 : 0) - (k.has("back") ? 1 : 0);
+    let r = (k.has("right") ? 1 : 0) - (k.has("left") ? 1 : 0);
     if (this.stick) {
       f = this.touch.y;
       r = this.touch.x;
@@ -1217,7 +1292,7 @@ export class Roam {
     // forward along the camera's heading (clockwise from north), right 90° clockwise of it
     const x = Math.sin(yaw) * f + Math.cos(yaw) * r;
     const y = Math.cos(yaw) * f - Math.sin(yaw) * r;
-    return { x, y, lope: k.has("Shift") || this.touch.lope, jump: this.jumpQueued };
+    return { x, y, lope: k.has("lope") || this.touch.lope, jump: this.jumpQueued };
   }
 
   /** The rover is solid: a box around its hull (front toward east); push the walker out the nearest side. */
@@ -1320,8 +1395,8 @@ export class Roam {
     if (this.look === "walk") {
       // the eye rides on the body: real ballistic height in a jump, a dip on each footfall
       const eye = this.avatar.eyeWorld();
-      eye.y -= this.camDip;
-      const sway = s.gait === "walk" ? Math.sin(s.phase) * 0.02 : 0;
+      if (!this.settings.reduceShake) eye.y -= this.camDip;
+      const sway = s.gait === "walk" && !this.settings.reduceShake ? Math.sin(s.phase) * 0.02 : 0;
       eye.x += Math.cos(this.yaw) * sway;
       eye.z += Math.sin(this.yaw) * sway;
       if (!this.camInit) this.smoothEye.copy(eye);
