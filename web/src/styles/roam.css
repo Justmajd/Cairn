@@ -198,3 +198,14 @@ body.roam-on .poi-label { pointer-events: none; }
 .rm-earth-x { position: absolute; right: 6px; top: 6px; width: 26px; height: 26px; border: 0; border-radius: 8px; background: transparent; color: var(--text-3); cursor: pointer; }
 #roam[data-look="walk"] .rm-earth { right: 15%; top: 28%; background: rgba(10, 14, 18, 0.55); }
 @media (pointer: coarse) { .rm-earth { top: auto; bottom: 230px; right: var(--gap); left: var(--gap); width: auto; } }
+
+/* the solar particle event: dose rate and the shelter countdown */
+.rm-storm { position: absolute; left: var(--gap); top: calc(var(--gap) + 52px + 230px); width: 248px; padding: 10px 13px; display: grid; gap: 3px; border-radius: var(--r-md); background: rgba(50, 26, 0, 0.82); border: 1px solid rgba(245, 181, 68, 0.6); box-shadow: var(--shadow); color: #ffe3c9; animation: rm-in 0.35s var(--ease-glide) backwards; }
+.rm-storm .eyebrow { margin: 0; font: 500 10px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--warn); }
+.rm-storm b { font: 500 18px var(--mono); }
+.rm-storm b small { font-size: 11px; color: #f5c98a; }
+.rm-storm span { font-size: 12px; }
+.rm-storm em { font-style: normal; font-family: var(--mono); color: #fff; }
+.rm-storm em.bad, .rm-storm.late em { color: var(--bad); }
+#roam[data-look="walk"] .rm-storm { left: 15%; top: 55%; background: rgba(50, 26, 0, 0.5); }
+@media (pointer: coarse) { .rm-storm { top: auto; bottom: 300px; left: var(--gap); right: var(--gap); width: auto; } }
