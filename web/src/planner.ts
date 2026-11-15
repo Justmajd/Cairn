@@ -85,7 +85,9 @@ export async function startPlanner(): Promise<void> {
   // Start on the 50 cm HiRISE image; the full 25 cm one streams in after the planner is up,
   // when the GPU can hold an 8192 px texture.
   const hi = site.meta.texture.hi;
-  const useHi = !!hi && quality === "high" && query.get("tex") !== "4k" && maxTex >= hi.px;
+  // phones stay on the 50 cm image: the 8192 px one costs ~85 MB of GPU memory, enough for a phone to drop
+  // the WebGL context (a black view), and a small screen cannot show 25 cm anyway; ?tex=8k overrides
+  const useHi = !!hi && quality === "high" && query.get("tex") !== "4k" && maxTex >= hi.px && (!phone || query.get("tex") === "8k");
   const chosen = site.meta.texture;
 
   // the way home from every point is worked out in the background while the images finish

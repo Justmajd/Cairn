@@ -373,6 +373,10 @@ export class App {
     $("#scene").addEventListener("wheel", used, { passive: true });
     $("#btn-demo").addEventListener("click", () => void this.startDemo());
     $("#btn-roam").addEventListener("click", () => this.walkItYourself());
+    $("#sheet").addEventListener("click", () => {
+      this.sheetOpen = $("#app").dataset.sheet !== "open";
+      this.applySheet();
+    });
     $("#btn-hab").addEventListener("click", () => this.openMissionControl());
     this.renderHabChip();
     $("#btn-panels").addEventListener("click", (ev) => {
@@ -611,6 +615,7 @@ export class App {
     if ($("#app").classList.contains("chart-closed") === this.chartIsOpen()) this.renderBottom();
     $("#app").dataset.view = active;
     $("#app").dataset.phase = this.phase;
+    this.applySheet();
     requestAnimationFrame(() => this.updateInsets());
     $("#mapwidgets").hidden = walk;
     $("#nav").hidden = walk || active === "fly";
@@ -1393,9 +1398,51 @@ export class App {
 
   // ================================================================ right panel
   private shownPhase: string | null = null;
+  // ================================================================ phone sheet
+  /** The phone's bottom sheet: the user's choice for this view and phase, or null (automatic). */
+  private sheetOpen: boolean | null = null;
+  private sheetKey = "";
+
+  /**
+   * On phones the right panel is a bottom sheet.  It starts open on the planning map (that is where you
+   * plan) and as a slim bar with a summary in 3D, the visor and during an EVA, so the terrain is visible;
+   * the handle opens and closes it.  On larger screens nothing changes.
+   */
+  private applySheet(): void {
+    const key = `${this.viewMode}|${this.phase}`;
+    if (key !== this.sheetKey) {
+      this.sheetKey = key;
+      this.sheetOpen = null; // a new view or phase: back to the sensible default
+    }
+    const auto = this.phase === "summary" || (this.viewMode === "plan" && this.phase === "planning");
+    const open = this.sheetOpen ?? auto;
+    const app = $("#app");
+    if (app.dataset.sheet !== (open ? "open" : "peek")) {
+      app.dataset.sheet = open ? "open" : "peek";
+      $("#sheet").setAttribute("aria-expanded", String(open));
+      requestAnimationFrame(() => this.updateInsets());
+      window.setTimeout(() => this.updateInsets(), 320); // after the sheet has slid
+    }
+    this.sheetSummary();
+  }
+
+  /** The one line on the handle: the plan, or the EVA clock, where you are headed and the oxygen left. */
+  private sheetSummary(): void {
+    let text = "";
+    const m = this.mission;
+    if (this.phase === "eva" && m) {
+      const ph = this.phaseLabel(m);
+      text = `${fmtClock(m.t)} · ${ph.name ? `→ ${ph.name}` : ph.label} · O₂ ${Math.round(this.P.o2SupplyL - m.o2UsedL)} L`;
+    } else if (this.phase === "summary") text = "EVA debrief";
+    else if (this.plan) text = `EVA plan · ${fmtDist(this.plan.budget.distanceM)} · ${fmtDur(this.plan.budget.totalTimeS)}`;
+    else text = this.planError ?? "EVA plan";
+    setText($("#sheet-sum"), text);
+  }
+
   private renderRight(): void {
     const host = $("#right");
     $("#app").dataset.phase = this.phase;
+    this.applySheet();
     if (this.phase !== this.shownPhase) {
       // a new phase (plan → live EVA → debrief): its sections rise in one after another
       this.shownPhase = this.phase;
@@ -3482,6 +3529,7 @@ export class App {
     const margin = m.walkBackMarginL();
     const w = this.weatherAt(m.t);
     setText($("#lv-clock"), fmtClock(m.t));
+    this.sheetSummary();
     setText($("#lv-label"), ph.label);
     setText($("#lv-next"), ph.name);
     setText($("#lv-dist-k"), n.distM > 0 || m.sheltered ? "Distance left" : "Science time left");
@@ -3613,7 +3661,7 @@ export class App {
     const tape = $("#hud-tape");
     const half = tape.parentElement!.clientWidth / 2;
     tape.style.transform = `translateX(${(half - (head + 180) * PX_PER_DEG).toFixed(1)}px)`;
-    setText($("#hud-head"), `${String(Math.round(head) % 360).padStart(3, "0")}°`);
+    setText($("#hud-head"), Number.isFinite(head) ? `${String(Math.round(head) % 360).padStart(3, "0")}°` : "—"); // the first frame of the visor, before the camera is placed
 
     const m = this.mission;
     const pose = m ? m.pose() : { x: this.rover.x, y: this.rover.y, headingRad: 0 };
