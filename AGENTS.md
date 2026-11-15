@@ -17,7 +17,7 @@ cd web
 npm ci                 # install
 npm run dev:all        # Vite dev server (5173) + hab server (8787) in one terminal; Ctrl+C stops both
 npm run dev:https      # same over https:// (phones need it for the microphone); local cert in web/.cert
-npm test               # vitest (96 tests: model, routing, data, hab server end to end)
+npm test               # vitest (104 tests: model, routing, data, hab server end to end)
 npm run typecheck      # app tsconfig + server tsconfig
 npm run build          # tsc + vite build → web/dist (and dist/sw.js)
 npm start              # build, then serve dist + hab on http://localhost:8787 (production-like)
@@ -62,7 +62,7 @@ web/                 the app (Vite + TypeScript + Three.js) and the hab server (
 
 ---
 
-## 3. The three pages (`web/src/main.ts`)
+## 3. The pages (`web/src/main.ts`)
 
 One `index.html`, three modes chosen from the address:
 
@@ -71,6 +71,7 @@ One `index.html`, three modes chosen from the address:
 | `?site=jezero` (default), `?menu=1` | **Main menu** (briefing) | only `site.json`, `context.json`, `sites.json` and two images; **no Three.js, no terrain** |
 | `?site=…&skip=1`, `?demo=1`, or a hash with `stops=`/`add=` | **EVA planner** | `planner.ts` (lazy chunk) → Three.js, terrain, everything |
 | `?view=mission&site=…` | **Mission Control** | `mission/dashboard.ts` (lazy chunk) |
+| `?site=…&roam=1` (`&look=3d`) | **Free roam** | `planner.ts` boots `roam/roam.ts` (its own lazy chunk) instead of `App`; no routing worker |
 
 - The menu must stay light: never import planner code (Three.js, `app.ts`, `scene/*`) statically from
   `main.ts`. Nothing is prefetched (the user explicitly does not want preloading).
@@ -182,6 +183,25 @@ assumptions). Never present them as NASA specs.
 - `hab.ts` — "Where do we put the hab?" suitability map (flatness, walk time to stops, radio, shielding,
   ice at Deuteronilus).
 
+### 5.3b Free roam (`roam/`, `eva/walker.ts`)
+- `eva/walker.ts` — pure walking physics (tested in `walker.test.ts`): Mars g, traction limit μ·g·cos θ,
+  Froude 0.5 walk→lope, ballistic jumps/bounds (no control in the air, no drag), sliding past the friction
+  angle, landing impact → hard landing / fall / getting up, Minetti power → O₂, heart rate, breathing.
+  Suit/body numbers are demo assumptions in `WALKER_NOTES` (shown in the roam Help dialog).
+- `roam/roam.ts` — `Roam`: input (keys, pointer lock, drag, touch stick), the three looks (map north-up,
+  3D chase, visor), HUD, lessons as toasts, rover collision, real Sun/Earth/moons clock, stop arrivals.
+  Uses `SceneView.enterRoam/setRoamLook/setRoamCamera/add/groundAt`; in roam the view's `look` getter
+  stands in for `mode` when deciding how to draw.
+- `scene/models.ts` — the pressurised rover (shelter), stone cairns with survey flags (stops), `roundedBox`,
+  `marsEnvironment` (reflections for the models; `scene.environment`). The view's sun light follows the real Sun.
+- Missions: the planner's *Walk it yourself* (`app.ts` `walkItYourself`) saves a `RoamPlan` (`roam/plan.ts`, sessionStorage, keyed by site + plan hash) and opens `?roam=1#<plan>`; without a saved plan, roam routes the plan link itself with `Router`. `Roam` then draws the legs, numbers the stops, handles hold-E sampling (clock + O₂ at `workingW` for the dwell), off-route time, boarding at the rover, and the debrief (`finish`).
+- Visor = inside the helmet (`Astronaut.firstPerson`: helmet hidden, arms forward, body follows the view); `SuitAudio.setPerspective` crossfades the inside bus (fan, breathing in a bubble comb, conducted steps, heart) and the outside bus (wind, faint low-passed steps).
+- Falls and slides (`roam/avatar.ts`): no ragdoll — a pressurised suit is stiff. A fall topples as an inverted pendulum in Mars gravity (`toppleTime` in `eva/walker.ts`, tested) onto hands and knees; the last 4.2 s of `downT` (7 s, `getUpS`) are the suited get-up (sit back → one knee up → stand). The topple runs until the hands touch the terrain (`settle` rests the lowest contact point on the ground, `alignToGround` tilts to the slope); while down on ground steeper than the suit's grip the walker keeps sliding (`sliding`) and the get-up timer waits. A slide is a seated, feet-first pose fitted to the slope. All joints are eased each frame (`smoothJoints`, ~70 ms), so no state change snaps; `setAction` poses sampling and boarding.
+- `roam/avatar.ts` — articulated astronaut posed from the physics, blob shadow, instanced boot prints,
+  dust (coarse ballistic + fine settling), map trail.  `roam/audio.ts` — synthesised suit sound (WebAudio).
+- Debug: `window.cairn.roam` (`.state`, `.tick(dt)`); with the pane hidden, call `roam.tick` and
+  `view.update` + `view.renderIfNeeded()` yourself.
+
 ### 5.4 Live EVA simulation (`replay/mission.ts`)
 `Mission` advances along the planned segments on an EVA clock (speeds 10×/60×/120×/300×; pause;
 background tabs stop the clock). Phases `eva → holding → to-shelter → sheltered → complete`. Handles the
@@ -239,6 +259,7 @@ glow, `playOnce`), `dom.ts` (helpers, formatters), `icons.ts` (Lucide).
 | Guided demo | `ui/demo.ts` |
 | Offline mode (PWA) | `ui/offline.ts`, `sw.template.js` |
 | Mission Control (Earth, one light time late) | `mission/dashboard.ts`, `server/room.ts` |
+| Free roam: walk anywhere with real Mars-gravity physics (map / 3D / visor) | `roam/*`, `eva/walker.ts` |
 | Two astronauts on two devices (EV1 + EV2) | `app.ts` (`member`), `server/index.ts` |
 | Earth sends a revised plan; crew accepts/declines | `server/room.ts` (`say` with change, `reply`) |
 | Replay of past EVAs in Mission Control | `server/store.ts` (EVA records), `dashboard.ts` |

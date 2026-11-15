@@ -4,6 +4,7 @@
  * - the EVA planner (?skip=1, ?demo=1, or a shared plan link): planner.ts, with Three.js and the
  *   site's terrain, loaded only now;
  * - Mission Control (?view=mission): mission/dashboard.ts.
+ * - Free roam (?roam=1): the planner's chunk, booting the walking astronaut instead of the planner.
  */
 import "@fontsource/geist-sans/400.css";
 import "@fontsource/geist-sans/500.css";
@@ -26,7 +27,7 @@ const sharedPlan = /(^#|&)(stops|add)=/.test(location.hash);
 const page: "mission" | "menu" | "planner" =
   query.get("view") === "mission"
     ? "mission"
-    : query.get("menu") === "1" || (query.get("skip") !== "1" && query.get("demo") !== "1" && !sharedPlan)
+    : query.get("menu") === "1" || (query.get("skip") !== "1" && query.get("demo") !== "1" && query.get("roam") !== "1" && !sharedPlan)
       ? "menu"
       : "planner";
 

@@ -56,6 +56,7 @@ export async function startPlanner(): Promise<void> {
     throw new Error("this browser has no WebGL 2, which the 3D terrain needs. Try a current Chrome, Edge, Firefox or Safari, and check that hardware acceleration is on.");
   }
   const query = new URLSearchParams(location.search);
+  const roam = query.get("roam") === "1";
   const quality = query.get("q") === "low" ? "low" : "high";
 
   const grey = (t: THREE.Texture) => {
@@ -89,9 +90,9 @@ export async function startPlanner(): Promise<void> {
   progress("Surface images and the way home from every point", 0.8);
   const rover = site.pois.find((p) => p.kind === "shelter");
   if (!rover) throw new Error("Site has no shelter");
-  const router = new Router();
+  const router = roam ? null : new Router();
   // the worker computes while the terrain is built and its shaders compile on this thread
-  const fieldReady = router.init(site.grid, DEFAULT_PARAMS, { x: rover.x, y: rover.y }).then((f) => (performance.mark("cairn:field"), f));
+  const fieldReady = router?.init(site.grid, DEFAULT_PARAMS, { x: rover.x, y: rover.y }).then((f) => (performance.mark("cairn:field"), f));
   const [[texture, relief], regionMap] = await Promise.all([
     early.images!,
     site.region ? loadTexture(site.base + site.region.meta.texture.file).then(grey).then((t) => (performance.mark("cairn:region"), t)) : Promise.resolve(null),
@@ -111,9 +112,9 @@ export async function startPlanner(): Promise<void> {
   // compile the shaders in parallel (KHR_parallel_shader_compile) instead of stalling the first frame
   await view.compileShaders();
   performance.mark("cairn:shaders");
-  progress("The way home from every point", 0.95);
+  if (!roam) progress("The way home from every point", 0.95);
   const field = await fieldReady;
-  view.setShelterTimes(field.time);
+  if (field) view.setShelterTimes(field.time);
   // a graphics driver reset leaves a black map: say so instead
   view.renderer.domElement.addEventListener("webglcontextlost", (ev) => {
     ev.preventDefault();
@@ -125,9 +126,20 @@ export async function startPlanner(): Promise<void> {
   texture.anisotropy = view.renderer.capabilities.getMaxAnisotropy();
   if (regionMap) regionMap.anisotropy = texture.anisotropy;
   performance.mark("cairn:view-built");
-  const app = new App(site, view, router, field, sites);
-  view.start((dt) => app.tick(dt));
-  const debug = { app, view, site, field, textureMPerPx: chosen.mPerPx };
+  let debug: Record<string, unknown> & { textureMPerPx: number };
+  if (roam) {
+    // free roam: the same terrain and sky, a walking astronaut instead of the planner
+    document.title = `CAIRN — Free roam · ${site.meta.name.split(" — ")[0]}`;
+    const { Roam } = await import("./roam/roam");
+    view.enterRoam("walk");
+    const walk = new Roam(site, view);
+    view.start((dt) => walk.tick(dt));
+    debug = { roam: walk, view, site, textureMPerPx: chosen.mPerPx };
+  } else {
+    const app = new App(site, view, router!, field!, sites);
+    view.start((dt) => app.tick(dt));
+    debug = { app, view, site, field, textureMPerPx: chosen.mPerPx };
+  }
   (window as unknown as { cairn: unknown }).cairn = debug;
 
   performance.mark("cairn:ready");
@@ -135,7 +147,7 @@ export async function startPlanner(): Promise<void> {
   hideAnimated($("#loading"), 350);
   playOnce($("#app"), "boot", 1700); // the console assembles itself
   // ?demo=1 plays the guided demo (from the main menu, or for a booth screen or recording)
-  if (query.get("demo") === "1") void app.startDemo();
+  if (query.get("demo") === "1" && !roam) void (debug.app as App).startDemo();
 
   // close-up ground materials (CC0 photo scans, shared by all sites): after the planner is up
   void (async () => {

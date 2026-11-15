@@ -332,3 +332,8 @@ body:has(> #briefing:not([hidden])) #app { visibility: hidden; }
 #pin-menu .row { flex-wrap: wrap; justify-content: stretch; }
 #pin-menu .row button { flex: 1 1 0; min-width: 0; padding: 0 10px; }
 #pin-menu .row button.primary { flex-basis: 100%; height: 38px; order: 1; }
+/* free roam keeps its label in the planner's bar: it is a different mode, not a tool */
+.top-actions #btn-roam { color: var(--accent); box-shadow: inset 0 0 0 1px rgb(var(--fern-rgb) / 0.35); }
+.top-actions #btn-roam span { display: inline; }
+@media (max-width: 640px) { .top-actions #btn-roam span { display: none; } }
+button.big.walk-it { margin-top: 8px; }
