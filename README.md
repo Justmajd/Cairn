@@ -11,6 +11,10 @@ Built for the **2026 NASA Space Apps Challenge** — *Interplanetary Survival Gu
   <img src="docs/img/visor.jpg" width="49%" alt="CAIRN visor during a walk to Cheyava Falls: oxygen, way home, radio, dose and the minimap" />
 </p>
 
+<p>
+  <img src="docs/img/free-roam.gif" width="98%" alt="Free roam tour: walking beside the rover in 3D, the visor with gloves in view, a mission on the map, a dust storm, two astronauts, and Mission Control's best guess" />
+</p>
+
 **Live app: [cairn-mars.up.railway.app](https://cairn-mars.up.railway.app)** — Mission Control at
 [cairn-mars.up.railway.app/?view=mission](https://cairn-mars.up.railway.app/?view=mission).
 
@@ -52,6 +56,33 @@ Colour-blind safe throughout: map layers and charts use the Okabe-Ito palette, a
 
 Every layer, photo and reading names its mission, instrument and product in the **Data sources** panel and in [docs/data-sources.md](docs/data-sources.md).
 
+## Free roam: walk it yourself
+
+Plan an EVA, then walk it on foot — or just walk. *Free roam on foot* on the main menu, *Free roam* in the planner's top bar, *Walk it yourself* under *Start EVA*, or a **scenario**.
+
+<p>
+  <img src="docs/img/roam-3d.jpg" width="49%" alt="Free roam in 3D: the astronaut beside the pressurised rover at Jezero" />
+  <img src="docs/img/roam-visor.jpg" width="49%" alt="Free roam visor: inside the helmet, gloves in view, readouts on the glass" />
+  <img src="docs/img/roam-map-mission.jpg" width="49%" alt="A mission on the map: the planned route, the next stop and the oxygen against the plan" />
+  <img src="docs/img/roam-dust-storm.jpg" width="49%" alt="Gale in the 2018 global dust storm: tau 8, a tenth of the daylight" />
+</p>
+
+- **Physics, not animation**: Mars gravity, traction, a lope above 1.3 m/s, ballistic jumps, slides past the friction angle, falls that topple onto hands and knees and a 7 s suited get-up (details under *What it does*).
+- **Missions**: the planned route and numbered stops; hold E to sample after picking the target from the **rover's own photos** at that stop; the clock runs on by the planned work time; climb back in through the suitport. The debrief scores oxygen, time, safe walking and (if the storm hit) sheltering in time, and lists the **decisions made alone**.
+- **Earth one light time behind**: with the hab server, Mission Control watches the walk late, draws **Earth's best guess** of where you are now from the plan, and its messages reach your helmet only after the real delay (a revised plan can be accepted or declined).
+- **Two astronauts**: open the same page with `&crew=ev2` on a second device; each sees the other's suit (EV1 fern stripes, EV2 amber), with no delay between them.
+- **Harder walks**: the **20 May 2024 solar storm** mid-mission (30 minutes to get inside), **suit leak** or **twisted ankle** practice, and **dust storms** at measured optical depth.
+- **Scenario presets**: a clear morning at Cheyava Falls, the 2024 storm, Gale in the 2018 global dust storm, two astronauts, a suit leak — each one tap to plan or to walk.
+- **Settings**: rebind keys, reduce camera shake, captions for sound cues. Phones start on the light quality; slow laptops are offered it.
+
+| Free roam | Keys (rebindable) |
+|---|---|
+| Walk · lope · jump | `W` `A` `S` `D` or arrows · `Shift` · `Space` (thumb stick and buttons on touch) |
+| Sample / climb in · gold visor | hold `E` · `G` |
+| Views · sound · help · settings | `1` `2` `3` (`V` cycles) · `M` · `H` · `,` |
+
+Address options: `?roam=1` free roam, `&crew=ev2` second astronaut, `&look=3d|visor|map`, `&dust=clear|regional|global|extreme` or `&tau=<n>`, `&emergency=leak@900` (or `ankle@<s>`), `&q=low|high`; a plan after `#` (`#stops=…&storm=0`) makes it a mission.
+
 ## Run it
 
 Requires Node.js 24 or newer (the hab server runs its TypeScript directly). All data is already in the repository, so no downloads are needed.
@@ -68,7 +99,7 @@ Open the address Vite prints (normally http://localhost:5173).
 |---|---|
 | `npm run dev:all` | Development: frontend and hab server together, one terminal (Ctrl+C stops both) |
 | `npm run dev` | Development server (frontend only) |
-| `npm test` | 104 unit and integration tests (including the hab server end to end) |
+| `npm test` | 116 unit and integration tests (including the hab server end to end) |
 | `npm run build` | Type-check and build to `web/dist/` |
 | `npm run preview` | Serve the built app |
 | `npm start` | Build, then serve the app with the hab server (Mission Control, shared notebook) |
@@ -142,7 +173,7 @@ The buttons at the bottom-right of the map do the same things.
 
 ## The demo
 
-Press **Demo** (top right) or **Watch the 2-minute demo** in the briefing. It walks through: the site → real terrain in 3D → traversability and the deadly straight line → the real Sun and shadows → radio contact and where to stand up a relay → a flyover → the walk, arriving at the first objective (with the 360° view at Gale) → the 20 May 2024 storm, the re-route and the dose avoided. Pause, skip or exit at any time.
+Press **Demo** (top right) or **Watch the 2-minute demo** in the briefing. It walks through: the site → real terrain in 3D → traversability and the deadly straight line → the real Sun and shadows → radio contact and where to stand up a relay → a flyover → the walk, arriving at the first objective (with the 360° view at Gale) → the 20 May 2024 storm, where Earth's last "all quiet" arrives only after the alarm → the decisions the crew made alone → walking it yourself in free roam. Pause, skip or exit at any time.
 
 ## How it works
 
