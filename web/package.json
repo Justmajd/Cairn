@@ -18,7 +18,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json",
     "hab": "node --watch server/index.ts",
     "start": "npm run build && node server/index.ts",
-    "build:deploy": "npm run fetch-speech && npm run build"
+    "build:deploy": "npm run fetch-speech && npm run build",
+    "render-voice": "node scripts/render-voice.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "1.2.7",
@@ -35,6 +36,7 @@
     "@types/node": "^22.20.5",
     "@types/three": "^0.170.0",
     "@types/ws": "8.18.2",
+    "kokoro-js": "^1.2.1",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
     "vitest": "^2.1.8"

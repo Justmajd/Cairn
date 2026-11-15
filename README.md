@@ -45,7 +45,7 @@ Pick a site, pick the stops, and CAIRN plans the walk from the pressurised rover
 6. **Replays a real solar storm** (20 May 2024, measured by Curiosity's RAD). CAIRN finds the way back to the rover in milliseconds, names the nearest natural cover, and reports the dose avoided.
 7. **Checks radio contact.** A line-of-sight model of the rover's antenna over the real terrain shows where hills cut the link, how much of the walk stays in contact, which stops have no contact at all (on Jezero's default walk: 30 min of science at Serpentine Rapids), and the best spot on the route for the crew to stand up a portable relay (85% → 100%, Serpentine Rapids included).
 8. **Practises emergencies.** During a walk, *Suit leak* doubles oxygen use and *Twisted ankle* halves the walking speed; CAIRN finds the quickest safe way home from where the astronaut stands and checks the oxygen.
-9. **Talks the crew through it.** Spoken directions in the visor: distance, turns, steep ground and sand ahead, arrivals, alerts, radio loss.
+9. **Talks the crew through it.** Spoken directions in the visor, only when something changes: a real turn, steep ground or sand ahead, 100 m to the stop, arrivals, alerts, radio loss. The voice is Kokoro, a free neural voice (Apache-2.0), rendered ahead of time into short clips, so every device hears the same natural voice, offline, with nothing big to download.
 10. **Checks itself against the real rovers.** 68% of Perseverance's drive at Jezero (70% of Curiosity's at Gale) is on ground CAIRN rates easy or moderate, against 45% (41%) of the area: the rover drivers avoided what CAIRN avoids.
 11. **Prints a one-page EVA cue card**: map with radio blackouts, timeline, turn-back oxygen per stop, storm protocol.
 12. **Shares and exports the plan.** The plan lives in the link (stops, start time, options, relay, rover position), so it survives a reload, can be sent to a teammate, and every change can be undone (Ctrl/⌘ Z or Back); the route exports to KML (Google Earth in Mars mode) and GeoJSON (Mars 2000 coordinates).
@@ -100,13 +100,14 @@ Open the address Vite prints (normally http://localhost:5173).
 |---|---|
 | `npm run dev:all` | Development: frontend and hab server together, one terminal (Ctrl+C stops both) |
 | `npm run dev` | Development server (frontend only) |
-| `npm test` | 126 unit and integration tests (including the hab server end to end) |
+| `npm test` | 129 unit and integration tests (including the hab server end to end) |
 | `npm run build` | Type-check and build to `web/dist/` |
 | `npm run preview` | Serve the built app |
 | `npm start` | Build, then serve the app with the hab server (Mission Control, shared notebook) |
 | `npm run hab` | The hab server alone, for development next to `npm run dev` |
 | `npm run dev:https` | Same as `dev:all`, over https:// (phones and tablets need it to record voice notes) |
 | `npm run start:https` | Same as `npm start`, over https:// |
+| `npm run render-voice` | After changing spoken phrases or stop names: render the voice clips into `public/voice/` with Kokoro (committed; downloads the ~92 MB model once to your machine, never to visitors) |
 | `npm run fetch-speech` | Once: put the speech-to-text model on the hab (about 45 MB, not committed) |
 
 URL options: `?site=gale` opens Gale Crater's main menu (default `jezero`; the menu loads only its text and two images, and nothing of the planner until you open it), `?skip=1` opens the planner straight away, `?menu=1` the main menu even with a plan in the address, `?demo=1` plays the guided demo straight away (for a booth screen or recording the video), `?roam=1` opens free roam (add `&look=3d` to start behind the astronaut), `?q=low` uses a lighter mesh and the 50 cm texture for slow GPUs, `?tex=4k` stays on the 50 cm texture. The part after `#` is the plan, e.g. `#stops=cheyava,serpentine&t=9.5&relay=1`; links with a plan open straight on it.

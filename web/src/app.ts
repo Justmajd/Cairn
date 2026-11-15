@@ -35,7 +35,8 @@ import type { CueRow } from "./ui/cuecard";
 import type { ExportPlan } from "./ui/export";
 import { toLonLat } from "./data/geo";
 import { promptInstall, saveForOffline } from "./ui/offline";
-import { RouteCallouts, spokenDist, spokenTime, Voice } from "./ui/voice";
+import { RouteCallouts, Voice } from "./ui/voice";
+import { L, PHRASES, type Dest } from "./ui/voiceLines";
 
 interface Plan {
   order: Poi[]; // rover, stops…, rover
@@ -502,7 +503,7 @@ export class App {
       } else if (act === "voice") {
         this.voice.set(!this.voice.enabled);
         this.renderBottom();
-        if (this.voice.enabled) this.voice.say("Voice guidance on.", "urgent");
+        if (this.voice.enabled) this.voice.say(L.fixed("on"), "urgent");
       } else if (act === "skip") this.skipAhead();
       else if (act === "note-here" && this.mission) {
         const pose = this.member === "ev2" ? this.mission.buddyPose() : this.mission.pose();
@@ -1669,7 +1670,7 @@ export class App {
                  <div class="seg small">${SPEEDS.map((v) => `<button data-act="speed" data-v="${v}" class="${v === this.speed ? "on" : ""}">${v}×</button>`).join("")}</div>
                  <button class="ghost" data-act="skip" title="Jump to the end of the current step">${ic.skip}<span>Skip</span></button>
                  <button class="ghost" data-act="note-here" title="Geotagged note or sample where you stand">${ic.note}<span>Note</span></button>
-                 ${this.voice.supported ? `<button class="ghost voice${this.voice.enabled ? " on" : ""}" data-act="voice" title="Spoken directions in the visor: turns, steep ground, sand and arrivals, only when something changes${this.voice.voiceName ? ` (voice: ${esc(this.voice.voiceName)})` : ""}" aria-pressed="${this.voice.enabled}">${this.voice.enabled ? ic.voiceOn : ic.voiceOff}<span>Voice</span></button>` : ""}
+                 ${this.voice.supported ? `<button class="ghost voice${this.voice.enabled ? " on" : ""}" data-act="voice" title="Spoken directions in the visor: turns, steep ground, sand and arrivals, only when something changes. Messages from Mission Control are always read out, even with this off${this.voice.voiceName ? ` (voice: ${esc(this.voice.voiceName)})` : ""}" aria-pressed="${this.voice.enabled}">${this.voice.enabled ? ic.voiceOn : ic.voiceOff}<span>Voice</span></button>` : ""}
                  <button class="ghost" data-act="end" aria-label="End EVA">${ic.stop}<span>End<span class="wide-only"> EVA</span></span></button>
                </div>`
             : `<h2>Elevation along the route</h2>`
@@ -2383,14 +2384,14 @@ export class App {
         this.log.sort((a, b) => a.t - b.t);
       }
       if (m.msg.change) {
-        this.voice.say("Mission Control sent a revised plan.");
+        this.voice.earth("Mission Control sent a revised plan.");
         this.buzz([80, 60, 80]);
         if (this.member === "ev1") this.openProposal(m.msg);
         else this.toast(`Mission Control sent EV1 a revised plan${lag}.`, 6000);
         return;
       }
       this.toast(`Message from Mission Control${lag}: “${m.msg.text}”`, 9000);
-      this.voice.say(`Message from Mission Control. ${m.msg.text}`);
+      this.voice.earth(`Message from Mission Control. ${m.msg.text}`);
       this.buzz([80, 60, 80]);
     }
   }
@@ -2546,7 +2547,7 @@ export class App {
     const vis = fmtVisibility(e.visibilityM);
     this.note("alert", `Dust storm, τ ${this.dustTau}: visibility ${vis}, sunlight ${Math.round(e.sunlight * 100)}%`);
     this.toast(`Dust storm (τ ${this.dustTau}): visibility about ${vis}, sunlight ${Math.round(e.sunlight * 100)}% of a clear day. Distant landmarks are gone — navigate by the route arrow, not by sight.`, 6500);
-    this.voice.say(`Dust storm. Visibility about ${vis.replace("km", "kilometres")}. Sunlight ${Math.round(e.sunlight * 100)} percent. Navigate by the route, not by landmarks.`);
+    this.voice.say(L.fixed("dust"));
   }
 
   // ================================================================ ghost of the real rover
@@ -2764,6 +2765,11 @@ export class App {
   // ================================================================ EVA
   private startEva(): void {
     this.callouts = new RouteCallouts();
+    // the clips this EVA will need first: the common phrases and this plan's stops
+    this.voice.preload([
+      ...Object.keys(PHRASES),
+      ...(this.plan?.order ?? []).flatMap((p, i) => (p.kind === "shelter" ? [] : [`n-${p.id}`, `na-${p.id}`, `wp-${i}`])),
+    ]);
     if (!this.plan || !this.plan.budget.feasible) return;
     const segs = this.plan.budget.segments;
     let onset: number | null = null;
@@ -2810,7 +2816,7 @@ export class App {
     this.setView("walk");
     this.toast("EVA started. Visor view — drag to look around, or switch to Map / 3D.", 5000);
     const first = this.mission.next();
-    if (first.poi) this.voice.say(`EVA started. Heading to ${this.waypointName(first.poi)}. ${spokenDist(first.distM)}, about ${spokenTime(first.etaS)}.`);
+    if (first.poi) this.voice.say(L.heading(this.destOf(first.poi), first.distM, first.etaS, true));
   }
 
   private backToPlanning(): void {
@@ -2941,12 +2947,12 @@ export class App {
         this.openCard(ev.poi.id, true);
         const quiet = this.radioLost;
         this.toast(`Arrived at ${ev.poi.short}. ${ev.poi.dwellMin} min of science.${quiet ? " No radio contact here: check in before and after." : ""}`);
-        this.voice.say(`Arrived at ${ev.poi.short}. ${spokenTime(ev.poi.dwellMin * 60)} of science.${quiet ? " No radio contact here." : ""}`);
+        this.voice.say(L.arrived(ev.poi.id, ev.poi.short, ev.poi.dwellMin * 60, quiet));
       } else if (ev.type === "depart") {
         this.note("go", `Left ${ev.poi.short}`);
         if (this.cardPoi === ev.poi.id) this.closeCard();
         const n = this.mission?.next();
-        if (n?.poi) this.voice.say(`Heading to ${this.waypointName(n.poi)}. ${spokenDist(n.distM)}, about ${spokenTime(n.etaS)}.`);
+        if (n?.poi) this.voice.say(L.heading(this.destOf(n.poi), n.distM, n.etaS));
       } else if (ev.type === "alert") void this.onAlert(ev.rateUGyH);
       else if (ev.type === "sheltered") {
         this.note("home", "Inside the rover");
@@ -2988,7 +2994,7 @@ export class App {
       }</span>
       <span class="sub2 earth">Earth is ${fmtLightTime(lt)} away by radio: Mission Control hears this at ${fmtClock(m.t + lt)} and can answer at ${fmtClock(m.t + 2 * lt)} at the earliest. The crew decides now.</span></div>`;
     alert.hidden = false;
-    this.voice.say(`Solar particle event. Dose rate ${Math.round(rate / this.rad.baseline)} times background. Abort the EVA. Return to the rover: ${spokenDist(path.distance)}, ${spokenTime(path.time)}.`, "urgent");
+    this.voice.say(L.storm(path.distance, path.time), "urgent");
     const box = document.getElementById("stormbox");
     if (box) {
       box.hidden = false;
@@ -3007,7 +3013,7 @@ export class App {
     alert.innerHTML = em
       ? `<div class="ico">${ic.home}</div><div><b>Crew back in the rover</b><span>Home ${fmtDur(m.t - em.atS)} after the ${em.kind === "leak" ? "suit leak" : "injury"}, with ${Math.round(this.P.o2SupplyL - m.o2UsedL)} L of oxygen left.</span></div>`
       : `<div class="ico">${ic.home}</div><div><b>Crew in shelter</b><span>Inside the rover ${fmtDur(m.t - (m.alertS ?? m.t))} after the alert. Dose rate cut to ${this.P.shelterFactor}× outdoors.</span></div>`;
-    this.voice.say(em ? `You are back in the rover, with ${Math.round(this.P.o2SupplyL - m.o2UsedL)} litres of oxygen left.` : "You are inside the rover. Radiation shelter reached.", "urgent");
+    this.voice.say(em ? L.backInRover(this.P.o2SupplyL - m.o2UsedL) : L.fixed("inside-rover"), "urgent");
     $("#stage").classList.remove("storm");
     this.speed = 300;
     this.renderBottom();
@@ -3218,7 +3224,7 @@ export class App {
     this.note("alert", "Sun below 8°");
     this.buzz([200, 100, 200]);
     this.toast("The Sun is below 8°: long shadows hide rocks and holes, and it is getting cold. Head back to the rover.", 6000);
-    this.voice.say("Low sun. Long shadows hide hazards. Head back to the rover.", "event");
+    this.voice.say(L.fixed("low-sun"), "event");
   }
 
   /** Tell the crew when the terrain cuts the line of sight to the rover, and when it comes back. */
@@ -3229,7 +3235,7 @@ export class App {
       this.note("radio", "Relay up");
       this.view.setRelay(relay.at, true);
       this.toast("Relay up: radio contact now reaches the ground behind the hills.", 3500);
-      this.voice.say("Relay deployed.");
+      this.voice.say(L.fixed("relay"));
     }
     const p = m.pose();
     const lost = !m.sheltered && m.phase !== "complete" && !inContact(this.radio, this.site.grid, p.x, p.y, this.liveRelay());
@@ -3239,19 +3245,20 @@ export class App {
     if (lost) {
       this.buzz([120]);
       this.toast("Radio contact with the rover lost: the terrain blocks the line of sight.", 4000);
-      this.voice.say("Radio contact lost.", "event", "radio-lost");
+      this.voice.say(L.fixed("radio-lost"), "event", "radio-lost");
     } else {
       this.toast("Radio contact with the rover restored.", 2500);
-      this.voice.say("Radio contact back.", "event", "radio-back");
+      this.voice.say(L.fixed("radio-back"), "event", "radio-back");
     }
   }
 
-  /** "Waypoint 2, Boxwork ridge" — or the rover. */
-  private waypointName(poi: Poi): string {
-    if (poi.kind === "shelter") return "the rover";
+  /** Where a leg goes, for the voice: the rover, or the stop and its number in the plan. */
+  private destOf(poi: Poi): Dest {
+    if (poi.kind === "shelter") return { rover: true, id: "rover", short: "the rover", k: 0 };
     const k = this.plan?.order.findIndex((p, i) => p.id === poi.id && i > 0) ?? -1;
-    return k > 0 ? `waypoint ${k}, ${poi.short}` : poi.short;
+    return { rover: false, id: poi.id, short: poi.short, k: Math.max(0, k) };
   }
+
 
   /** Routine spoken directions in the visor, only when something changes: a turn, steep ground or sand ahead, 100 m and 25 m to go. */
   private guide(m: Mission): void {
@@ -3271,7 +3278,7 @@ export class App {
       steep = Math.max(steep, q.slopeDeg);
       sand ||= q.sand > 0.5;
     }
-    const line = this.callouts.next({ legId: n.poi.id, name: n.poi.kind === "shelter" ? "The rover" : n.poi.short, distM: n.distM, turnDeg: turn, steepDeg: steep, sand });
+    const line = this.callouts.next({ legId: n.poi.id, dest: this.destOf(n.poi), distM: n.distM, turnDeg: turn, steepDeg: steep, sand });
     if (line) this.voice.say(line, "routine");
   }
 
@@ -3312,12 +3319,7 @@ export class App {
       <span class="go">${verdict}: ${spare >= 0 ? `${Math.round(spare)} L to spare` : `${Math.round(-spare)} L short`} · route found in ${Math.max(1, Math.round(res.ms))} ms</span>
       <span class="sub2">${spare >= 0 ? `Turn back now.${this.buddy ? " The buddy stays alongside." : ""}` : "Call the rover to drive out and meet the crew."}</span></div>`;
     alert.hidden = false;
-    this.voice.say(
-      `${kind === "leak" ? "Suit leak. Oxygen use doubled." : "Ankle injury. Walking at half speed."} Return to the rover: ${spokenDist(path.distance)}, ${spokenTime(em.homeTimeS)}. ${
-        spare >= 0 ? `Enough oxygen, ${Math.round(spare)} litres to spare.` : "Not enough oxygen. Rover, drive out to meet the crew."
-      }`,
-      "urgent",
-    );
+    this.voice.say(L.emergency(kind, path.distance, em.homeTimeS, spare), "urgent");
   }
 
   // ================================================================ offline
